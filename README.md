@@ -1,5 +1,5 @@
 # aws-one-view
-Consolidated views of all my services associated with a single aws account
+Consolidated views of all the services associated with a single aws account
 
 - cloudwatch logs - view and download 
 - emr job sumbit logs
