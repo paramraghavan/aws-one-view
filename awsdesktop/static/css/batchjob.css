@@ -1,0 +1,42 @@
+.submitted {
+	fill: #33b5e5;
+}
+
+.failed {
+	fill: #BE0C29;
+}
+
+.runnable {
+	fill: #F89B47;
+}
+
+.running {
+	fill: #F89B47;
+}
+
+.starting {
+	fill: #F89B47;
+}
+
+.succeeded {
+	fill: #1D9610;
+}
+
+.pending {
+	fill: #2ECACD;
+}
+
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+th, td {
+    text-align: left;
+    padding: 8px;
+}
+
+tr:nth-child(even) {
+    background-color: #FCEEE8;
+}

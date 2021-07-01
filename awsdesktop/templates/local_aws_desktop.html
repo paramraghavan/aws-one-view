@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+        <meta charset="utf-8">
+        <meta http-equiv="Access-Control-Allow-Origin" content="*" />
+        <link rel="apple-touch-icon" sizes="76x76" href="static/img/apple-icon.png" />
+        <link rel="icon" type="image/png" href="../assets/img/favicon.png" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+
+        <title>
+            AWS One View
+        </title>
+        <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, shrink-to-fit=no" name="viewport" />
+        <!-- Fonts and icons -->
+        <!-- CSS Files -->
+    <style>
+        * {
+            font-family: Verdana, sans-serif;
+            font-size: 18px
+          }
+        input[type="checkbox"] {
+            zoom: 1.5;
+        }
+
+        @media (min-width: 800px) {
+            a[href^='tel:'] {
+                display: none;
+            }
+            .sidebar {font-size: 25px;}
+            .sidebar a { padding: 8px 8px 8px 32px;}
+            .nav>li>a { padding: 10px 15px; font-size: 21px;}
+            .div-margin>h2 { font-size: 22pt; }
+            .weekobj{
+                height: 2001px;
+                width: 100%;
+                overflow: hidden;
+            }
+           * {
+            font-family: Verdana, sans-serif;
+            font-size: 18px
+            }
+
+        }
+
+        /* Between 400px and 800px */
+        @media (min-width: 400px) and (max-width: 800px) {
+            .sidebar {font-size: 13px;}
+            .sidebar a { padding: 6px 6px 6px 7px;}
+            .nav>li>a { padding: 10px 15px; font-size: 18px;}
+            .div-margin>h2 { font-size: 20pt; }
+            .weekobj {
+                height: 2001px;
+                width: 100%;
+                overflow: hidden;
+            }
+          * {
+            font-family: Verdana, sans-serif;
+            font-size: 12px
+            }
+        }
+
+
+        @media (max-width: 450px) {
+            .sidebar {padding-top: 10px; font-size: 11px; font-weight: bold;}
+            .sidebar a { padding: 2px 4px 4px 4px;}
+            .nav>li>a { padding: 5px 7px; font-size: 14px;}
+            .div-margin>h2 { font-size: 16pt; }
+            .weekobj {
+                height: 2001px;
+                width: 100%;
+                overflow: hidden;
+            }
+
+           * {
+            font-family: Verdana, sans-serif;
+            font-size: 11px
+            }
+        }
+
+    </style>
+        <style>
+            .loader {
+                border: 16px solid #f3f3f3; /* Light grey */
+                border-top: 16px solid #3498db; /* Blue */
+                border-radius: 50%;
+                width: 120px;
+                height: 120px;
+                animation: spin 2s linear infinite;
+            }
+
+            @keyframes spin {
+                0% {
+                    transform: rotate(0deg);
+                }
+                100% {
+                    transform: rotate(360deg);
+                }
+            }
+        </style>
+
+        <style>
+            .blur {
+                -webkit-filter: blur(3px);
+                -moz-filter: blur(3px);
+                -o-filter: blur(3px);
+                -ms-filter: blur(3px);
+                filter: blur(3px);
+            }
+        </style>
+
+        <meta charset="utf-8" />
+        <!--
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <script src="../static/js/jquery-3.3.1.js"></script>
+        <script src="../static/js/popper.min.js"></script>
+        <script src="../static/js/bootstrap.min.js"></script>
+        <link href="../static/css/bootstrap.min.css" rel="stylesheet" id="bootstrap-css" />
+        -->
+          <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css">
+          <!-- Custom styles for this template -->
+          <link href="../static/css/simple-sidebar.css" rel="stylesheet">
+          <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+          <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
+          <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.0/js/bootstrap.min.js"></script>
+          <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+          <script type="text/javascript" src="https://d3js.org/d3.v3.min.js"></script>
+	      <script type="text/javascript" src="../static/js/gantt-chart-d3v2.js"></script>
+<!--         <script type="text/javascript" src="http://static.mentful.com/gantt-chart-d3v2.js"></script>-->
+	      <script type="text/javascript" src="../static/js/stepfunc.js"></script>
+          <script type="text/javascript" src="../static/js/batchjob.js"></script>
+          <script src="../static/js/jquery.dataTables.min.js"></script>
+          <script src="../static/js/dataTables.buttons.min.js"></script>
+          <link rel="stylesheet" href="../static/css/jquery.dataTables.min.css">
+          <link rel="stylesheet" href="../static/css/buttons.dataTables.min.css">
+          <link rel="stylesheet" href="../static/css/batchjob.css">
+          <script src="../static/js/jszip.min.js"></script>
+          <script type="text/javascript" src="../static/js/buttons.html5.min.js"></script>
+          <link type="text/css" href="https://mbostock.github.io/d3/style.css1" rel="stylesheet" />
+          <link type="text/css" href="../static/css/stepfunc.css" rel="stylesheet" />
+          <link href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css" rel="stylesheet" />
+          <script src="//code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+          <script src="//cdn.jsdelivr.net/jquery.ui-contextmenu/1.7.0/jquery.ui-contextmenu.min.js"></script>
+          <link href="//ajax.googleapis.com/ajax/libs/jqueryui/1.11.1/themes/south-street/jquery-ui.min.css" rel="stylesheet" type="text/css" />
+          <link href="//cdn.datatables.net/plug-ins/725b2a2115b/integration/jqueryui/dataTables.jqueryui.css" rel="stylesheet" type="text/css" />
+          <script src="//ajax.googleapis.com/ajax/libs/jqueryui/1.11.1/jquery-ui.min.js"></script>
+          <link rel="stylesheet" href="../static/css/style.css">
+        <!-- background color override -->
+        <style>
+            .bg-info {
+                background-color: #f37941!important;
+            }
+        </style>
+
+        <script>
+                function filter() {
+                  var keyword = document.getElementById("search").value;
+                  var select = document.getElementById("listgroupsselect");
+                  for (var i = 0; i < select.length; i++) {
+                      var txt = select.options[i].text;
+                      if ( keyword.trim() != "" && txt.toLowerCase().indexOf(keyword.toLowerCase()) == -1) {
+                        $(select.options[i]).attr('disabled', 'disabled').hide();
+                      } else {
+                        $(select.options[i]).removeAttr('disabled').show();
+                      }
+                  }
+                }
+
+              function selectFunction() {
+                var x = document.getElementById("listgroupsselect").value;
+                $('#loggroup').val(x);
+              }
+
+              function selectFunction1(elementName, element2) {
+                var x = document.getElementById(elementName).value;
+                var res = x.split(' || ')
+                $('#'.concat(element2)).val(res[2]);
+              }
+
+              function filter1(search,elementName) {
+                  var keyword = document.getElementById(search).value;
+                  var select = document.getElementById(elementName);
+                  for (var i = 0; i < select.length; i++) {
+                      var txt = select.options[i].text;
+                      if ( keyword.trim() != "" && txt.toLowerCase().indexOf(keyword.toLowerCase()) == -1) {
+                        $(select.options[i]).attr('disabled', 'disabled').hide();
+                      } else {
+                        $(select.options[i]).removeAttr('disabled').show();
+                      }
+                  }
+              }
+
+              function hide() {
+               $('#content').hide();
+               $('#loader').show();
+              }
+
+              function show() {
+               $('#content').show();
+               $('#loader').hide();
+              }
+
+              function enableStreams() {
+                  $('#streams').removeAttr('disabled')
+              }
+
+              function hideStreams() {
+                $('#streams').attr('disabled', 'disabled');
+              }
+
+                $(document).ready(function(){
+                  $('#streams').attr('disabled', 'disabled');
+                  done();
+                });
+
+              timeout=3000;
+
+              function getBuckets() {
+                var jsonResponse = "";
+                var endPointURL = 'http://127.0.0.1:8080/getbuckets';
+                var req = new XMLHttpRequest();
+                req.open("GET", endPointURL, true);
+                req.responseType = "text";
+                req.onload = function (e) {
+                    if(req.status != 200) {
+                        console.log("Error getting user getResponse.");
+                        return jsonResponse;
+                    }
+                   jsonResponse = JSON.parse(req.responseText);
+                   console.log('jsonResponse : ' + jsonResponse);
+                    var arrayLength = jsonResponse.list.length;
+                    if( arrayLength > 0 ) {
+                        $('#bucket').empty();
+                        value = 'Select Bucket';
+                        $('#bucket').append($('<option>').text(value).attr('value', value));
+                    }
+                    for (var i = 0; i < arrayLength; i++) {
+                        var value = jsonResponse.list[i];
+                        console.log(value);
+                        //Do something
+                        $('#bucket').append($('<option>').text(value).attr('value', value));
+                    }
+                    return jsonResponse;
+                 };
+
+                req.timeout = timeout; // Set timeout to 7 seconds (7000 milliseconds)
+                req.ontimeout = function () {
+                    console.log(`Request timed out, error fetching roles`);
+                    return;
+                };
+                req.onerror = function () { // only triggers if the request couldn't be made at all
+                    console.log("Unable to read getResponse, contact tech support.", req);
+                    return;
+                };
+                req.send();
+              }
+
+
+              function selectBucket(value) {
+                if (isEmptyStr(value)) {
+                    alert('please select a bucket');
+                }
+                var jsonResponse = "";
+                var endPointURL = 'http://127.0.0.1:8080/bucket';
+                var req = new XMLHttpRequest();
+                req.open("POST", endPointURL, true);
+                req.responseType = "text";
+                req.onload = function (e) {
+                    if(req.status != 200) {
+                        console.log("Error getting user getResponse.");
+                        return jsonResponse;
+                    }
+                   jsonResponse = req.responseText;
+                   console.log('jsonResponse : ' + jsonResponse);
+                   $('#bucketselectedmsg').empty();
+                   $('#bucketselectedmsg').append(jsonResponse);
+                   $('#emr_env').val(value)
+                   $('#upload_bucket_file').val(value)
+                   $('#upload_bucket_folder').val(value)
+                   $('#download_bucket_file').val(value)
+                   $('#download_bucket_folder').val(value)
+                   $('#s3copy_bucket_src').val(value)
+				   $('#s3copy_bucket_tgt').val(value)
+                  return jsonResponse;
+                };
+
+                req.timeout = timeout; // Set timeout to 7 seconds (7000 milliseconds)
+                req.ontimeout = function () {
+                    console.log(`Request timed out, error fetching roles`);
+                    return;
+                };
+                req.onerror = function () { // only triggers if the request couldn't be made at all
+                    console.log("Unable to read getResponse, contact tech support.", req);
+                    return;
+                };
+                var data = new FormData();
+                data.append('bucket', value);
+                req.send(data);
+              }
+
+            function performUpload(oFormElement, element) {
+              if( element == 'msg' || element == 'msgfolder' || element == 'msgfolderdownload' || element == 'msglocals3copy' || element == 'msgchecks3filestatus' || element == 'yarnlog') {
+                  var ddl = document.getElementById("bucket")
+                  var bucketValue = ddl.options[ddl.selectedIndex].value;
+                  if (bucketValue == "" || bucketValue == 'Select Environment') {
+                    alert("Use 'Select Bucket' option to select an environment corresponding to your federated choice.");
+                    return false;
+                  }
+              }
+
+              var xhr = new XMLHttpRequest();
+              xhr.onload = function(e) {
+                var jsonResponse = xhr.responseText;
+                done();
+                alert(jsonResponse);
+                $('#'.concat(element)).empty();
+                $('#'.concat(element)).append(jsonResponse);
+                if (!(element == 'yarnlog' || element == 'msglocals3copy'))
+                    if (!jsonResponse.startsWith('Message:'))
+                        oFormElement.reset()
+              }
+                xhr.onerror = function () { // only triggers if the request couldn't be made at all
+                    done();
+                    alert('Unable to read .', req);
+                };
+
+              xhr.open(oFormElement.method, oFormElement.getAttribute("action"));
+              var data =  new FormData(oFormElement);
+              loading();
+              xhr.send(data);
+              return false;
+            }
+
+            function performDownload(oFormElement, element) {
+              if( element == 'msgdownload') {
+                  var ddl = document.getElementById("bucket")
+                  var bucketValue = ddl.options[ddl.selectedIndex].value;
+                  if (bucketValue == "" || bucketValue == 'Select Environment') {
+                    alert("Use 'Select Bucket' option to select an environment corresponding to your federated choice.");
+                    return false;
+                  }
+              }
+
+              var xhr = new XMLHttpRequest();
+              xhr.onload = function(e) {
+                var jsonResponse = xhr.responseText;
+                done();
+                alert(jsonResponse);
+                $('#'.concat(element)).empty();
+                $('#'.concat(element)).append(jsonResponse);
+              }
+                xhr.onerror = function () { // only triggers if the request couldn't be made at all
+                    done();
+                    alert('Unable to read .', req);
+                };
+
+              xhr.open(oFormElement.method, oFormElement.getAttribute("action"));
+              var data =  new FormData(oFormElement);
+              loading();
+              xhr.send(data);
+              return false;
+            }
+
+
+            function createObjectURL ( file ) {
+                if ( window.webkitURL ) {
+                    return window.webkitURL.createObjectURL( file );
+                } else if ( window.URL && window.URL.createObjectURL ) {
+                    return window.URL.createObjectURL( file );
+                } else {
+                    return null;
+                }
+            }
+
+
+        function performFileDownload(oFormElement, element) {
+              var xhr = new XMLHttpRequest();
+                xhr.onload = function(e) {
+                   var header = xhr.getResponseHeader('Content-Disposition');
+                  if (xhr.status == 200) {
+                       if (header && header.indexOf('attachment') === 0) {
+                        var filename = "";
+                        var disposition = xhr.getResponseHeader('Content-Disposition');
+                        if (disposition && disposition.indexOf('attachment') !== -1) {
+                            var filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+                            var matches = filenameRegex.exec(disposition);
+                            if (matches != null && matches[1]) filename = matches[1].replace(/['"]/g, '');
+                        }
+                        var type = xhr.getResponseHeader('Content-Type');
+                        var blob = new Blob([xhr.response], { type: "application/zip" });
+
+                         if (typeof window.navigator.msSaveBlob !== 'undefined') {
+                            // IE workaround for "HTML7007: One or more blob URLs were revoked by closing the blob for which they were created. These URLs will no longer resolve as the data backing the URL has been freed."
+                            window.navigator.msSaveBlob(blob, filename);
+                         } else {
+                            var URL = window.URL || window.webkitURL;
+                            var downloadUrl = URL.createObjectURL(blob);
+
+                            if (filename) {
+                                // use HTML5 a[download] attribute to specify filename
+                                var a = document.createElement("a");
+                                // safari doesn't support this yet
+                                if (typeof a.download === 'undefined') {
+                                    window.location = downloadUrl;
+                                } else {
+                                    a.href = downloadUrl;
+                                    a.download = filename;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                }
+                            } else {
+                                window.location = downloadUrl;
+                            }
+
+                            setTimeout(function () { URL.revokeObjectURL(downloadUrl); }, 100); // cleanup
+                        }
+
+                        //pass the original response to the browser
+                        done();
+
+                       }
+                       else {
+                        done();
+                        $('#'.concat(element)).empty();
+                        $('#'.concat(element)).append(msg);
+                       }
+                  }
+                if (xhr.status == 400 || xhr.status == 500 ) {
+                    done();
+                    var msg = blobToString(xhr.response) + ", Status = " + xhr.status;
+                    $('#'.concat(element)).empty();
+                    $('#'.concat(element)).append(msg);
+                    alert(msg);
+                }
+              };
+              xhr.onerror = function () { // only triggers if the request couldn't be made at all
+                    done();
+                    var msg = xhr.responseText + ", Status = " + xhr.status;
+                    $('#'.concat(element)).empty();
+                    $('#'.concat(element)).append(msg);
+                    alert(msg);
+              };
+
+              xhr.open(oFormElement.method, oFormElement.getAttribute("action"));
+              var data =  new FormData(oFormElement);
+              loading();
+              xhr.responseType = "blob";
+              xhr.send(data);
+              return false;
+            }
+
+        // until we find a correct solution
+        function blobToString(b) {
+            var u, x;
+            u = URL.createObjectURL(b);
+            x = new XMLHttpRequest();
+            x.open('GET', u, false); // although sync, you're not fetching over internet
+            x.send();
+            URL.revokeObjectURL(u);
+            return x.responseText;
+        }
+
+
+            function performIO(oFormElement, element) {
+
+              var xhr = new XMLHttpRequest();
+              xhr.responseType = 'blob';
+              xhr.onload = function(e) {
+                var jsonResponse = xhr.responseText;
+                done();
+                alert(jsonResponse);
+                $('#'.concat(element)).empty();
+                $('#'.concat(element)).append(jsonResponse);
+              }
+                xhr.onerror = function () { // only triggers if the request couldn't be made at all
+                    done();
+                    alert('Unable to read .', req);
+                };
+
+              xhr.open(oFormElement.method, oFormElement.getAttribute("action"));
+              var data =  new FormData(oFormElement);
+              loading();
+              xhr.send(data);
+              return false;
+            }
+
+            function postInfo(oFormElement, element) {
+              var xhr = new XMLHttpRequest();
+              xhr.onload = function(e) {
+                var jsonResponseTxt = xhr.responseText;
+                done();
+                if(element == 'listgroupsselect' || element == 'listclustersselect') {
+                    jsonResponse = JSON.parse(jsonResponseTxt);
+                    console.log('jsonResponse : ' + jsonResponse);
+                    var arrayLength = jsonResponse.list.length;
+                    $('#'.concat(element)).empty();
+                    if( arrayLength > 0 ) {
+                        //value = '';
+                        //$('#'.concat(element)).append($('<option>').text(value).attr('value', value));
+                        for (var i = 0; i < arrayLength; i++) {
+                            var value = jsonResponse.list[i];
+                            //console.log(value);
+                            $('#'.concat(element)).append($('<option>').text(value).attr('value', value));
+                        }
+                    } else {
+                          var value = 'No matching group found.'
+                          $('#'.concat(element)).append($('<option>').text(value).attr('value', value));
+                    }
+                } else {
+                    alert(jsonResponse);
+                    $('#'.concat(element)).empty();
+                    $('#'.concat(element)).append(jsonResponse);
+                }
+              }
+
+            xhr.onerror = function () { // only triggers if the request couldn't be made at all
+                done();
+                alert('Unable to read .', req);
+            };
+
+              xhr.open(oFormElement.method, oFormElement.getAttribute("action"));
+              var data =  new FormData(oFormElement);
+              loading();
+              xhr.send(data);
+              return false;
+            }
+
+            function isEmptyStr(str) {
+                return !str || !/[^\s]+/.test(str);
+            }
+
+            $('#formdownload').submit(function() {
+                    if( isEmptyStr($('#dwn_key'))) {
+                        alert('Key is empty');
+                        return false;
+                     }
+                    return true; // return false to cancel form action
+             });
+
+
+            function SetDate() {
+                var date = new Date();
+                var yDate = new Date();
+                yDate.setDate(date.getDate() - 1);
+
+                document.getElementById('starttime').value =  formatDate(yDate, false);
+                document.getElementById('endtime').value =  formatDate(date, true);
+            }
+
+            function formatDate(date, tday) {
+                var day = date.getDate();
+                var month = date.getMonth() + 1;
+                var year = date.getFullYear();
+                var hour = "00"
+                if(tday) {
+                    hour = date.getHours();
+                }
+                var minutes = "00"
+                if(tday) {
+                    minutes = date.getMinutes();
+                 }
+
+                if (month < 10) month = "0" + month;
+                if (day < 10) day = "0" + day;
+
+                var today = month + "/" + day + "/" + year + " " + hour + ":" + minutes;
+                return today;
+            }
+
+
+            function getTimestamp() {
+             var uuid_timestamp = new Date().valueOf();
+             return uuid_timestamp;
+            }
+
+        function loading(){
+            $("#loading").show();
+            $('#content').css('pointer-events', 'none');
+            //$('#content').addClass('loader');
+            $('#content').addClass('blur');
+        }
+
+        function done(){
+            $("#loading").hide();
+            $('#content').css('pointer-events', 'auto');
+            //$('#content').removeClass('loader');
+            $('#content').removeClass('blur');
+        }
+    </script>
+  <script>
+    function activateSidebar(id) {
+      $('[id^="sidebar_"]').hide();
+      var x = document.getElementById(id);
+      if (x.style.display === "none") {
+        x.style.display = "block";
+      } else {
+        x.style.display = "none";
+      }
+    }
+  </script>
+
+</head>
+
+
+
+<body  style="background-color: #FDEBD0 !important;">
+
+  <div class="d-flex" id="wrapper">
+
+    <!-- Sidebar -->
+    <div class="bg-light border-right" id="sidebar-wrapper" style="background-color: #c56a2a!important;">
+      <div class="sidebar-heading" style="color:#FFFFFF">AWS One View</div>
+      <div class="list-group list-group-flush">
+        <a href="javascript:activateSidebar('sidebar_dash')"        class="list-group-item list-group-item-action bg-light text-dark">Step Func. Dash</a>
+        <a href="javascript:activateSidebar('sidebar_batch')"        class="list-group-item list-group-item-action bg-light text-dark">Batch Dash</a>
+        <a href="javascript:activateSidebar('sidebar_logdownload')" class="list-group-item list-group-item-action bg-light text-dark">Download Cloudwatch Logs</a>
+        <a href="javascript:activateSidebar('sidebar_addpartition')" class="list-group-item list-group-item-action bg-light text-dark">Add Glue Partition</a>
+        <a href="javascript:activateSidebar('sidebar_emr')" class="list-group-item list-group-item-action bg-light text-dark">Emr</a>
+        <hr class="mt-2 mb-2"/>
+        <a title='Select bucket' href="javascript:activateSidebar('sidebar_config')" class="list-group-item list-group-item-action bg-light">Select Bucket</a>
+        <hr class="my-1"/>
+        <a title='Local S3 copy within same bucket.' href="javascript:activateSidebar('sidebar_locals3copy')" class="list-group-item list-group-item-action bg-light text-dark">Local S3 Copy</a>
+        <hr class="my-1"/>
+        <a href="javascript:activateSidebar('sidebar_s3fileupload')" class="list-group-item list-group-item-action bg-light text-dark">S3 File Upload</a>
+        <a title='Will not upload and overwrite the object if it already exists' href="javascript:activateSidebar('sidebar_s3folderupload')" class="list-group-item list-group-item-action bg-light text-dark">S3 Folder Upload</a>
+        <hr class="my-1"/>
+        <a href="javascript:activateSidebar('sidebar_s3filedownload')" class="list-group-item list-group-item-action bg-light text-dark">S3 File Download</a>
+        <a href="javascript:activateSidebar('sidebar_s3folderdownload')" class="list-group-item list-group-item-action bg-light text-dark">S3 Folder Download</a>
+
+      </div>
+    </div>
+    <!-- /#sidebar-wrapper -->
+
+    <!-- Page Content -->
+    <div id="page-content-wrapper" style="background-color: #333366!important;">
+
+      <nav class="navbar navbar-expand-lg navbar-light bg-light" style="background-color: #292d31!important;">
+        <button class="btn btn-primary" id="menu-toggle">Toggle Menu</button>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<h6 style="color:#FFFFFF">Alpha version - upload files, folder to S3, download files, folder, application logs from S3 and download cloudwatch logs.</h6>  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+
+        <div id="loading"  style="color:#FFFFFF"class="spinner-border">
+        </div>
+      </nav>
+
+      <div id="sidebar_s3fileupload" class="container-fluid border-top1 mt-4"  style="display:none">
+        <div class="card-columns1">
+            <div class="card bg-info" style="width: 99%">
+                <div class="form-group">
+                    <form onsubmit="return performUpload(this , 'msg');" action="/upload" method="post" enctype="multipart/form-data">
+                        <p class="h6"><mark>Choose a file to upload it to S3</mark></p>
+                        <div>
+                            <label for="upload_bucket_file">Bucket:</label>
+                            <input type="text" class="form-control" id="upload_bucket_file" name="upload_bucket_file" value="" />
+                            <label for="kms_key_up_file">KMS Key:</label>
+                            <input type="text" class="form-control" id="kms_key_up_file" name="kms_key_up_file" value="" />
+                            <label for="file">Select File:</label>
+                            <input type="file"  class="form-control btn btn-primary btn-lg1" id="file" name="file" value="file" />
+                            <label for="checksum">Checksum: [contentmd5-sum,checksum-value]</label>
+                            <input type="text" class="form-control" id="checksum" name="checksum" placeholder="contentmd5-sum,1234567asdeffff" />
+                            <label for="key">Key:</label>
+                            <input type="text" class="form-control" id="key" name="key" placeholder="keypath/" />
+                        </div>
+                        <input type="submit" name="upload" value="Upload" class="btn btn-primary btn-lg" />
+                    </form>
+                    <div id="msg"></div>
+                    {{msg}}
+                </div>
+            </div>
+        </div>
+      </div>
+
+      <div id="sidebar_s3folderupload" class="container-fluid border-top1 mt-4" style="display:none">
+            <div class="card-columns1">
+                <div class="card bg-info" style="width: 99%">
+                    <div class="form-group">
+                        <form onsubmit="return performUpload(this, 'msgfolder');" action="/uploadfolder" method="post" enctype="multipart/form-data">
+                            <p class="h6"><mark>Choose a folder to upload it to S3</mark></p>
+                            <label for="upload_bucket_folder">Bucket:</label>
+                            <input type="text" class="form-control" id="upload_bucket_folder" name="upload_bucket_folder" value="" />
+                            <label for="kms_key_up_folder">KMS Key:</label>
+                            <input type="text" class="form-control" id="kms_key_up_folder" name="kms_key_up_folder" value="" />
+                            <label for="folder">Folder:</label>
+                            <input type="text" class="form-control" id="folder" name="folder" placeholder="c:\tmp\xyzzz" />
+                            <label for="keyfolder">KeyPath:</label>
+                            <input type="text" class="form-control" id="keyfolder" name="keyfolder" placeholder="keypath/" />
+                            <input type="submit" name="upload" value="AddFolder" class="btn btn-primary btn-lg" />
+                        </form>
+                        <div id="msgfolder"></div>
+                        {{msgfolder}}
+                    </div>
+                </div>
+            </div>
+      </div>
+
+
+      <div id="sidebar_s3filedownload" class="container-fluid border-top1 my-4" style="display:none">
+        <div class="card-columns1">
+            <div class="card bg-info" style="width: 99%;">
+                <div class="form-group">
+                    <!--<form onsubmit="return performIO(this, 'msgdownload');" action="/download" method="post"> -->
+                    <form  onsubmit="return performDownload(this, 'msgdownload');"  id="formdownload" action="/download" method="post">
+                        <p class="h6"><mark>Download file from S3</mark></p>
+                        <label for="download_bucket_file">Bucket:</label>
+                        <input type="text" class="form-control" id="download_bucket_file" name="download_bucket_file" value="" />
+                        <label for="dwn_key">Key:</label>
+                        <input type="text" class="form-control" id="dwn_key" name="dwn_key" placeholder="keypath/" />
+                        <label for="local_dir_1">Local Dir:</label>
+                        <input type="text" class="form-control" id="local_dir_1" name="local_dir" placeholder="c:\localdir" />
+                        <input type="submit" name="download" value="Download" class="btn btn-primary btn-lg" />
+                    </form>
+                    <div id="msgdownload"></div>
+                    {{msgdownload}}
+                </div>
+            </div>
+        </div>
+      </div>
+
+
+      <div id="sidebar_s3folderdownload" class="container-fluid border-top1 mt-4" style="display:none">
+          <div class="card-columns1">
+              <div class="card bg-info" style="width: 99%;">
+                <div class="form-group">
+                     <form onsubmit="return performUpload(this, 'msgfolderdownload');" id='formdownloadfolder' action="/downloadfolder" method="post">
+                        <p class="h6"><mark>Download folder from S3</mark></p>
+                        <label for="download_bucket_folder">Bucket:</label>
+                        <input type="text" class="form-control" id="download_bucket_folder" name="download_bucket_folder" value="" />
+                        <label for="dwn_folder_key">KeyFolder>> [ logs/app/emr/cluster/j_clusterid/containers/application_id/ ]:</label>
+                        <input type="text" class="form-control" id="dwn_folder_key" name="dwn_folder_key" placeholder="logs/app/emr/cluster/j-clusterid/containers/application_id/" />
+                        <label for="local_dir">Local Dir:</label>
+                        <input type="text" class="form-control" id="local_dir" name="local_dir" placeholder="c:\localdir" />
+                        <input type="submit" name="download" value="DownloadFolder" class="btn btn-primary btn-lg" />
+                    </form>
+                    <div id="msgfolderdownload"></div>
+                    {{msgfolderdownload}}
+                </div>
+              </div>
+          </div>
+
+      </div>
+
+
+      <div id="sidebar_logdownload" class="container-fluid border-top1 mt-4" style="display:none">
+              <div class="card bg-info" style="width: 99%;">
+                <div class="form-group">
+                    <form onsubmit="return postInfo(this, 'listgroupsselect');" action="/listgroups" method="post">
+                        <p class="h6"><mark>List and Select group</mark></p>
+                        <div>
+                            <label for="loggroupfilter">Log Group Prefix:</label>
+                            <input type="text" class="form-control" id="loggroupfilter" name="loggroupfilter" placeholder="/aws/lambda/ygpp01-devl-edl-" />
+                        </div>
+                        <input type="submit" id="listgroups" name="listgroups" value="list cloudwatch log groups" class="btn btn-primary btn-lg" />
+                    </form>
+                    <div>
+                        <select id="listgroupsselect" size="70" style="margin: 10px; width: 90%; height: 400px;" onchange="selectFunction()">
+                            {% for x in list %}
+                            <option value="{{x}}">{{x}}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="search">Filter Groups:</label>
+                        <input type="text" id="search" name="search" style="margin: 10px; width: 165px;" onkeyup="filter()" /> <br />
+                    </div>
+                </div>
+                <div>
+                    <form onsubmit="return performFileDownload(this, 'msglog');" action="/getlogs" method="post">
+                        <p class="h6"><mark>Get Logs</mark></p>
+                        <div>
+                            <label for="loggroup">Log Group[ /aws/batch/job or /aws/lambda/devl- ]:</label>
+                            <input type="text" class="form-control" id="loggroup" name="loggroup" value="" />
+                            <label for="streams">Streams [ygpp01-..-java8-jobDef/d../6..c,ygpp01-..-java8-jobDef/d../6..c]:</label>
+                            <input type="text" class="form-control" id="streams" name="streams" value="" />
+
+                            <label for="starttime">Start Time in Est[mm/dd/yyyy hh:mm]:</label>
+                            <input type="text" class="form-control" id="starttime" name="starttime" placeholder="10/09/2020 20:00" />
+                            <label for="endtime">End Time in Est[mm/dd/yyyy hh:mm]:</label>
+                            <input type="text" class="form-control" id="endtime" name="endtime" placeholder="10/11/2020 14:00" />
+                        </div>
+                        <div>
+                            <input type="submit" name="getlogs" value="download cloudwatch log" class="btn btn-primary btn-lg" />
+                            <label class="radio-inline"><input type="radio" value="groups" onclick="hideStreams()" name="optradio" checked />groups</label>
+                            <label class="radio-inline"><input type="radio" value="streams" onclick="enableStreams()" name="optradio" />streams</label>
+                        </div>
+                    </form>
+                    <div id="msglog"></div>
+                    {{msglog}}
+                </div>
+            </div>
+      </div>
+
+      <div id="sidebar_addpartition" class="container-fluid border-top1 mt-4" style="display:none">
+              <div class="card bg-info" style="width: 99%;">
+                <div>
+                    <form onsubmit="return performUpload(this, 'msgaddpartition');" action="/addpartition" method="post">
+                        <p class="h6"><mark>Add Partition</mark></p>
+                        <div>
+                            <label for="databasename">Database Name[ sample_db ]:</label>
+                            <input type="text" class="form-control" id="databasename" name="databasename" placeholder="sample_db" />
+                            <label for="tablename">Table Name [ flights ]:</label>
+                            <input type="text" class="form-control" id="tablename" name="tablename" placeholder="flights" />
+
+                            <label for="location">Partition Path [ s3://pp-database/tables/ ]:</label>
+                            <input type="text" class="form-control" id="location" name="location" placeholder="s3://pp-database/tables/" />
+                            <label for="partkeyvalue">Partition Keys In Order [20140401,19690,1]:</label>
+                            <input type="text" class="form-control" id="partkeyvalue" name="partkeyvalue" placeholder="20200630" />
+                        </div>
+                        <div>
+                            <input type="submit" name="addpartition" value="add partition" class="btn btn-primary btn-lg" />
+                        </div>
+                    </form>
+                    <div id="msgaddpartition"></div>
+                    {{msgaddpartition}}
+                </div>
+            </div>
+      </div>
+
+      <div id="sidebar_locals3copy" class="container-fluid border-top1 mt-4" style="display:none">
+              <div class="card bg-info" style="width: 99%;">
+                <div>
+                    <form onsubmit="return performUpload(this, 'msglocals3copy');" action="/locals3copy" method="post">
+                        <p class="h6"><mark>Local S3 Copy</mark></p>
+                        <div>
+                            <label for="s3copy_bucket_src">Source Bucket:</label>
+                            <input type="text" class="form-control" id="s3copy_bucket_src" name="s3copy_bucket_src" value="" />
+						    <label for="s3copy_bucket_tgt">Target Bucket:</label>
+                            <input type="text" class="form-control" id="s3copy_bucket_tgt" name="s3copy_bucket_tgt" value="" />
+                            <label for="kms_key_s3copy">KMS Key:</label>
+                            <input type="text" class="form-control" id="kms_key_s3copy" name="kms_key_s3copy" value="" />
+                            <label for="source_folder_key">Source Key[ source/ ]:</label>
+                            <input type="text" class="form-control" id="source_folder_key" name="source_folder_key" placeholder="source/" />
+                            <label for="target_folder_key">Target Key [ target/ ]:</label>
+                            <input type="text" class="form-control" id="target_folder_key" name="target_folder_key" placeholder="target/" />
+                             <label for="include">Include Filter:</label>
+                            <input type="text" class="form-control" id="include" name="include" placeholder="optional" />
+                            <label for="exclude">Exclude Filter:</label>
+                            <input type="text" class="form-control" id="exclude" name="exclude" placeholder="optional" />
+<!--                            <label style="padding-top:9px;" for="recursive">Recursive:</label>-->
+<!--                            <input type="checkbox" class="form-control1" data-toggle="switch" name="recursive" id="recursive" value="" />-->
+                        </div>
+                        <div>
+                            <input type="submit" name="locals3copy" value="Local S3 Copy Between Same Buckets" class="btn btn-primary btn-lg" />
+                        </div>
+                    </form>
+                    <div id="msglocals3copy"></div>
+                    {{msglocals3copy}}
+                </div>
+            </div>
+      </div>
+
+      <div id="sidebar_config" class="container-fluid border-top1 mt-4" style="display:none">
+<!--          <a class="btn btn-large btn-info" id="firebucket" onclick="getBuckets()">Load the bucket list</a>-->
+            <div class="card-columns">
+                <div class="card bg-info" style="width: 501px;">
+                    <label for="bucket">Bucket:</label>
+                    <form>
+                        <select class="form-control" id="bucket" name="bucket" onchange="selectBucket(this.options[this.selectedIndex].innerText)">
+                            <option value=""></option>
+                            {% for x in bucketlist %}
+                            <option value="{{x}}">{{x}}</option>
+                            {% endfor %}
+                        </select>
+                        <input type="button" id="firebucket" name="locals3copy" value="Load the bucket list" class="btn btn-primary btn-lg" onclick="getBuckets()"/>
+                    </form>
+                    <div id="bucketselectedmsg"></div>
+                    {{bucketselected}}
+                </div>
+            </div>
+      </div>
+
+     <div id="sidebar_emr" class="container-fluid border-top1 mt-4 " style="display:none">
+              <div class="card bg-info" style="width: 99%;">
+                <div class="form-group">
+                    <form onsubmit="return postInfo(this, 'listclustersselect');" action="/listclusters" method="post">
+                        <p class="h6"><mark>List and Select cluster</mark></p>
+                        <div>
+                            <label for="clusterfilter">Cluster filter:</label>
+                            <input type="text" class="form-control" id="clusterfilter" name="clusterfilter" placeholder="ygpp01" />
+                        </div>
+                        <input type="submit" id="listclusters" name="listclusters" value="list clusters" class="btn btn-primary btn-lg" />
+                    </form>
+                    <div>
+                        <select id="listclustersselect" size="70" style="margin: 10px; width: 90%; height: 400px;" onchange="selectFunction1('listclustersselect','selectedcluster')">
+                            {% for x in list %}
+                            <option value="{{x}}">{{x}}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="search">Filter Cluster:</label>
+                        <input type="text" id="searchcluster" name="searchcluster" style="margin: 10px; width: 165px;" onkeyup="filter1('searchcluster', 'listclustersselect')" /> <br />
+                    </div>
+                </div>
+                <div>
+                    <form onsubmit="return performUpload(this, 'yarnlog');" action="/getyarnlogs" method="post">
+                        <p class="h6"><mark>Get Logs</mark></p>
+                        <div>
+                            <label for="selectedcluster">Selected Cluster[ j-18GQPAAKWKMHG ]:</label>
+                            <input type="text" class="form-control" id="selectedcluster" name="selectedcluster" value="" placeholder="j-18GQPAAKWKMHG"/>
+                            <label for="emr_env">Bucket:</label>
+                            <input type="text" class="form-control" id="emr_env" name="emr_env" value="" />
+                            <!-- <input type="text" class="form-control" id="emr_env" name="emr_env" value="" placeholder="emrdev" /> -->
+                            <label for="yarn_app_id">Yarn Application Id [application_1608812452978_0013]:</label>
+                            <input type="text" class="form-control" id="yarn_app_id" name="yarn_app_id" value="" placeholder="application_1608812452978_0013"/>
+                        </div>
+                        <div>
+                            <input type="submit" name="getyarnlogs" value="get yarn logs" class="btn btn-primary btn-lg" />
+                        </div>
+                    </form>
+                    <div id="yarnlog"></div>
+                    {{yarnlog}}
+                </div>
+            </div>
+      </div>
+
+     <div id="sidebar_dash" class="container-fluid border-top1 mt-4 ">
+              <div class="card bg-info" style="width: 99%;">
+                <div>
+                    <form onsubmit="return postInfojobs(this, 'dashlog');" action="/getjobinfo" method="post">
+                        <p class="h6"><mark>Job Status Dash</mark></p>
+                        <div>
+                            <label for="filter_by_app_prefix">Filter State Machine By App Prefix: [-quotes-,ygpp01-devl-workflow-] </label>
+                            <input type="text" class="form-control" id="filter_by_app_prefix" name="filter_by_app_prefix" value="" placeholder="mynotes"/>
+
+                            <label for="starttime">Start Time [mm/dd/yyyy hh:mm]:</label>
+                            <input type="text" class="form-control" id="starttime_dash" name="starttime_dash" placeholder="10/09/2020 20:00" />
+                            <label for="endtime">End Time [mm/dd/yyyy hh:mm]:</label>
+                            <input type="text" class="form-control" id="endtime_dash" name="endtime_dash" placeholder="10/11/2020 14:00" />
+
+                        </div>
+                        <div>
+                            <input type="submit" name="getjobinfo" value="job status" class="btn btn-primary btn-lg" />
+                        </div>
+                    </form>
+                    <div>
+                        <button type="button" style="height:120;width:24;" onclick="changeTimeDomain('1hr')">1 HR</button>
+                        <button type="button" style="height:120;width:24;" onclick="changeTimeDomain('3hr')">3 HR</button>
+                        <button type="button" style="height:120;width:24;" onclick="changeTimeDomain('6hr')">6 HR</button>
+                        <button type="button" style="height:120;width:24;" onclick="changeTimeDomain('1day')">1 DAY</button>
+                        <button type="button" style="height:120;width:24;" onclick="changeTimeDomain('1week')">1 WEEK</button>
+                        <button type="button" style="height:120;width:24;" onclick="changeTimeDomain('actual')">Actual</button>
+                        <div class="slidecontainer">
+                            <label for="slider">TimeSlider in Hours:</label>
+                            <input class='slider' id="slider" name="slider" type="range" min="1" max="100" value="50" onclick="changeTimeDomainSlider(this.value)">
+                        </div>
+                    </div>
+                    <div style = "overflow-y:auto">
+                        <div id ="div-chart-container" style="background-color: #FFFFFF;"></div>
+                         <div id="executionappid"></div>
+                        <div id ="legend" style="background-color: #F5F5F5;"></div>
+                    </div>
+                    <div id="dashlog"></div>
+                    {{dashlog}}
+                </div>
+            </div>
+      </div>
+
+
+     <div id="sidebar_batch" class="container-fluid border-top1 mt-4 " style="display:none">
+              <div class="card bg-info" style="width: 99%;">
+                <div>
+                    <form onsubmit="return postBatchJobInfoReq(this, 'batchlog');" action="/getbatchjobinfo" method="post">
+                        <p class="h6"><mark>Batch Job Status Dash</mark></p>
+                        <div>
+                            <label for="filter_batch_by_app_prefix">Filter Job Queue By App Prefix: [ygpp01,mynotes] </label>
+                            <input type="text" class="form-control" id="filter_batch_by_app_prefix" name="filter_batch_by_app_prefix" value="" placeholder="mynotes"/>
+                            <label for="maxresultsdepth">Max Results Depth</label>
+                            <input type="text" class="form-control" id="maxresultsdepth" name="maxresultsdepth" placeholder="20" value="20" />
+                            <label for="starttime">Start Time [mm/dd/yyyy hh:mm]:</label>
+                            <input type="text" class="form-control" id="starttime_batch" name="starttime_batch" placeholder="10/09/2020 20:00" />
+                            <label for="endtime">End Time [mm/dd/yyyy hh:mm]:</label>
+                            <input type="text" class="form-control" id="endtime_batch" name="endtime_batch" placeholder="10/11/2020 14:00" />
+                        </div>
+                        <div>
+                            <input type="submit" name="getbatchjobinfo" value="batch job status" class="btn btn-primary btn-lg" />
+                        </div>
+                    </form>
+                    <div class="col bg-transparent" id="coltab1">
+                          <div  id="grid1"></div>
+                    </div>
+                    <div id="batchlog"></div>
+                    {{batchlog}}
+                </div>
+            </div>
+      </div>
+    </div>
+    <!-- /#page-content-wrapper -->
+
+  </div>
+  <!-- /#wrapper -->
+
+
+  <!-- Menu Toggle Script -->
+  <script>
+    $("#menu-toggle").click(function(e) {
+      e.preventDefault();
+      $("#wrapper").toggleClass("toggled");
+    });
+  </script>
+
+    <script>
+   <!-- https://stackoverflow.com/questions/16560630/jquery-prompt-user-when-attempting-to-refresh-or-close-browser/16560804 -->
+<!--        window.addEventListener("beforeunload", function (e) {-->
+<!--            var message = "Are sure to refresh, your selections will cleared? ";-->
+<!--               (e || window.event).returnValue = message;-->
+<!--               return message;-->
+<!--        });-->
+    </script>
+
+</body>
+
+</html>

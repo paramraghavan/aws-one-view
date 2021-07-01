@@ -1,0 +1,118 @@
+body {
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
+    margin: 0;
+    padding: 0;
+    /* background-color: rgb(2, 43, 44); */
+}
+
+body>header {
+    background-color: rgb(15, 15, 15); 
+    margin: 0px;
+    padding: 30px;
+}
+
+main {
+    padding: 20px;
+}
+
+
+
+/* #web img {
+    border: 2px solid green;
+    margin: 20px;
+}
+
+#web ul {
+    text-align: center;
+} */
+
+
+body {
+    transition: background 3s;
+}
+
+/* Media Queries */
+
+@media (prefers-reduced-motion) {
+    body {
+        transition: none;
+    }
+}
+
+@media (min-resolution: 3dppx) {
+
+}
+
+@media (orientation: landscape) {
+
+    /* body {
+        background: rgba(1, 49, 88, 0.836);
+    }
+
+    body>header {
+        background-color: rgb(1, 49, 88, 0.836); 
+    } */
+}
+
+
+@media (min-width: 800px) {
+    a[href^='tel:'] {
+        display: none;
+    }
+    .sidebar {font-size: 25px;}
+    .sidebar a { padding: 8px 8px 8px 32px;}
+    .nav>li>a { padding: 10px 15px; font-size: 21px;}
+    .div-margin>h2 { font-size: 22pt; }
+    .weekobj{
+        height: 2001px;
+        width: 100%;
+        overflow: hidden;
+    }
+}
+
+/* Between 400px and 800px */
+@media (min-width: 400px) and (max-width: 800px) {
+    .sidebar {font-size: 13px;}
+    .sidebar a { padding: 6px 6px 6px 7px;}
+    .nav>li>a { padding: 10px 15px; font-size: 18px;}
+    .div-margin>h2 { font-size: 20pt; }
+    .weekobj {
+        height: 2001px;
+        width: 100%;
+        overflow: hidden;
+    }
+}
+
+
+@media (max-width: 450px) {
+    .sidebar {padding-top: 10px; font-size: 11px; font-weight: bold;}
+    .sidebar a { padding: 2px 4px 4px 4px;}
+    .nav>li>a { padding: 5px 7px; font-size: 14px;}
+    .div-margin>h2 { font-size: 16pt; }
+    .weekobj {
+        height: 2001px;
+        width: 100%;
+        overflow: hidden;
+    }
+}
+
+    nav ul {
+        flex-direction: column;
+    }
+    nav a {
+        font-size: small;
+        font-weight: bold;
+    }
+
+    #web img {
+        width: 100%;
+    }
+
+    #talks img {
+        width: 40px;
+        height: 20px;
+        float: none;
+        margin-top: 5px;
+    }
+}
+

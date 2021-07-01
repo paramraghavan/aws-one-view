@@ -1,0 +1,130 @@
+html,body,#wrapper {
+	width: 100%;
+	height: 100%;
+	margin: 0px;
+}
+
+.chart {
+	font-family: Arial, sans-serif;
+	font-size: 12px;
+}
+
+.axis path,.axis line {
+	fill: none;
+	stroke: #000;
+	shape-rendering: crispEdges;
+}
+
+.bar {
+	fill: #33b5e5;
+}
+
+.bar-failed {
+	fill: #BE0C29;
+}
+
+.bar-running {
+	fill: #F89B47;
+}
+
+.bar-succeeded {
+	fill: #1D9610;
+}
+
+.bar-killed {
+	fill: #2ECACD;
+}
+
+button {
+  background: #222 url(button-overlay.png) repeat-x;
+  font: 15px;
+  color: #fff;
+  text-shadow: 0 -1px 1px #222;
+  padding: 6px 10px 6px 10px;
+  border: 0;
+  border-bottom: 1px solid #222;
+  min-height: auto;
+  min-width: auto;
+  -moz-border-radius: 5px;
+  -moz-box-shadow: 0 1px 3px #999;
+  -webkit-border-radius: 5px;
+  -webkit-box-shadow: 0 1px 3px #999;
+}
+
+button:hover {
+  background-color: #555;
+}
+
+div.tooltip {
+    position: absolute;
+    text-align: center;
+    width: 60px;
+    height: 28px;
+    padding: 2px;
+    font: 12px sans-serif;
+    background: lightsteelblue;
+    border: 0px;
+    border-radius: 8px;
+    pointer-events: none;
+}
+
+.slidecontainer {
+  width: 100%;
+}
+
+.slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: auto;
+  background: #d3d3d3;
+  outline: none;
+  opacity: 0.7;
+  -webkit-transition: .2s;
+  transition: opacity .2s;
+}
+
+.slider:hover {
+  opacity: 1;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 25px;
+  height: 25px;
+  background: #0275d8;
+  cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+  width: 25px;
+  height: 25px;
+  background: #0275d8;
+  cursor: pointer;
+}
+
+
+ .context-menu {
+ position: absolute;
+ display: none;
+ background-color: #f2f2f2;
+ border-radius: 4px;
+ font-family: Arial, sans-serif;
+ font-size: 14px;
+ min-width: 150px;
+ border: 1px solid #d4d4d4;
+ z-index:1200;
+ }
+ .context-menu ul {
+ list-style-type: none;
+ margin: 4px 0px;
+ padding: 0px;
+ cursor: default;
+ }
+ .context-menu ul li {
+ padding: 4px 16px;
+ }
+ .context-menu ul li:hover {
+ background-color: #4677f8;
+ color: #fefefe;
+ }
