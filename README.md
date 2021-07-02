@@ -6,7 +6,7 @@ Consolidated views of all the services associated with a single aws account. Thi
 
 
 - cloudwatch logs - view and download. I had a tough time to search for logs, but using the user interface, inputing the time window and log group and plan to search via the user interface
-- emr - given the yarn applciaiton id, download logs.
+- emr - Given the yarn application id, download the logs. We do have scheduled  processes which pull the yarn logs into the s3 folder, the intention of this option is to pull the logs right away after the job is complete without logging into EMR
 - aws batch dashboard
 - aws step function dashboard
 - s3 file/folder upload and download
