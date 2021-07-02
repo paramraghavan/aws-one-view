@@ -19,6 +19,13 @@ AWS CLI
 - Install aws cli
   python -m pip aws
   install aws cli msi executable
+  - https://s3.amazonaws.com/aws-cli/AWSCLI64PY3.msi
+
+- run  'aws configure' from command line
+AWS Access Key ID [None]: accesskey
+AWS Secret Access Key [None]: secretkey
+Default region name [None]: 
+Default output format [None]
 
 -run  'aws configure' from command line
 AWS Access Key ID [None]: accesskey
