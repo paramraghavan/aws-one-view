@@ -1,5 +1,5 @@
 `#########################################################################################################################
-## Motivation to build this :  A task was assigned, this is to search for irdb logs in cloudwatch, it was very painful.##
+## Motivation to build this :  A task was assigned, this is to search for  logs in cloudwatch, it was very painful.##
 #########################################################################################################################
 
 
