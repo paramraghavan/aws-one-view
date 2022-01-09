@@ -12,7 +12,7 @@
 2. On our laptop's we may just need flask
 3. python -m pip install flask --user --trusted-host pypi.org
 4. python -m pip install flask_cors --user --trusted-host pypi.org
-5. python -m pip install awscli --user --trusted-host pypi.org --> you should be already have this installed.
+5. python -m pip install awscli --user --trusted-host pypi.org --> you should be already having this installed.
 
 AWS CLI
 ------------------
