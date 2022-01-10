@@ -1,1 +1,1 @@
-from awsdesktop import send_data_to_aws
+import awsdesktop

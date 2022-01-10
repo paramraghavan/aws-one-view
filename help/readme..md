@@ -75,3 +75,7 @@ python -m pip install  -r requirements.txt  --trusted-host pypi.org
 #Python threading
 https://realpython.com/intro-to-python-threading/
 
+Editors/Tools
+----------------------
+- [html formatter/beautify](https://codebeautify.org/htmlviewer)
+- pycharm

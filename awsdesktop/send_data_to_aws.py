@@ -5,9 +5,7 @@ import botocore
 import os
 import sys
 import boto3
-import json
 
-#import awsdesktop
 
 
 # client = boto3.client(
