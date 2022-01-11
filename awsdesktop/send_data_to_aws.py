@@ -47,8 +47,8 @@ def exception_handler_decorator(type):
         def inner_function(*args, **kwargs):
             try:
                 return func(*args, **kwargs)
-            except Exception as e:e
-                msg = f"{func.__name__}, Unhandled Exception: {e}"
+            except Exception as e:
+                msg = f'{func.__name__}, Unhandled Exception: {e}'
                 print(msg)
                 app.logger.error(msg)
                 error = str(traceback.format_exc())
@@ -60,6 +60,8 @@ def exception_handler_decorator(type):
                     return list
         return inner_function
     return exception_handler
+
+
 
 @exception_handler_decorator('list')
 def list_bucket(s3_client, filter):
