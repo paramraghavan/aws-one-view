@@ -42,6 +42,26 @@ def index():
 def sidebar():
     return render_template("local_aws_desktop.html")
 
+def exception_handler_decorator(type):
+    def exception_handler(func):
+        def inner_function(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:e
+                msg = f"{func.__name__}, Unhandled Exception: {e}"
+                print(msg)
+                app.logger.error(msg)
+                error = str(traceback.format_exc())
+                print(f'Error: {error}')
+
+                if type == 'list' :
+                    list = []
+                    list.append(str(e))
+                    return list
+        return inner_function
+    return exception_handler
+
+@exception_handler_decorator('list')
 def list_bucket(s3_client, filter):
     list = []
     list_of_bucket =  s3_client.list_buckets()
@@ -84,7 +104,7 @@ def unhandled_exception(e):
     app.logger.error('Unhandled Exception: %s', (e))
     return render_template('error.html', msglog=str(e)), 500
 
-@app.route('/bucket',methods=['post'])
+@app.route('/bucketselected',methods=['post'])
 def bucket():
     msg = ''
     global BUCKET_NAME
