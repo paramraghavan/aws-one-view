@@ -44,6 +44,10 @@ aws sts get-caller-identity, you will see like the following:
   }
 </pre>
 
+Note:
+- aws configure —profile profile1, here it creates profile1, by default default aws profiles are created
+- aws —profile profile1 iam get-user 
+
 #Modify:
 -------------
 1. Modify the config.properties with correct bucket name(s) and kms key(s):
