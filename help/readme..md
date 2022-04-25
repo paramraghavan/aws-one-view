@@ -33,6 +33,17 @@ AWS Secret Access Key [None]: secretkey
 Default region name [None]: 
 Default output format [None]
 
+Check Credentails are configured properly
+------------------------------------------
+aws sts get-caller-identity, you will see like the following:
+<pre>
+  {
+      "UserId": "<REDACTED>",
+      "Account": "<REDACTED>",
+      "Arn": "arn:aws:iam::<REDACTED>:<REDACTED>"
+  }
+</pre>
+
 #Modify:
 -------------
 1. Modify the config.properties with correct bucket name(s) and kms key(s):
