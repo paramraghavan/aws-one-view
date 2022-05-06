@@ -10,3 +10,12 @@ Consolidated views of all the services associated with a single aws account. Thi
 - aws batch dashboard
 - aws step function dashboard
 - s3 file/folder upload and download
+
+## CloudWatch
+- Cloudwatch alarms 
+- Cloudwatch events rules - based on events or create cron jobs
+  - Event pattern- create an event when any EC2 instance goes into running state
+  - Schedule - create a scheduled job like a cronjob in unix
+- Cloudwatch logs
+- Cloudwatch log metrics- and we can add alarm to cloud watch log metrics
+   https://insight.full360.com/how-to-turn-your-logs-into-valuable-metrics-and-actionable-alarms-using-cloudwatch-c38bfccfd8a5
