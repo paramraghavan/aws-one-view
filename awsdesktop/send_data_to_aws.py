@@ -919,11 +919,14 @@ def list_logs(client, log_group_name,start, end, log_type, streams):
             if log_output:
                 print(' '.join(output))
             else :
-                if i == 0:
+                i = i+1
+                if i %2 == 0:
                     print('.', end ="")
-                    i = 1
                 else:
                     print(':', end ="")
+
+                if i == 80:
+                    print('\n', end="")
                     i = 0
 
             f.write(' '.join(output)+ nl)
