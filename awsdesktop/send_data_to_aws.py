@@ -20,7 +20,7 @@ import json
 
 # https://stackoverflow.com/questions/20646822/how-to-serve-static-files-in-flask
 from werkzeug.utils import secure_filename
-from win32com.server import exception
+# from win32com.server import exception
 from werkzeug.exceptions import HTTPException
 
 app = Flask(__name__)

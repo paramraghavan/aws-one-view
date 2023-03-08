@@ -5,16 +5,16 @@ import os, time
 
 import os, time
 from dateutil import tz
-if os.name == 'nt':
-    def _naive_is_dst(self, dt):
-        timestamp = tz.tz._datetime_to_timestamp(dt)
-        # workaround the bug of negative offset UTC prob
-        if timestamp+time.timezone < 0:
-            current_time = timestamp + time.timezone + 31536000
-        else:
-            current_time = timestamp + time.timezone
-        return time.localtime(current_time).tm_isdst
-tz.tzlocal._naive_is_dst = _naive_is_dst
+# if os.name == 'nt':
+#     def _naive_is_dst(self, dt):
+#         timestamp = tz.tz._datetime_to_timestamp(dt)
+#         # workaround the bug of negative offset UTC prob
+#         if timestamp+time.timezone < 0:
+#             current_time = timestamp + time.timezone + 31536000
+#         else:
+#             current_time = timestamp + time.timezone
+#         return time.localtime(current_time).tm_isdst
+# tz.tzlocal._naive_is_dst = _naive_is_dst
 
 
 def get_boto3_client(service='glue'):

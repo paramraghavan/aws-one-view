@@ -30,7 +30,7 @@ import boto3
 def get_boto3_resource(service='s3'):
     # os.environ['HTTPS_PROXY'] = 'proxy.com:10009'
     # os.environ['HTTP_PROXY'] = 'proxy.com:10009'
-    session = boto3.session.Session()
+    session = boto3.session.Session(profile_name='prd')
     return session.resource(service)
     #return boto3.resource(service)
 
@@ -42,7 +42,7 @@ def get_boto3_client(service='s3'):
     #aws_access_key_id, aws_secret_access_key, aws_session_token, region = getAWSKeys()
     #os.environ['AWS_ACCESS_KEY_ID'] = aws_access_key_id
     #os.environ['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
-    session = boto3.session.Session()
+    session = boto3.session.Session(profile_name='prd')
     return session.client(service)
 
 
