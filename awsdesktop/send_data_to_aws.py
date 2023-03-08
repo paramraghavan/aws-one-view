@@ -1335,6 +1335,8 @@ def readConfigProps():
         print("default kms key : {0}".format( sse_args['SSEKMSKeyId']))
         local_dir = dictConfig['local_dir']
         print("default local dir : {0}".format(local_dir))
+        aws_utils.aws_profile = dictConfig['aws_profile']
+        print("default aws_profile : {0}".format(aws_utils.aws_profile))
 
     except :
         traceback.print_exc()
