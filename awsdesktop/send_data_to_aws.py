@@ -953,7 +953,7 @@ def list_logs(client, log_group_name,start, end, log_type, streams):
         print('Download complete!')
         print('------------------------------------------------------------------------------------------')
         memory_file = io.BytesIO()
-        with zipfile.ZipFile(memory_file, 'w') as zf:
+        with zipfile.ZipFile(file=memory_file, mode='w', compression=zipfile.ZIP_BZIP2, compresslevel=3) as zf:
             #data = zipfile.ZipInfo(fileName)
             #data.date_time = time.localtime(time.time())[:6]
             #data.compress_type = zipfile.ZIP_DEFLATED
