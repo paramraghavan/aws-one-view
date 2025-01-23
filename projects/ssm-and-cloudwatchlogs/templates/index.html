@@ -21,6 +21,10 @@
                 <label for="end_date" class="form-label">End Date (EST)</label>
                 <input type="datetime-local" class="form-control" id="end_date" name="end_date" required>
             </div>
+            <div class="mb-3">
+                <label for="result_limit" class="form-label">Limit Search Result</label>
+                <input type="number" disabled class="form-control" id="result_limit" name="result_limit" value="500" min="1" max="10000">
+            </div>
             <button type="submit" class="btn btn-primary">Search</button>
         </form>
     </div>
@@ -37,6 +41,11 @@
 <body>
     <div class="container mt-5">
         <h2>Search Results</h2>
+        {% if limit_reached %}
+        <div class="alert alert-warning" role="alert">
+            Showing first {{ commands|length }} matches. Please narrow your search criteria or increase the result limit for complete results.
+        </div>
+        {% endif %}
         <a href="/" class="btn btn-secondary mb-3">New Search</a>
         <table class="table">
             <thead>

@@ -29,12 +29,16 @@ def convert_to_utc(est_datetime):
     return est_dt.astimezone(utc)
 
 
-def get_command_history(ssm_client, search_term, start_time, end_time):
+def get_command_history(ssm_client, search_term, start_time, end_time, limit=500):
     paginator = ssm_client.get_paginator('list_commands')
     command_list = []
+    result_limit = limit
 
     for page in paginator.paginate():
         for command in page['Commands']:
+            if len(command_list) >= result_limit:
+                return command_list, True
+
             if start_time <= command['RequestedDateTime'] <= end_time:
                 if 'Comment' in command and search_term.lower() in command['Comment'].lower():
                     command_list.append({
@@ -45,7 +49,7 @@ def get_command_history(ssm_client, search_term, start_time, end_time):
                         'InstanceIds': command.get('InstanceIds', [])
                     })
 
-    return command_list
+    return command_list, False
 
 
 def fetch_cloudwatch_logs(logs_client, command_id):
@@ -77,10 +81,11 @@ def index():
         start_utc = convert_to_utc(start_date)
         end_utc = convert_to_utc(end_date)
 
+        result_limit = int(request.form.get('result_limit', 500))
         ssm, _ = init_aws_clients()
-        commands = get_command_history(ssm, search_term, start_utc, end_utc)
+        commands, limit_reached = get_command_history(ssm, search_term, start_utc, end_utc, limit=result_limit)
 
-        return render_template('results.html', commands=commands)
+        return render_template('results.html', commands=commands, limit_reached=limit_reached)
 
     return render_template('index.html')
 
