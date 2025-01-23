@@ -123,5 +123,33 @@ def download_logs(command_id):
     )
 
 
+@app.route('/logs/<command_id>')
+def view_logs(command_id):
+    _, logs = init_aws_clients()
+    log_group = '/aws/ssm/AWS-RunShellScript'
+    output_logs = []
+    error_logs = []
+
+    # Fetch output logs
+    paginator = logs.get_paginator('filter_log_events')
+    for page in paginator.paginate(
+            logGroupName=log_group,
+            filterPattern=f'"{command_id}" "stdout"'
+    ):
+        output_logs.extend([event['message'] for event in page['events']])
+
+    # Fetch error logs
+    for page in paginator.paginate(
+            logGroupName=log_group,
+            filterPattern=f'"{command_id}" "stderr"'
+    ):
+        error_logs.extend([event['message'] for event in page['events']])
+
+    return {
+        'output': '\n'.join(output_logs),
+        'error': '\n'.join(error_logs)
+    }
+
+
 if __name__ == '__main__':
     app.run(debug=True)
