@@ -32,7 +32,7 @@ def convert_to_utc(est_datetime):
 def get_command_history(ssm_client, search_term, start_time, end_time, limit=500):
     paginator = ssm_client.get_paginator('list_commands')
     command_list = []
-    result_limit = limit
+    result_limit = 500
 
     for page in paginator.paginate():
         for command in page['Commands']:
@@ -59,12 +59,32 @@ def fetch_cloudwatch_logs(logs_client, command_id):
     with zipfile.ZipFile(logs_zip, 'w') as zip_file:
         paginator = logs_client.get_paginator('filter_log_events')
 
+        # Fetch Output logs
+        output_events = []
         for page in paginator.paginate(
                 logGroupName=log_group,
-                filterPattern=f'"{command_id}"'
+                filterPattern=f'"{command_id}" "stdout"'
         ):
-            for event in page['events']:
-                file_name = f"{event['timestamp']}_{event['logStreamName']}.log"
+            output_events.extend(page['events'])
+
+        # Fetch Error logs
+        error_events = []
+        for page in paginator.paginate(
+                logGroupName=log_group,
+                filterPattern=f'"{command_id}" "stderr"'
+        ):
+            error_events.extend(page['events'])
+
+        # Write Output logs
+        if output_events:
+            for event in output_events:
+                file_name = f"output_{event['timestamp']}_{event['logStreamName']}.log"
+                zip_file.writestr(file_name, event['message'])
+
+        # Write Error logs
+        if error_events:
+            for event in error_events:
+                file_name = f"error_{event['timestamp']}_{event['logStreamName']}.log"
                 zip_file.writestr(file_name, event['message'])
 
     logs_zip.seek(0)
