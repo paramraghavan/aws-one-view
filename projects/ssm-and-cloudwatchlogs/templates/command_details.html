@@ -18,16 +18,10 @@
             <div class="card-body">
                 <dl class="row">
                     <dt class="col-sm-3">Command ID</dt>
-                    <dd class="col-sm-9">{{ command.CommandId }}</dd>
+                    <dd class="col-sm-9">{{ command_id }}</dd>
 
-                    <dt class="col-sm-3">Status</dt>
-                    <dd class="col-sm-9">{{ command.Status }}</dd>
-
-                    <dt class="col-sm-3">Comment</dt>
-                    <dd class="col-sm-9">{{ command.get('Comment', 'N/A') }}</dd>
-
-                    <dt class="col-sm-3">Document Name</dt>
-                    <dd class="col-sm-9">{{ command.DocumentName }}</dd>
+                    <dt class="col-sm-3">Parameters</dt>
+                    <dd class="col-sm-9"><pre>{{ parameters | tojson(indent=2) }}</pre></dd>
                 </dl>
             </div>
         </div>
@@ -72,15 +66,10 @@
                                     </ul>
                                     <div class="tab-content mt-2">
                                         <div class="tab-pane fade show active" id="output{{ loop.index }}">
-                                            <pre id="outputLogs{{ instance.InstanceId }}"
-                                                 style="max-height: 400px; overflow-y: auto;">
-                                                Loading...
-                                            </pre>
+                                            <pre id="outputLogs{{ instance.InstanceId }}">{{ instance.OutputContent or 'No output available' }}</pre>
                                         </div>
                                         <div class="tab-pane fade" id="error{{ loop.index }}">
-                                            <pre id="errorLogs{{ instance.InstanceId }}"
-                                                 style="max-height: 400px; overflow-y: auto;">
-                                                Loading...
+                                            <pre id="errorLogs{{ instance.InstanceId }}">{{ instance.ErrorContent or 'No error logs available' }}</pre>
                                             </pre>
                                         </div>
                                     </div>
@@ -93,7 +82,6 @@
             </div>
         </div>
     </div>
-
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

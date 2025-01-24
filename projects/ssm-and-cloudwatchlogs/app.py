@@ -127,21 +127,17 @@ def download_logs(command_id):
 def get_command_details(command_id):
     ssm, _ = init_aws_clients()
     try:
-        command = ssm.get_command(CommandId=command_id)['Command']
-        parameters = command.get('Parameters', {})
-        instance_details = []
-
         # Get invocation details for each instance
         invocations = ssm.list_command_invocations(
             CommandId=command_id,
             Details=True
         )['CommandInvocations']
 
+        instance_details = []
         for invocation in invocations:
             output_logs = ""
             error_logs = ""
 
-            # Get command output
             try:
                 output = ssm.get_command_invocation(
                     CommandId=command_id,
@@ -149,8 +145,9 @@ def get_command_details(command_id):
                 )
                 output_logs = output.get('StandardOutputContent', '')
                 error_logs = output.get('StandardErrorContent', '')
+                parameters = output.get('Parameters', {})
             except Exception as e:
-                print(f"Error fetching logs: {str(e)}")
+                print(f"Error fetching logs for instance {invocation['InstanceId']}: {str(e)}")
 
             instance_details.append({
                 'InstanceId': invocation['InstanceId'],
@@ -158,8 +155,9 @@ def get_command_details(command_id):
                 'OutputContent': output_logs,
                 'ErrorContent': error_logs
             })
+
         return render_template('command_details.html',
-                               command=command,
+                               command_id=command_id,
                                parameters=parameters,
                                instance_details=instance_details)
     except Exception as e:
