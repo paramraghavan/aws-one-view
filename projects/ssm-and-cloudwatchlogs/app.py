@@ -138,14 +138,26 @@ def get_command_details(command_id):
         )['CommandInvocations']
 
         for invocation in invocations:
+            output_logs = ""
+            error_logs = ""
+
+            # Get command output
+            try:
+                output = ssm.get_command_invocation(
+                    CommandId=command_id,
+                    InstanceId=invocation['InstanceId']
+                )
+                output_logs = output.get('StandardOutputContent', '')
+                error_logs = output.get('StandardErrorContent', '')
+            except Exception as e:
+                print(f"Error fetching logs: {str(e)}")
+
             instance_details.append({
                 'InstanceId': invocation['InstanceId'],
                 'Status': invocation['Status'],
-                'CloudWatchOutputUrl': invocation.get('CloudWatchOutputUrl', ''),
-                'OutputS3BucketName': command.get('OutputS3BucketName', ''),
-                'OutputS3KeyPrefix': command.get('OutputS3KeyPrefix', '')
+                'OutputContent': output_logs,
+                'ErrorContent': error_logs
             })
-
         return render_template('command_details.html',
                                command=command,
                                parameters=parameters,
