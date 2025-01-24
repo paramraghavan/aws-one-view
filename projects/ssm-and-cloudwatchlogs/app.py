@@ -6,7 +6,8 @@ from io import BytesIO
 import zipfile
 from botocore.config import Config
 
-app = Flask(__name__)
+# app = Flask(__name__)
+app = Flask(__name__, static_url_path='/static')
 
 # Configure boto3 with retry settings
 config = Config(
