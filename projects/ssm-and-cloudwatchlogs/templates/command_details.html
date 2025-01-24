@@ -1,0 +1,99 @@
+<!-- templates/command_details.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Command Details</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+<body>
+    <div class="container mt-5">
+        <h2>Command Details</h2>
+        <a href="javascript:history.back()" class="btn btn-secondary mb-3">Back</a>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4>Command Information</h4>
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-3">Command ID</dt>
+                    <dd class="col-sm-9">{{ command.CommandId }}</dd>
+
+                    <dt class="col-sm-3">Status</dt>
+                    <dd class="col-sm-9">{{ command.Status }}</dd>
+
+                    <dt class="col-sm-3">Comment</dt>
+                    <dd class="col-sm-9">{{ command.get('Comment', 'N/A') }}</dd>
+
+                    <dt class="col-sm-3">Document Name</dt>
+                    <dd class="col-sm-9">{{ command.DocumentName }}</dd>
+                </dl>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4>Parameters</h4>
+            </div>
+            <div class="card-body">
+                <pre>{{ parameters | tojson(indent=2) }}</pre>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h4>Instance Details</h4>
+            </div>
+            <div class="card-body">
+                <div class="accordion" id="instanceAccordion">
+                    {% for instance in instance_details %}
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="heading{{ loop.index }}">
+                            <button class="accordion-button collapsed" type="button"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#collapse{{ loop.index }}">
+                                Instance: {{ instance.InstanceId }} ({{ instance.Status }})
+                            </button>
+                        </h2>
+                        <div id="collapse{{ loop.index }}" class="accordion-collapse collapse"
+                             data-bs-parent="#instanceAccordion">
+                            <div class="accordion-body">
+                                <div class="mb-3">
+                                    <ul class="nav nav-tabs" role="tablist">
+                                        <li class="nav-item">
+                                            <a class="nav-link active" data-bs-toggle="tab"
+                                               href="#output{{ loop.index }}">Output</a>
+                                        </li>
+                                        <li class="nav-item">
+                                            <a class="nav-link" data-bs-toggle="tab"
+                                               href="#error{{ loop.index }}">Error</a>
+                                        </li>
+                                    </ul>
+                                    <div class="tab-content mt-2">
+                                        <div class="tab-pane fade show active" id="output{{ loop.index }}">
+                                            <pre id="outputLogs{{ instance.InstanceId }}"
+                                                 style="max-height: 400px; overflow-y: auto;">
+                                                Loading...
+                                            </pre>
+                                        </div>
+                                        <div class="tab-pane fade" id="error{{ loop.index }}">
+                                            <pre id="errorLogs{{ instance.InstanceId }}"
+                                                 style="max-height: 400px; overflow-y: auto;">
+                                                Loading...
+                                            </pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

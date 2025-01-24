@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, send_file
+from flask import Flask, request, render_template, send_file, jsonify
 import boto3
 from datetime import datetime, timedelta
 import pytz
@@ -6,7 +6,6 @@ from io import BytesIO
 import zipfile
 from botocore.config import Config
 
-# app = Flask(__name__)
 app = Flask(__name__, static_url_path='/static')
 
 # Configure boto3 with retry settings
@@ -124,7 +123,37 @@ def download_logs(command_id):
     )
 
 
-@app.route('/logs/<command_id>')
+@app.route('/command/<command_id>')
+def get_command_details(command_id):
+    ssm, _ = init_aws_clients()
+    try:
+        command = ssm.get_command(CommandId=command_id)['Command']
+        parameters = command.get('Parameters', {})
+        instance_details = []
+
+        # Get invocation details for each instance
+        invocations = ssm.list_command_invocations(
+            CommandId=command_id,
+            Details=True
+        )['CommandInvocations']
+
+        for invocation in invocations:
+            instance_details.append({
+                'InstanceId': invocation['InstanceId'],
+                'Status': invocation['Status'],
+                'CloudWatchOutputUrl': invocation.get('CloudWatchOutputUrl', ''),
+                'OutputS3BucketName': command.get('OutputS3BucketName', ''),
+                'OutputS3KeyPrefix': command.get('OutputS3KeyPrefix', '')
+            })
+
+        return render_template('command_details.html',
+                               command=command,
+                               parameters=parameters,
+                               instance_details=instance_details)
+    except Exception as e:
+        return f"Error retrieving command details: {str(e)}", 500
+
+
 def view_logs(command_id):
     _, logs = init_aws_clients()
     log_group = '/aws/ssm/AWS-RunShellScript'
