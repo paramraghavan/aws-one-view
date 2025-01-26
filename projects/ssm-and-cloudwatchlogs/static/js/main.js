@@ -41,3 +41,12 @@ async function viewLogs(commandId) {
             loadInstanceLogs(instanceId, commandId);
         });
     });
+
+// Set default dates
+const now = new Date();
+const yesterday = new Date(now);
+yesterday.setDate(now.getDate() - 1);
+
+// Format dates to datetime-local input format
+document.getElementById('start_date').value = yesterday.toISOString().slice(0, 16);
+document.getElementById('end_date').value = now.toISOString().slice(0, 16);
