@@ -42,11 +42,20 @@ async function viewLogs(commandId) {
         });
     });
 
-// Set default dates
+
+// Set default dates in EST
 const now = new Date();
 const yesterday = new Date(now);
-yesterday.setDate(now.getDate() - 1);
+yesterday.setHours(now.getHours() - 24);
 
-// Format dates to datetime-local input format
+// Convert to EST
+const estOffset = -5; // EST offset from UTC
+const utcOffset = now.getTimezoneOffset() / 60;
+const offsetDiff = estOffset - (-utcOffset);
+
+now.setHours(now.getHours() + offsetDiff);
+yesterday.setHours(yesterday.getHours() + offsetDiff);
+
+// Format dates for datetime-local input
 document.getElementById('start_date').value = yesterday.toISOString().slice(0, 16);
 document.getElementById('end_date').value = now.toISOString().slice(0, 16);
