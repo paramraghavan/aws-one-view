@@ -694,7 +694,7 @@ def getlogs():
             memory_file, zipfileName, fileName = list_logs_extend_window(logs_client,loggroup, parse_datetime_est_to_equivalent_utc(starttime), parse_datetime_est_to_equivalent_utc(endtime), log_type, stream_args, window)
             if memory_file:
                 os.remove(fileName)
-                return send_file(memory_file, mimetype='application/zip', attachment_filename=zipfileName, as_attachment=True)
+                return send_file(memory_file, mimetype='application/zip', download_name=zipfileName, as_attachment=True)
         except botocore.exceptions.ClientError as e:
             #traceback.print_exc()
             if e.response['Error']['Code'] == "404":
