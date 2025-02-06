@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON Query Interface</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container py-4">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Input JSON</h5>
+                    </div>
+                    <div class="card-body">
+                        <textarea id="jsonInput" class="form-control" rows="10" placeholder="Paste your JSON here..."></textarea>
+                        <button onclick="formatJSON()" class="btn btn-primary mt-3">Format JSON</button>
+                        <button onclick="validateJSON()" class="btn btn-secondary mt-3 ms-2">Validate JSON</button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Query</h5>
+                    </div>
+                    <div class="card-body">
+                        <input type="text" id="queryInput" class="form-control mb-3" placeholder="Enter JSONPath query (e.g., $.store.book[*].author)">
+                        <button onclick="queryJSON()" class="btn btn-success">Execute Query</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Results</h5>
+                    </div>
+                    <div class="card-body">
+                        <pre id="queryResult" class="bg-light p-3 rounded">Results will appear here...</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsonpath/1.1.1/jsonpath.min.js"></script>
+    <script>
+        function formatJSON() {
+            const input = document.getElementById('jsonInput');
+            try {
+                const parsed = JSON.parse(input.value);
+                input.value = JSON.stringify(parsed, null, 2);
+            } catch (e) {
+                alert('Invalid JSON: ' + e.message);
+            }
+        }
+
+        function validateJSON() {
+            try {
+                JSON.parse(document.getElementById('jsonInput').value);
+                alert('Valid JSON!');
+            } catch (e) {
+                alert('Invalid JSON: ' + e.message);
+            }
+        }
+
+        function queryJSON() {
+            const jsonInput = document.getElementById('jsonInput').value;
+            const queryInput = document.getElementById('queryInput').value;
+            const resultElement = document.getElementById('queryResult');
+
+            try {
+                const jsonData = JSON.parse(jsonInput);
+                const result = jsonpath.query(jsonData, queryInput);
+                resultElement.textContent = JSON.stringify(result, null, 2);
+            } catch (e) {
+                resultElement.textContent = 'Error: ' + e.message;
+            }
+        }
+    </script>
+</body>
+</html>
