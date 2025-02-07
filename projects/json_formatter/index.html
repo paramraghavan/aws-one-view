@@ -18,6 +18,7 @@
                         <textarea id="jsonInput" class="form-control" rows="10" placeholder="Paste your JSON here..."></textarea>
                         <button onclick="formatJSON()" class="btn btn-primary mt-3">Format JSON</button>
                         <button onclick="validateJSON()" class="btn btn-secondary mt-3 ms-2">Validate JSON</button>
+                        <button onclick="fixValues()" class="btn btn-warning mt-3 ms-2">Fix Values</button>
                     </div>
                 </div>
             </div>
@@ -62,6 +63,25 @@
                 alert('Valid JSON!');
             } catch (e) {
                 alert('Invalid JSON: ' + e.message);
+            }
+        }
+
+        function fixValues() {
+            const input = document.getElementById('jsonInput');
+            let content = input.value;
+
+            // Replace Python-style values with JSON-style
+            content = content.replace(/'/g, '"')
+                           .replace(/None/g, 'null')
+                           .replace(/True/g, 'true')
+                           .replace(/False/g, 'false');
+
+            // Try to format after replacement
+            try {
+                const parsed = JSON.parse(content);
+                input.value = JSON.stringify(parsed, null, 2);
+            } catch (e) {
+                input.value = content;
             }
         }
 
