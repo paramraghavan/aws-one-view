@@ -3,41 +3,83 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JSON Query Interface</title>
+    <title>JSON Tools</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
     <div class="container py-4">
-        <div class="row">
-            <div class="col-md-6">
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">Input JSON</h5>
+        <ul class="nav nav-tabs" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="query-tab" data-bs-toggle="tab" data-bs-target="#query" type="button" role="tab">JSON Query</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="csv-tab" data-bs-toggle="tab" data-bs-target="#csv" type="button" role="tab">JSON to CSV</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="myTabContent">
+            <!-- Query Tab -->
+            <div class="tab-pane fade show active" id="query" role="tabpanel">
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Input JSON</h5>
+                            </div>
+                            <div class="card-body">
+                                <textarea id="jsonInput" class="form-control" rows="10" placeholder="Paste your JSON here..."></textarea>
+                                <button onclick="formatJSON()" class="btn btn-primary mt-3">Format JSON</button>
+                                <button onclick="validateJSON()" class="btn btn-secondary mt-3 ms-2">Validate JSON</button>
+                                <button onclick="fixValues()" class="btn btn-warning mt-3 ms-2">Fix Values</button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <textarea id="jsonInput" class="form-control" rows="10" placeholder="Paste your JSON here..."></textarea>
-                        <button onclick="formatJSON()" class="btn btn-primary mt-3">Format JSON</button>
-                        <button onclick="validateJSON()" class="btn btn-secondary mt-3 ms-2">Validate JSON</button>
-                        <button onclick="fixValues()" class="btn btn-warning mt-3 ms-2">Fix Values</button>
+                    <div class="col-md-6">
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Query</h5>
+                            </div>
+                            <div class="card-body">
+                                <input type="text" id="queryInput" class="form-control mb-3" placeholder="Enter JSONPath query (e.g., $.store.book[*].author)">
+                                <button onclick="queryJSON()" class="btn btn-success">Execute Query</button>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Results</h5>
+                            </div>
+                            <div class="card-body">
+                                <pre id="queryResult" class="bg-light p-3 rounded">Results will appear here...</pre>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="col-md-6">
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">Query</h5>
+
+            <!-- CSV Tab -->
+            <div class="tab-pane fade" id="csv" role="tabpanel">
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Input JSON</h5>
+                            </div>
+                            <div class="card-body">
+                                <textarea id="jsonInputCsv" class="form-control" rows="10" placeholder="Paste your JSON array here..."></textarea>
+                                <button onclick="convertToCSV()" class="btn btn-primary mt-3">Convert to CSV</button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <input type="text" id="queryInput" class="form-control mb-3" placeholder="Enter JSONPath query (e.g., $.store.book[*].author)">
-                        <button onclick="queryJSON()" class="btn btn-success">Execute Query</button>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">Results</h5>
-                    </div>
-                    <div class="card-body">
-                        <pre id="queryResult" class="bg-light p-3 rounded">Results will appear here...</pre>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">CSV Output</h5>
+                            </div>
+                            <div class="card-body">
+                                <textarea id="csvOutput" class="form-control" rows="10" readonly></textarea>
+                                <button onclick="downloadCSV()" class="btn btn-success mt-3">Download CSV</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -70,13 +112,11 @@
             const input = document.getElementById('jsonInput');
             let content = input.value;
 
-            // Replace Python-style values with JSON-style
             content = content.replace(/'/g, '"')
                            .replace(/None/g, 'null')
                            .replace(/True/g, 'true')
                            .replace(/False/g, 'false');
 
-            // Try to format after replacement
             try {
                 const parsed = JSON.parse(content);
                 input.value = JSON.stringify(parsed, null, 2);
@@ -97,6 +137,55 @@
             } catch (e) {
                 resultElement.textContent = 'Error: ' + e.message;
             }
+        }
+
+        function convertToCSV() {
+            const jsonInput = document.getElementById('jsonInputCsv').value;
+            try {
+                const jsonArray = JSON.parse(jsonInput);
+                if (!Array.isArray(jsonArray)) {
+                    throw new Error('Input must be a JSON array');
+                }
+
+                // Get headers from all objects
+                const headers = new Set();
+                jsonArray.forEach(obj => {
+                    Object.keys(obj).forEach(key => headers.add(key));
+                });
+                const headerRow = Array.from(headers);
+
+                // Create CSV rows
+                const csvRows = [headerRow.join(',')];
+                jsonArray.forEach(obj => {
+                    const row = headerRow.map(header => {
+                        const value = obj[header] ?? '';
+                        return typeof value === 'string' ? `"${value}"` : value;
+                    });
+                    csvRows.push(row.join(','));
+                });
+
+                document.getElementById('csvOutput').value = csvRows.join('\n');
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
+        }
+
+        function downloadCSV() {
+            const csv = document.getElementById('csvOutput').value;
+            if (!csv) {
+                alert('No CSV data to download');
+                return;
+            }
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('hidden', '');
+            a.setAttribute('href', url);
+            a.setAttribute('download', 'data.csv');
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
         }
     </script>
 </body>
