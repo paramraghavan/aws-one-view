@@ -5,6 +5,12 @@ import pytz
 from io import BytesIO
 import zipfile
 from botocore.config import Config
+import atexit
+import signal
+import logging
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 app = Flask(__name__, static_url_path='/static')
 
@@ -189,6 +195,51 @@ def view_logs(command_id):
         'output': '\n'.join(output_logs),
         'error': '\n'.join(error_logs)
     }
+
+
+def send_email_notification():
+    # Replace these with your email configuration
+    sender_email = "your_email@example.com"
+    sender_password = "your_password"
+    recipient_email = "recipient@example.com"
+    smtp_server = "smtp.gmail.com"
+    smtp_port = 587
+
+    try:
+        message = MIMEMultipart()
+        message["From"] = sender_email
+        message["To"] = recipient_email
+        message["Subject"] = "Server Shutdown Alert"
+
+        body = f"Server shutdown detected at {datetime.now()}"
+        message.attach(MIMEText(body, "plain"))
+
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(sender_email, sender_password)
+            server.send_message(message)
+
+        logging.info("Shutdown notification email sent successfully")
+    except Exception as e:
+        logging.error(f"Failed to send email notification: {str(e)}")
+
+def shutdown_handler(signum, frame):
+    """Handler for shutdown signals"""
+    logging.info(f"Received shutdown signal: {signal.Signals(signum).name}")
+    send_email_notification()
+"""
+Handles multiple types of shutdown scenarios:
+SIGTERM (termination signal)
+SIGINT (interrupt signal, Ctrl+C)
+"""
+# Register shutdown handlers
+signal.signal(signal.SIGTERM, shutdown_handler)  # Termination signal
+signal.signal(signal.SIGINT, shutdown_handler)   # Interrupt signal (Ctrl+C)
+
+# Normal interpreter shutdown (via atexit)
+# Register function to be called on normal interpreter shutdown
+atexit.register(lambda: logging.info("Server shutting down via atexit"))
+atexit.register(send_email_notification)
 
 
 if __name__ == '__main__':
