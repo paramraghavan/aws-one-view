@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RegEx Tester & Learning Tool</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet">
+    <style>
+        .match-highlight {
+            background-color: #90EE90;
+            padding: 2px;
+            border-radius: 3px;
+        }
+        .pattern-card {
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .pattern-card:hover {
+            transform: translateY(-5px);
+        }
+        .result-box {
+            min-height: 100px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body class="bg-light" style="background-color: #f37941!important;">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <span class="navbar-brand">RegEx Tester & Learning Tool</span>
+        </div>
+    </nav>
+
+    <div class="container my-4">
+        <!-- Main Testing Area -->
+        <div class="row">
+            <div class="col-md-12 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Regular Expression:</label>
+                            <div class="input-group">
+                                <span class="input-group-text">/</span>
+                                <input type="text" class="form-control" id="regexInput" placeholder="Enter your regex pattern">
+                                <span class="input-group-text">/</span>
+                                <input type="text" class="form-control" id="flagsInput" placeholder="flags" style="max-width: 100px;">
+                                <button class="btn btn-primary" id="testButton">Test</button>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Test String:</label>
+                            <textarea class="form-control" id="testInput" rows="4" placeholder="Enter text to test against"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Results:</label>
+                            <div class="card">
+                                <div class="card-body result-box" id="results">
+                                    Results will appear here...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Common Patterns -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h4>Common Patterns</h4>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card pattern-card" onclick="setPattern('^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}$', 'Email validation')">
+                    <div class="card-body">
+                        <h5 class="card-title">Email Validation</h5>
+                        <code>^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$</code>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card pattern-card" onclick="setPattern('^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d]{8,}$', 'Password validation')">
+                    <div class="card-body">
+                        <h5 class="card-title">Password Validation</h5>
+                        <code>^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$</code>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card pattern-card" onclick="setPattern('^\\+?[1-9]\\d{1,14}$', 'Phone number')">
+                    <div class="card-body">
+                        <h5 class="card-title">Phone Number</h5>
+                        <code>^\+?[1-9]\d{1,14}$</code>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Learning Section -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h4 class="mb-0">Quick Reference</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5>Basic Metacharacters</h5>
+                                <ul class="list-group">
+                                    <li class="list-group-item"><code>.</code> - Any character except newline</li>
+                                    <li class="list-group-item"><code>^</code> - Start of string</li>
+                                    <li class="list-group-item"><code>$</code> - End of string</li>
+                                    <li class="list-group-item"><code>\w</code> - Word character [A-Za-z0-9_]</li>
+                                    <li class="list-group-item"><code>\d</code> - Digit [0-9]</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h5>Quantifiers</h5>
+                                <ul class="list-group">
+                                    <li class="list-group-item"><code>*</code> - 0 or more</li>
+                                    <li class="list-group-item"><code>+</code> - 1 or more</li>
+                                    <li class="list-group-item"><code>?</code> - 0 or 1</li>
+                                    <li class="list-group-item"><code>{n}</code> - Exactly n times</li>
+                                    <li class="list-group-item"><code>{n,m}</code> - Between n and m times</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById('testButton').addEventListener('click', testRegex);
+
+        function setPattern(pattern, description) {
+            document.getElementById('regexInput').value = pattern;
+            document.getElementById('testInput').placeholder = `Enter text to test ${description}...`;
+        }
+
+        function testRegex() {
+            const pattern = document.getElementById('regexInput').value;
+            const flags = document.getElementById('flagsInput').value;
+            const testString = document.getElementById('testInput').value;
+            const resultsDiv = document.getElementById('results');
+
+            if (!pattern) {
+                resultsDiv.innerHTML = '<div class="alert alert-warning">Please enter a regex pattern</div>';
+                return;
+            }
+
+            try {
+                const regex = new RegExp(pattern, flags);
+                const matches = testString.match(regex);
+
+                if (!matches) {
+                    resultsDiv.innerHTML = '<div class="alert alert-info">No matches found</div>';
+                    return;
+                }
+
+                let output = '<div class="alert alert-success">Matches found:</div>';
+                output += '<ul class="list-group">';
+
+                if (flags.includes('g')) {
+                    matches.forEach((match, index) => {
+                        output += `<li class="list-group-item">Match ${index + 1}: ${match}</li>`;
+                    });
+                } else {
+                    output += `<li class="list-group-item">Match: ${matches[0]}</li>`;
+                    if (matches.length > 1) {
+                        output += '<li class="list-group-item">Groups:</li>';
+                        for (let i = 1; i < matches.length; i++) {
+                            output += `<li class="list-group-item">Group ${i}: ${matches[i]}</li>`;
+                        }
+                    }
+                }
+
+                output += '</ul>';
+
+                // Highlight matches in the original text
+                let highlightedText = testString;
+                const matchArray = testString.match(regex);
+                if (matchArray) {
+                    matchArray.forEach(match => {
+                        highlightedText = highlightedText.replace(
+                            match,
+                            `<span class="match-highlight">${match}</span>`
+                        );
+                    });
+                }
+
+                output += '<div class="mt-3"><strong>Highlighted Text:</strong><br>';
+                output += `<div class="p-2 border rounded">${highlightedText}</div></div>`;
+
+                resultsDiv.innerHTML = output;
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="alert alert-danger">Invalid regex: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
