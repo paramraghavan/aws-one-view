@@ -35,10 +35,12 @@ def convert_to_utc(est_datetime):
     return est_dt.astimezone(utc)
 
 
-def get_command_history(ssm_client, search_term, start_time, end_time, limit=500):
+def get_command_history(ssm_client, search_term, start_time, end_time, status_filter="", limit=500):
     paginator = ssm_client.get_paginator('list_commands')
     command_list = []
-    result_limit = 500
+
+    # Use the provided limit instead of hardcoding 500
+    result_limit = limit
 
     for page in paginator.paginate():
         for command in page['Commands']:
@@ -46,6 +48,10 @@ def get_command_history(ssm_client, search_term, start_time, end_time, limit=500
                 return command_list, True
 
             if start_time <= command['RequestedDateTime'] <= end_time:
+                # Apply status filter if provided
+                if status_filter and command['Status'] != status_filter:
+                    continue
+
                 if 'Comment' in command and search_term.lower() in command['Comment'].lower():
                     command_list.append({
                         'CommandId': command['CommandId'],
@@ -98,9 +104,20 @@ def fetch_cloudwatch_logs(logs_client, command_id):
 
 
 @app.route('/', methods=['GET', 'POST'])
+@app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
         search_term = request.form['search_term']
+
+        # Check if the is_command_id checkbox was selected
+        is_command_id = 'is_command_id' in request.form
+
+        # If it's a command ID, redirect to the command details page
+        if is_command_id:
+            from flask import redirect, url_for
+            return redirect(url_for('get_command_details', command_id=search_term))
+
+        # Otherwise, proceed with the normal search functionality
         start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%dT%H:%M')
         end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%dT%H:%M')
 
@@ -108,8 +125,11 @@ def index():
         end_utc = convert_to_utc(end_date)
 
         result_limit = int(request.form.get('result_limit', 500))
+        status_filter = request.form.get('status', '')
+
         ssm, _ = init_aws_clients()
-        commands, limit_reached = get_command_history(ssm, search_term, start_utc, end_utc, limit=result_limit)
+        commands, limit_reached = get_command_history(ssm, search_term, start_utc, end_utc, status_filter=status_filter,
+                                                      limit=result_limit)
 
         return render_template('results.html', commands=commands, limit_reached=limit_reached)
 

@@ -9,8 +9,20 @@
         <h2>Search SSM Command History</h2>
         <form method="POST">
             <div class="mb-3">
-                <label for="search_term" class="form-label">Search Term</label>
-                <input type="text" class="form-control" id="search_term" name="search_term" required>
+                <div class="row">
+                    <div class="col-auto d-flex align-items-end mb-2">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="is_command_id" name="is_command_id">
+                            <label class="form-check-label" for="is_command_id">
+                                Command ID
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <label for="search_term" class="form-label">Search Term</label>
+                        <input type="text" class="form-control" id="search_term" name="search_term" required>
+                    </div>
+                </div>
             </div>
             <div class="mb-3">
                 <label for="start_date" class="form-label">Start Date (EST)</label>
