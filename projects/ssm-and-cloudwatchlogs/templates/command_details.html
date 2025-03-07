@@ -12,6 +12,14 @@
         .pre-wrapper {
             position: relative;
         }
+        .command-id-link {
+            color: #0d6efd;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .command-id-link:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -26,7 +34,9 @@
             <div class="card-body">
                 <dl class="row">
                     <dt class="col-sm-3">Command ID</dt>
-                    <dd class="col-sm-9">{{ command_id }}</dd>
+                    <dd class="col-sm-9">
+                        <a href="/download/{{ command_id }}" class="command-id-link" download>{{ command_id }}</a>
+                    </dd>
 
                     <dt class="col-sm-3">Parameters</dt>
                     <dd class="col-sm-9"><pre>{{ parameters | tojson(indent=2) }}</pre></dd>
