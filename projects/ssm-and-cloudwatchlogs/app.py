@@ -64,12 +64,13 @@ def get_command_history(ssm_client, search_term, start_time, end_time, status_fi
     return command_list, False
 
 
-def fetch_cloudwatch_logs_for_command(command_id):
+def fetch_cloudwatch_logs_for_command(command_id, invocation_id=None):
     """
     Fetches CloudWatch logs related to an SSM command execution and returns them as a zip file.
 
     Args:
         command_id: The SSM command ID to fetch logs for
+        invocation_id: Optional specific invocation ID
 
     Returns:
         BytesIO object containing the zipped logs
@@ -79,70 +80,129 @@ def fetch_cloudwatch_logs_for_command(command_id):
     logs_client = boto3.client('logs')
     logs_zip = BytesIO()
 
-    # First, get command invocation details to find the instance IDs
     try:
-        command_result = ssm_client.list_command_invocations(
-            CommandId=command_id,
-            Details=True
-        )
+        # Step 1: Get command details
+        if invocation_id:
+            # If invocation ID is provided, get that specific invocation
+            invocations_response = ssm_client.get_command_invocation(
+                CommandId=command_id,
+                InstanceId=invocation_id
+            )
+            invocations = [invocations_response]  # Convert to list format for consistency
+        else:
+            # Otherwise get all invocations for this command
+            command_result = ssm_client.list_command_invocations(
+                CommandId=command_id,
+                Details=True
+            )
+            invocations = command_result.get('CommandInvocations', [])
 
-        invocations = command_result.get('CommandInvocations', [])
         if not invocations:
             raise Exception(f"No invocations found for command {command_id}")
 
+        # Step 2: First discover the correct log group by listing all available log groups
+        log_groups = []
+        paginator = logs_client.get_paginator('describe_log_groups')
+
+        for page in paginator.paginate():
+            for group in page.get('logGroups', []):
+                group_name = group.get('logGroupName', '')
+                if 'ssm' in group_name.lower() or 'aws-runshellscript' in group_name.lower():
+                    log_groups.append(group_name)
+
         with zipfile.ZipFile(logs_zip, 'w') as zip_file:
+            # Add command information
+            command_info = {
+                'command_id': command_id,
+                'invocations': [inv.get('CommandId') for inv in invocations],
+                'log_groups_checked': log_groups
+            }
+            zip_file.writestr('command_info.json', json.dumps(command_info, indent=2))
+
+            # For each invocation, try to find logs in each potential log group
+            logs_found = False
+
             for invocation in invocations:
                 instance_id = invocation.get('InstanceId')
-                invocation_id = invocation.get('CommandId')
 
-                # The log stream follows a pattern based on instance ID and command ID
-                log_group = '/aws/ssm/AWS-RunShellScript'
-                # Note: this pattern might vary slightly based on your AWS setup
-                log_stream_pattern = f"{instance_id}/{invocation_id}"
+                for log_group in log_groups:
+                    try:
+                        # Try different potential stream name patterns
+                        potential_prefixes = [
+                            instance_id,  # Just the instance ID
+                            f"{instance_id}/",  # Instance ID with slash
+                            command_id,  # Just the command ID
+                            f"{command_id}/",  # Command ID with slash
+                            f"{instance_id}/{command_id}"  # Both IDs combined
+                        ]
 
-                # List log streams that match our pattern
-                streams_response = logs_client.describe_log_streams(
-                    logGroupName=log_group,
-                    logStreamNamePrefix=instance_id
-                )
+                        for prefix in potential_prefixes:
+                            try:
+                                # List log streams matching the prefix
+                                streams_response = logs_client.describe_log_streams(
+                                    logGroupName=log_group,
+                                    logStreamNamePrefix=prefix
+                                )
 
-                for stream in streams_response.get('logStreams', []):
-                    stream_name = stream.get('logStreamName')
+                                for stream in streams_response.get('logStreams', []):
+                                    stream_name = stream.get('logStreamName')
 
-                    # Check if this stream is related to our command
-                    if invocation_id in stream_name:
-                        # Get the log events
-                        events_response = logs_client.get_log_events(
-                            logGroupName=log_group,
-                            logStreamName=stream_name,
-                            startFromHead=True
-                        )
+                                    # Check if stream looks relevant to our command
+                                    if command_id in stream_name or instance_id in stream_name:
+                                        # Get the log events
+                                        events_response = logs_client.get_log_events(
+                                            logGroupName=log_group,
+                                            logStreamName=stream_name,
+                                            startFromHead=True
+                                        )
 
-                        stdout_log = []
-                        stderr_log = []
+                                        events = events_response.get('events', [])
+                                        if events:
+                                            logs_found = True
+                                            log_content = "\n".join([
+                                                f"[{event.get('timestamp')}] {event.get('message')}"
+                                                for event in events
+                                            ])
 
-                        # Categorize events as stdout or stderr
-                        for event in events_response.get('events', []):
-                            message = event.get('message', '')
-                            timestamp = event.get('timestamp', int(time.time() * 1000))
+                                            # Categorize logs based on content
+                                            if any("stdout" in event.get('message', '').lower() for event in events):
+                                                zip_file.writestr(
+                                                    f"{instance_id}_{stream_name}_stdout.log",
+                                                    log_content
+                                                )
+                                            elif any("stderr" in event.get('message', '').lower() for event in events):
+                                                zip_file.writestr(
+                                                    f"{instance_id}_{stream_name}_stderr.log",
+                                                    log_content
+                                                )
+                                            else:
+                                                zip_file.writestr(
+                                                    f"{instance_id}_{stream_name}.log",
+                                                    log_content
+                                                )
+                            except logs_client.exceptions.ResourceNotFoundException:
+                                # This prefix doesn't exist in this log group, try the next one
+                                continue
+                    except logs_client.exceptions.ResourceNotFoundException:
+                        # This log group doesn't exist, try the next one
+                        continue
 
-                            if 'stdout' in message.lower():
-                                stdout_log.append(f"[{timestamp}] {message}")
-                            elif 'stderr' in message.lower():
-                                stderr_log.append(f"[{timestamp}] {message}")
-
-                        # Write logs to zip file
-                        if stdout_log:
-                            zip_file.writestr(f"{instance_id}_stdout.log", "\n".join(stdout_log))
-                        if stderr_log:
-                            zip_file.writestr(f"{instance_id}_stderr.log", "\n".join(stderr_log))
+            # If no logs were found, add a note to the zip
+            if not logs_found:
+                zip_file.writestr('README.txt',
+                                  f"No logs found for command {command_id}.\n"
+                                  f"Checked log groups: {', '.join(log_groups)}\n"
+                                  f"This could be because:\n"
+                                  f"1. Logs have expired or been deleted\n"
+                                  f"2. Command logging was not enabled\n"
+                                  f"3. The log group name is different in your setup\n"
+                                  f"4. Insufficient permissions to access logs"
+                                  )
 
         logs_zip.seek(0)
         return logs_zip
 
     except Exception as e:
-        # Handle specific exceptions based on your requirements
-        print(f"Error fetching logs for command {command_id}: {str(e)}")
         # Create a zip with error information
         with zipfile.ZipFile(logs_zip, 'w') as zip_file:
             zip_file.writestr("error.log", f"Failed to fetch logs: {str(e)}")
