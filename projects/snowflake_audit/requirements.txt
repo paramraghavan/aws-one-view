@@ -1,0 +1,7 @@
+flask==2.3.2
+snowflake-connector-python==3.0.3
+numpy==1.23.5  # Specific numpy version that works with pandas
+pandas==1.5.3  # Using a slightly older pandas version for better compatibility
+python-dateutil==2.8.2
+flask-wtf==1.1.1
+apscheduler==3.10.1

@@ -1,0 +1,25 @@
+{
+  "snowflake": {
+    "account": "your_account_identifier",
+    "user": "your_username",
+    "password": "your_password",
+    "warehouse": "your_warehouse",
+    "role": "your_role"
+  },
+  "databases": [
+    {
+      "name": "DB1",
+      "schemas": ["SCHEMA1", "SCHEMA2", "SCHEMA3"]
+    },
+    {
+      "name": "DB2",
+      "schemas": ["SCHEMA1", "SCHEMA4"]
+    },
+    {
+      "name": "DB3",
+      "schemas": ["SCHEMA5", "SCHEMA6"]
+    }
+  ],
+  "default_interval": 24,
+  "log_file": "snowflake_operations.log"
+}
