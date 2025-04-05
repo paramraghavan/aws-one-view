@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('index') }}"><i class="fas fa-home"></i> Buckets</a>
+                </li>
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('list_objects', bucket_name=bucket_name) }}">
+                        {{ bucket_name }}
+                    </a>
+                </li>
+                {% for crumb in breadcrumbs %}
+                {% if loop.last %}
+                <li class="breadcrumb-item active">{{ crumb.name }}</li>
+                {% else %}
+                <li class="breadcrumb-item">
+                    <a href="{{ url_for('list_objects', bucket_name=bucket_name, prefix=crumb.path) }}">
+                        {{ crumb.name }}
+                    </a>
+                </li>
+                {% endif %}
+                {% endfor %}
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-upload me-2"></i>Upload Files
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="upload-form"
+                      action="{{ url_for('upload_file', bucket_name=bucket_name, prefix=current_prefix) }}"
+                      method="post" enctype="multipart/form-data">
+                    <div class="upload-area">
+                        <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-primary"></i>
+                        <p>Drag & drop files here or click to browse</p>
+                        <input type="file" id="file-input" name="file" multiple class="hidden">
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-folder-plus me-2"></i>Create Folder
+                </h5>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('create_folder', bucket_name=bucket_name, prefix=current_prefix) }}"
+                      method="post">
+                    <div class="input-group">
+                        <input type="text" name="folder_name" class="form-control" placeholder="New folder name"
+                               required>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-plus me-1"></i> Create
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-folder-open me-2"></i>Contents of {{ bucket_name }}{% if current_prefix %}/{{
+                    current_prefix }}{% endif %}
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if folders or files %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Size</th>
+                            <th>Last Modified</th>
+                            <th>Actions</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <!-- Folders first -->
+                        {% for folder in folders %}
+                        <tr>
+                            <td>
+                                <i class="fas fa-folder folder-icon me-2"></i>
+                                <a href="{{ url_for('list_objects', bucket_name=bucket_name, prefix=folder.prefix) }}">
+                                    {{ folder.name }}/
+                                </a>
+                            </td>
+                            <td>Folder</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td class="action-buttons">
+                                <a href="{{ url_for('list_objects', bucket_name=bucket_name, prefix=folder.prefix) }}"
+                                   class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-folder-open"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+
+                        <!-- Files -->
+                        {% for file in files %}
+                        <tr>
+                            <td>
+                                <i class="fas fa-file file-icon me-2"></i>
+                                {{ file.name }}
+                            </td>
+                            <td>File</td>
+                            <td>{{ '{:.2f}'.format(file.size / 1024) }} KB</td>
+                            <td>{{ file.last_modified.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td class="action-buttons">
+                                <div class="btn-group">
+                                    <a href="{{ url_for('download_file', bucket_name=bucket_name, object_key=file.key) }}"
+                                       class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" title="Download">
+                                        <i class="fas fa-download"></i>
+                                    </a>
+
+                                    <button type="button" class="btn btn-sm btn-outline-success"
+                                            data-bs-toggle="modal" data-bs-target="#copyModal{{ loop.index }}"
+                                            title="Copy">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+
+                                    <button type="button" class="btn btn-sm btn-outline-danger"
+                                            data-bs-toggle="modal" data-bs-target="#deleteModal{{ loop.index }}"
+                                            title="Delete">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+
+                                <!-- Copy Modal -->
+                                <div class="modal fade" id="copyModal{{ loop.index }}" tabindex="-1" aria-hidden="true">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">Copy File</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                                        aria-label="Close"></button>
+                                            </div>
+                                            <form action="{{ url_for('copy_object', bucket_name=bucket_name, object_key=file.key) }}"
+                                                  method="post">
+                                                <div class="modal-body">
+                                                    <div class="mb-3">
+                                                        <label for="destinationPath" class="form-label">Destination
+                                                            Path</label>
+                                                        <input type="text" class="form-control" id="destinationPath"
+                                                               name="destination_path"
+                                                               value="{{ current_prefix }}"
+                                                               placeholder="Leave empty for root">
+                                                        <div class="form-text">Enter the destination folder path (e.g.,
+                                                            "folder1/subfolder/")
+                                                        </div>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label for="newName" class="form-label">New File Name</label>
+                                                        <input type="text" class="form-control" id="newName"
+                                                               name="new_name"
+                                                               value="{{ file.name }}" required>
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary"
+                                                            data-bs-dismiss="modal">Cancel
+                                                    </button>
+                                                    <button type="submit" class="btn btn-success">Copy</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Delete Modal -->
+                                <div class="modal fade" id="deleteModal{{ loop.index }}" tabindex="-1"
+                                     aria-hidden="true">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">Confirm Delete</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                                        aria-label="Close"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <p>Are you sure you want to delete <strong>{{ file.name }}</strong>?</p>
+                                                <p class="text-danger"><small>This action cannot be undone.</small></p>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                                                    Cancel
+                                                </button>
+                                                <form action="{{ url_for('delete_object', bucket_name=bucket_name, object_key=file.key) }}"
+                                                      method="post">
+                                                    <button type="submit" class="btn btn-danger">Delete</button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>This location is empty. Upload files or create a new folder.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
