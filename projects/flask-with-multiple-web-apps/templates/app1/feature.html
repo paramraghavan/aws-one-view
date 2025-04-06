@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - Feature</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="app1">
+    <header>
+        <h1>App 1 - Feature</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('index') }}">Main Home</a></li>
+                <li><a href="{{ url_for('app1.index') }}">App 1 Home</a></li>
+                <li><a href="{{ url_for('app1.feature') }}">Feature</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <h2>App 1 Feature Page</h2>
+        <p>This is a special feature page for App 1.</p>
+        <div class="feature-box">
+            <h3>Special Feature</h3>
+            <p>This could be any special feature you want to showcase in App 1.</p>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2025 App 1 - Multi-App Flask Demo</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

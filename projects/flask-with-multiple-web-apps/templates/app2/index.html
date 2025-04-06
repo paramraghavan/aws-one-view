@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="app2">
+    <header>
+        <h1>App 2</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('index') }}">Main Home</a></li>
+                <li><a href="{{ url_for('app2.index') }}">App 2 Home</a></li>
+                <li><a href="{{ url_for('app2.dashboard') }}">Dashboard</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <h2>Welcome to App 2</h2>
+        <p>This is the second application in our multi-app Flask demo.</p>
+        <p>Check out our <a href="{{ url_for('app2.dashboard') }}">dashboard</a>.</p>
+    </main>
+
+    <footer>
+        <p>&copy; 2025 App 2 - Multi-App Flask Demo</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
