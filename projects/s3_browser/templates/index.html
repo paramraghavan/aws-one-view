@@ -1,12 +1,42 @@
 {% extends "base.html" %}
 
 {% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-cloud me-2"></i>AWS Environment: <strong>{{ selected_env|upper }}</strong>
+                </h5>
+                <a href="{{ url_for('index') }}" class="btn btn-sm btn-light">
+                    <i class="fas fa-exchange-alt me-1"></i> Switch Environment
+                </a>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info mb-0">
+                    <div class="d-flex align-items-center">
+                        <div class="me-3">
+                            <i class="fas fa-info-circle fa-2x"></i>
+                        </div>
+                        <div>
+                            <h5 class="alert-heading mb-1">Connection Information</h5>
+                            <p class="mb-0">
+                                Connected to <strong>{{ selected_env|upper }}</strong> environment using AWS profile: <strong>{{ profile_name }}</strong>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row">
     <div class="col-12">
         <div class="card shadow-sm">
             <div class="card-header bg-primary text-white">
                 <h5 class="card-title mb-0">
-                    <i class="fas fa-bucket me-2"></i>S3 Buckets
+                    <i class="fas fa-bucket me-2"></i>S3 Buckets for {{ selected_env|upper }} Environment
                 </h5>
             </div>
             <div class="card-body">
@@ -14,37 +44,36 @@
                 <div class="table-responsive">
                     <table class="table table-hover">
                         <thead>
-                        <tr>
-                            <th>Bucket Name</th>
-                            <th>Creation Date</th>
-                            <th>Actions</th>
-                        </tr>
+                            <tr>
+                                <th>Bucket Name</th>
+                                <th>Creation Date</th>
+                                <th>Actions</th>
+                            </tr>
                         </thead>
                         <tbody>
-                        {% for bucket in buckets %}
-                        <tr>
-                            <td>
-                                <i class="fas fa-bucket me-2 text-primary"></i>
-                                <a href="{{ url_for('list_objects', bucket_name=bucket.Name) }}">
-                                    {{ bucket.Name }}
-                                </a>
-                            </td>
-                            <td>{{ bucket.CreationDate.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                            <td>
-                                <a href="{{ url_for('list_objects', bucket_name=bucket.Name) }}"
-                                   class="btn btn-sm btn-outline-primary">
-                                    <i class="fas fa-folder-open me-1"></i> Browse
-                                </a>
-                            </td>
-                        </tr>
-                        {% endfor %}
+                            {% for bucket in buckets %}
+                            <tr>
+                                <td>
+                                    <i class="fas fa-bucket me-2 text-primary"></i>
+                                    <a href="{{ url_for('list_objects', bucket_name=bucket.Name, env=selected_env) }}">
+                                        {{ bucket.Name }}
+                                    </a>
+                                </td>
+                                <td>{{ bucket.CreationDate.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                <td>
+                                    <a href="{{ url_for('list_objects', bucket_name=bucket.Name, env=selected_env) }}"
+                                       class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-folder-open me-1"></i> Browse
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
                         </tbody>
                     </table>
                 </div>
                 {% else %}
                 <div class="alert alert-info">
-                    <i class="fas fa-info-circle me-2"></i>No S3 buckets found. Make sure your AWS credentials are
-                    properly configured.
+                    <i class="fas fa-info-circle me-2"></i>No S3 buckets found. Make sure your AWS credentials are properly configured.
                 </div>
                 {% endif %}
             </div>

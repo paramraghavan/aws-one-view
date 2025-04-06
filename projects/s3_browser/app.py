@@ -14,22 +14,20 @@ if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-aws_profile = 'myprofile'
-def get_boto3_client(aws_profile, service='s3'):
-    # os.environ['HTTPS_PROXY'] = 'proxy.com:10009'
-    # os.environ['HTTP_PROXY'] = 'proxy.com:10009'
-    #return boto3.client(service)
-    #aws_access_key_id, aws_secret_access_key, aws_session_token, region = getAWSKeys()
-    #os.environ['AWS_ACCESS_KEY_ID'] = aws_access_key_id
-    #os.environ['AWS_SECRET_ACCESS_KEY'] = aws_secret_access_key
-    session = boto3.session.Session(profile_name=aws_profile)
-    return session.client(service)
-
-# Initialize S3 client
-def get_s3_client(aws_profile):
-    return get_boto3_client(aws_profile, service='s3')
+# Available environments and their profiles
+ENVIRONMENTS = {
+    'dev': 'development',
+    'uat': 'testing',
+    'prod': 'production'
+}
 
 
+# Initialize S3 client with specified profile
+def get_s3_client(profile_name=None):
+    if profile_name:
+        session = boto3.Session(profile_name=profile_name)
+        return session.client('s3')
+    return boto3.client('s3')
 
 
 def allowed_file(filename):
@@ -38,20 +36,43 @@ def allowed_file(filename):
 
 @app.route('/')
 def index():
+    # On initial load, just show the environment selector
+    selected_env = request.args.get('env', '')
+
+    if not selected_env:
+        # If no environment is selected, just show the environment selection form
+        return render_template('env_select.html',
+                               environments=ENVIRONMENTS,
+                               selected_env=selected_env)
+
+    # Get the AWS profile associated with the selected environment
+    profile_name = ENVIRONMENTS.get(selected_env, None)
+
     try:
-        s3 = get_s3_client(aws_profile)
+        # Connect to S3 using the selected profile
+        s3 = get_s3_client(profile_name)
         buckets = s3.list_buckets()
-        return render_template('index.html', buckets=buckets['Buckets'])
+
+        return render_template('index.html',
+                               buckets=buckets['Buckets'],
+                               environments=ENVIRONMENTS,
+                               selected_env=selected_env,
+                               profile_name=profile_name)
     except Exception as e:
-        flash(f"Error listing buckets: {str(e)}", 'danger')
-        return render_template('index.html', buckets=[])
+        flash(f"Error listing buckets using profile '{profile_name}': {str(e)}", 'danger')
+        return render_template('env_select.html',
+                               environments=ENVIRONMENTS,
+                               selected_env=selected_env)
 
 
 @app.route('/bucket/<bucket_name>', defaults={'prefix': ''})
 @app.route('/bucket/<bucket_name>/<path:prefix>')
 def list_objects(bucket_name, prefix):
+    selected_env = request.args.get('env', '')
+    profile_name = ENVIRONMENTS.get(selected_env, None)
+
     try:
-        s3 = get_s3_client()
+        s3 = get_s3_client(profile_name)
 
         # Handle trailing slash for directories
         if prefix and not prefix.endswith('/'):
@@ -107,7 +128,8 @@ def list_objects(bucket_name, prefix):
                                folders=folders,
                                files=files,
                                current_prefix=prefix,
-                               breadcrumbs=breadcrumbs)
+                               breadcrumbs=breadcrumbs,
+                               selected_env=selected_env)
 
     except Exception as e:
         flash(f"Error listing objects: {str(e)}", 'danger')
@@ -117,6 +139,9 @@ def list_objects(bucket_name, prefix):
 @app.route('/upload/<bucket_name>', defaults={'prefix': ''}, methods=['POST'])
 @app.route('/upload/<bucket_name>/<path:prefix>', methods=['POST'])
 def upload_file(bucket_name, prefix):
+    selected_env = request.args.get('env', '')
+    profile_name = ENVIRONMENTS.get(selected_env, None)
+
     if 'file' not in request.files:
         flash('No file part', 'danger')
         return redirect(request.referrer)
@@ -135,7 +160,7 @@ def upload_file(bucket_name, prefix):
             file.save(file_path)
 
             try:
-                s3 = get_s3_client()
+                s3 = get_s3_client(profile_name)
                 # Prepare the S3 key by combining the prefix and filename
                 s3_key = prefix + filename if not prefix or prefix.endswith('/') else prefix + '/' + filename
                 s3.upload_file(file_path, bucket_name, s3_key)
@@ -153,8 +178,11 @@ def upload_file(bucket_name, prefix):
 
 @app.route('/download/<bucket_name>/<path:object_key>')
 def download_file(bucket_name, object_key):
+    selected_env = request.args.get('env', '')
+    profile_name = ENVIRONMENTS.get(selected_env, None)
+
     try:
-        s3 = get_s3_client()
+        s3 = get_s3_client(profile_name)
 
         # Create a temporary file
         with tempfile.NamedTemporaryFile(delete=False) as temp_file:
@@ -183,8 +211,11 @@ def download_file(bucket_name, object_key):
 
 @app.route('/delete/<bucket_name>/<path:object_key>', methods=['POST'])
 def delete_object(bucket_name, object_key):
+    selected_env = request.args.get('env', '')
+    profile_name = ENVIRONMENTS.get(selected_env, None)
+
     try:
-        s3 = get_s3_client()
+        s3 = get_s3_client(profile_name)
         s3.delete_object(Bucket=bucket_name, Key=object_key)
         flash(f'Successfully deleted {object_key.split("/")[-1]}', 'success')
     except Exception as e:
@@ -194,12 +225,14 @@ def delete_object(bucket_name, object_key):
     prefix = '/'.join(object_key.split('/')[:-1])
     if prefix:
         prefix += '/'
-    return redirect(url_for('list_objects', bucket_name=bucket_name, prefix=prefix))
+    return redirect(url_for('list_objects', bucket_name=bucket_name, prefix=prefix, env=selected_env))
 
 
 @app.route('/create_folder/<bucket_name>', defaults={'prefix': ''}, methods=['POST'])
 @app.route('/create_folder/<bucket_name>/<path:prefix>', methods=['POST'])
 def create_folder(bucket_name, prefix):
+    selected_env = request.args.get('env', '')
+    profile_name = ENVIRONMENTS.get(selected_env, None)
     folder_name = request.form.get('folder_name', '').strip()
 
     if not folder_name:
@@ -210,7 +243,7 @@ def create_folder(bucket_name, prefix):
     folder_key = prefix + folder_name + '/' if prefix else folder_name + '/'
 
     try:
-        s3 = get_s3_client()
+        s3 = get_s3_client(profile_name)
         # Create an empty object with a trailing slash to represent a folder
         s3.put_object(Bucket=bucket_name, Key=folder_key, Body='')
         flash(f'Successfully created folder: {folder_name}', 'success')
@@ -222,6 +255,8 @@ def create_folder(bucket_name, prefix):
 
 @app.route('/copy/<bucket_name>/<path:object_key>', methods=['POST'])
 def copy_object(bucket_name, object_key):
+    selected_env = request.args.get('env', '')
+    profile_name = ENVIRONMENTS.get(selected_env, None)
     destination_path = request.form.get('destination_path', '').strip()
     new_name = request.form.get('new_name', '').strip()
 
@@ -236,7 +271,7 @@ def copy_object(bucket_name, object_key):
     destination_key = destination_path + new_name
 
     try:
-        s3 = get_s3_client()
+        s3 = get_s3_client(profile_name)
         copy_source = {'Bucket': bucket_name, 'Key': object_key}
         s3.copy_object(CopySource=copy_source, Bucket=bucket_name, Key=destination_key)
         flash(f'Successfully copied to {destination_key}', 'success')
@@ -251,4 +286,4 @@ def copy_object(bucket_name, object_key):
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=7770)
+    app.run(debug=True)
