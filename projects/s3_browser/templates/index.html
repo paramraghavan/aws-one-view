@@ -4,28 +4,35 @@
 <div class="row mb-4">
     <div class="col-12">
         <div class="card shadow-sm">
-            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <div class="card-header bg-primary text-white">
                 <h5 class="card-title mb-0">
-                    <i class="fas fa-cloud me-2"></i>AWS Environment: <strong>{{ selected_env|upper }}</strong>
+                    <i class="fas fa-cloud me-2"></i>AWS Environment Selection
                 </h5>
-                <a href="{{ url_for('index') }}" class="btn btn-sm btn-light">
-                    <i class="fas fa-exchange-alt me-1"></i> Switch Environment
-                </a>
             </div>
             <div class="card-body">
-                <div class="alert alert-info mb-0">
-                    <div class="d-flex align-items-center">
-                        <div class="me-3">
-                            <i class="fas fa-info-circle fa-2x"></i>
-                        </div>
-                        <div>
-                            <h5 class="alert-heading mb-1">Connection Information</h5>
-                            <p class="mb-0">
-                                Connected to <strong>{{ selected_env|upper }}</strong> environment using AWS profile: <strong>{{ profile_name }}</strong>
-                            </p>
+                <form method="get" action="{{ url_for('index') }}" class="row g-3">
+                    <div class="col-md-6">
+                        <select name="env" class="form-select" id="environmentSelect">
+                            <option value="" {% if not selected_env %}selected{% endif %}>Default Profile</option>
+                            <option value="dev" {% if selected_env == 'dev' %}selected{% endif %}>Development</option>
+                            <option value="uat" {% if selected_env == 'uat' %}selected{% endif %}>UAT / Testing</option>
+                            <option value="prod" {% if selected_env == 'prod' %}selected{% endif %}>Production</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-sync-alt me-1"></i> Switch Environment
+                        </button>
+                    </div>
+                </form>
+                {% if selected_env %}
+                    <div class="mt-3">
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Currently using <strong>{{ selected_env }}</strong> environment with AWS profile: <strong>{{ environments[selected_env] }}</strong>
                         </div>
                     </div>
-                </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -36,13 +43,21 @@
         <div class="card shadow-sm">
             <div class="card-header bg-primary text-white">
                 <h5 class="card-title mb-0">
-                    <i class="fas fa-bucket me-2"></i>S3 Buckets for {{ selected_env|upper }} Environment
+                    <i class="fas fa-bucket me-2"></i>S3 Buckets
                 </h5>
             </div>
             <div class="card-body">
                 {% if buckets %}
+                <div class="input-group mb-3">
+                    <span class="input-group-text"><i class="fas fa-search"></i></span>
+                    <input type="text" id="bucketSearchInput" class="form-control" placeholder="Search buckets...">
+                    <button class="btn btn-outline-secondary" type="button" id="clearBucketSearch">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div id="bucketSearchCounter" class="badge bg-primary mb-2" style="display: none;"></div>
                 <div class="table-responsive">
-                    <table class="table table-hover">
+                    <table class="table table-hover" id="bucketsTable">
                         <thead>
                             <tr>
                                 <th>Bucket Name</th>
@@ -80,4 +95,70 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Bucket search functionality
+    const searchInput = document.getElementById('bucketSearchInput');
+    const clearBtn = document.getElementById('clearBucketSearch');
+    const counter = document.getElementById('bucketSearchCounter');
+
+    if (searchInput) {
+        searchInput.addEventListener('keyup', filterBuckets);
+
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function() {
+                searchInput.value = '';
+                filterBuckets();
+                searchInput.focus();
+            });
+        }
+    }
+
+    function filterBuckets() {
+        const searchValue = searchInput.value.toLowerCase();
+        const table = document.getElementById('bucketsTable');
+
+        if (table) {
+            const rows = table.querySelectorAll('tbody tr');
+            let matchCount = 0;
+
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                if (text.includes(searchValue)) {
+                    row.style.display = '';
+                    matchCount++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+
+            // Show/hide no results message
+            let noResultsMsg = table.parentElement.querySelector('.no-results-message');
+            if (matchCount === 0 && searchValue !== '') {
+                if (!noResultsMsg) {
+                    noResultsMsg = document.createElement('div');
+                    noResultsMsg.className = 'alert alert-info mt-3 no-results-message';
+                    noResultsMsg.innerHTML = '<i class="fas fa-info-circle me-2"></i>No matching buckets found.';
+                    table.parentElement.appendChild(noResultsMsg);
+                } else {
+                    noResultsMsg.style.display = 'block';
+                }
+            } else if (noResultsMsg) {
+                noResultsMsg.style.display = 'none';
+            }
+
+            // Update search results counter
+            if (counter && searchValue !== '') {
+                counter.textContent = `${matchCount} bucket${matchCount !== 1 ? 's' : ''} found`;
+                counter.style.display = 'block';
+            } else if (counter) {
+                counter.style.display = 'none';
+            }
+        }
+    }
+});
+</script>
 {% endblock %}
