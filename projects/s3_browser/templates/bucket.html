@@ -87,10 +87,31 @@
                     </button>
                 </div>
                 <div id="contentSearchCounter" class="badge bg-primary mb-2" style="display: none;"></div>
+
+                <!-- Bulk actions toolbar - initially hidden -->
+                <div id="bulkActionsToolbar" class="mb-3 p-2 bg-light rounded border" style="display: none;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span id="selectedItemsCount" class="badge bg-primary me-2">0 selected</span>
+                            <button id="selectAllBtn" class="btn btn-sm btn-outline-secondary me-1">Select All</button>
+                            <button id="deselectAllBtn" class="btn btn-sm btn-outline-secondary">Deselect All</button>
+                        </div>
+                        <div>
+                            <button id="bulkDownloadBtn" class="btn btn-sm btn-primary me-1" disabled>
+                                <i class="fas fa-download me-1"></i>Download Selected
+                            </button>
+                            <button id="bulkDeleteBtn" class="btn btn-sm btn-danger" disabled data-bs-toggle="modal" data-bs-target="#bulkDeleteModal">
+                                <i class="fas fa-trash me-1"></i>Delete Selected
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="table-responsive">
                     <table class="table table-hover" id="contentsTable">
                         <thead>
                             <tr>
+                                <th style="width: 40px;"><input type="checkbox" id="masterCheckbox" class="form-check-input"></th>
                                 <th>Name</th>
                                 <th>Type</th>
                                 <th>Size</th>
@@ -101,7 +122,10 @@
                         <tbody>
                             <!-- Folders first -->
                             {% for folder in folders %}
-                            <tr>
+                            <tr data-item-type="folder" data-item-name="{{ folder.name }}" data-item-path="{{ folder.prefix }}">
+                                <td>
+                                    <input type="checkbox" class="form-check-input item-checkbox" data-type="folder" data-path="{{ folder.prefix }}">
+                                </td>
                                 <td>
                                     <i class="fas fa-folder folder-icon me-2"></i>
                                     <a href="{{ url_for('list_objects', bucket_name=bucket_name, prefix=folder.prefix, env=selected_env) }}">
@@ -122,7 +146,10 @@
 
                             <!-- Files -->
                             {% for file in files %}
-                            <tr>
+                            <tr data-item-type="file" data-item-name="{{ file.name }}" data-item-key="{{ file.key }}">
+                                <td>
+                                    <input type="checkbox" class="form-check-input item-checkbox" data-type="file" data-key="{{ file.key }}">
+                                </td>
                                 <td>
                                     <i class="fas fa-file file-icon me-2"></i>
                                     {{ file.name }}
@@ -217,6 +244,37 @@
         </div>
     </div>
 </div>
+
+<!-- Bulk Delete Modal -->
+<div class="modal fade" id="bulkDeleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Bulk Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete the selected items?</p>
+                <div id="bulkDeleteItemsList" class="mt-3 mb-3 p-2 border rounded bg-light" style="max-height: 200px; overflow-y: auto;">
+                    <!-- Selected items will be listed here dynamically -->
+                </div>
+                <p class="text-danger"><small>This action cannot be undone.</small></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form id="bulkDeleteForm" method="post">
+                    <input type="hidden" id="bulkDeleteKeys" name="keys">
+                    <button type="submit" class="btn btn-danger">Delete All Selected</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden form for bulk download -->
+<form id="bulkDownloadForm" method="get" style="display: none;">
+    <input type="hidden" id="bulkDownloadKeys" name="keys">
+</form>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -281,6 +339,182 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     }
+
+    // Multiple selection functionality
+    const masterCheckbox = document.getElementById('masterCheckbox');
+    const itemCheckboxes = document.querySelectorAll('.item-checkbox');
+    const bulkActionsToolbar = document.getElementById('bulkActionsToolbar');
+    const selectedItemsCount = document.getElementById('selectedItemsCount');
+    const selectAllBtn = document.getElementById('selectAllBtn');
+    const deselectAllBtn = document.getElementById('deselectAllBtn');
+    const bulkDownloadBtn = document.getElementById('bulkDownloadBtn');
+    const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+
+    // Initialize checkbox handlers
+    if (masterCheckbox) {
+        masterCheckbox.addEventListener('change', function() {
+            const isChecked = this.checked;
+
+            // Check/uncheck all visible checkboxes
+            itemCheckboxes.forEach(checkbox => {
+                // Only affect checkboxes in visible rows
+                if (checkbox.closest('tr').style.display !== 'none') {
+                    checkbox.checked = isChecked;
+                }
+            });
+
+            updateSelectedItemsUI();
+        });
+    }
+
+    // Individual checkbox handlers
+    itemCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            updateSelectedItemsUI();
+
+            // Update master checkbox state
+            if (document.querySelectorAll('.item-checkbox:checked').length === 0) {
+                masterCheckbox.checked = false;
+                masterCheckbox.indeterminate = false;
+            } else if (document.querySelectorAll('.item-checkbox:checked').length === document.querySelectorAll('.item-checkbox:not([disabled])').length) {
+                masterCheckbox.checked = true;
+                masterCheckbox.indeterminate = false;
+            } else {
+                masterCheckbox.indeterminate = true;
+            }
+        });
+    });
+
+    // Select All button
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', function() {
+            // Select all visible checkboxes
+            itemCheckboxes.forEach(checkbox => {
+                if (checkbox.closest('tr').style.display !== 'none') {
+                    checkbox.checked = true;
+                }
+            });
+
+            masterCheckbox.checked = true;
+            masterCheckbox.indeterminate = false;
+            updateSelectedItemsUI();
+        });
+    }
+
+    // Deselect All button
+    if (deselectAllBtn) {
+        deselectAllBtn.addEventListener('click', function() {
+            itemCheckboxes.forEach(checkbox => {
+                checkbox.checked = false;
+            });
+
+            masterCheckbox.checked = false;
+            masterCheckbox.indeterminate = false;
+            updateSelectedItemsUI();
+        });
+    }
+
+    // Bulk Download button
+    if (bulkDownloadBtn) {
+        bulkDownloadBtn.addEventListener('click', function() {
+            const selectedFiles = getSelectedItems().filter(item => item.type === 'file');
+
+            if (selectedFiles.length > 0) {
+                // For now, we'll open each file in a new tab - in production, you might want
+                // to implement a proper zip download functionality on the server side
+                selectedFiles.forEach(file => {
+                    const downloadUrl = `{{ url_for('download_file', bucket_name=bucket_name, object_key='KEY_PLACEHOLDER', env=selected_env) }}`.replace('KEY_PLACEHOLDER', encodeURIComponent(file.key));
+                    window.open(downloadUrl, '_blank');
+                });
+            }
+        });
+    }
+
+    // Bulk Delete Modal preparation
+    const bulkDeleteModal = document.getElementById('bulkDeleteModal');
+    if (bulkDeleteModal) {
+        bulkDeleteModal.addEventListener('show.bs.modal', function() {
+            const selectedItems = getSelectedItems();
+            const itemsList = document.getElementById('bulkDeleteItemsList');
+            const keysInput = document.getElementById('bulkDeleteKeys');
+
+            // Clear previous items
+            itemsList.innerHTML = '';
+
+            // Add each selected item to the list
+            selectedItems.forEach(item => {
+                const itemElement = document.createElement('div');
+                itemElement.className = 'mb-1';
+
+                const icon = document.createElement('i');
+                icon.className = item.type === 'folder' ? 'fas fa-folder text-warning me-2' : 'fas fa-file text-secondary me-2';
+
+                itemElement.appendChild(icon);
+                itemElement.appendChild(document.createTextNode(item.type === 'folder' ? item.path : item.key));
+
+                itemsList.appendChild(itemElement);
+            });
+
+            // Set the keys for the form submission
+            keysInput.value = JSON.stringify(selectedItems);
+
+            // Set the form action
+            document.getElementById('bulkDeleteForm').action = `{{ url_for('bulk_delete', bucket_name=bucket_name, prefix=current_prefix, env=selected_env) }}`;
+        });
+    }
+
+    // Helper function to get all selected items
+    function getSelectedItems() {
+        const selectedItems = [];
+
+        document.querySelectorAll('.item-checkbox:checked').forEach(checkbox => {
+            const type = checkbox.getAttribute('data-type');
+
+            if (type === 'file') {
+                selectedItems.push({
+                    type: 'file',
+                    key: checkbox.getAttribute('data-key')
+                });
+            } else if (type === 'folder') {
+                selectedItems.push({
+                    type: 'folder',
+                    path: checkbox.getAttribute('data-path')
+                });
+            }
+        });
+
+        return selectedItems;
+    }
+
+    // Update the UI based on selected items
+    function updateSelectedItemsUI() {
+        const selectedItems = getSelectedItems();
+        const selectedCount = selectedItems.length;
+
+        // Update count display
+        if (selectedItemsCount) {
+            selectedItemsCount.textContent = `${selectedCount} selected`;
+        }
+
+        // Show/hide toolbar
+        if (bulkActionsToolbar) {
+            bulkActionsToolbar.style.display = selectedCount > 0 ? 'block' : 'none';
+        }
+
+        // Enable/disable buttons
+        if (bulkDownloadBtn) {
+            // Only enable download if there are files selected (not folders)
+            const selectedFiles = selectedItems.filter(item => item.type === 'file');
+            bulkDownloadBtn.disabled = selectedFiles.length === 0;
+        }
+
+        if (bulkDeleteBtn) {
+            bulkDeleteBtn.disabled = selectedCount === 0;
+        }
+    }
+
+    // Initialize the UI
+    updateSelectedItemsUI();
 });
 </script>
 {% endblock extra_scripts %}

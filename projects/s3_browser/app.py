@@ -1,9 +1,88 @@
-import os
+@app.route('/bulk_download/<bucket_name>', methods=['GET'])
+def bulk_download(bucket_name):
+    selected_env = request.args.get('env', '')
+    profile_name = ENVIRONMENTS.get(selected_env, None)
+
+    keys = request.args.get('keys', '').split(',')
+    if not keys or keys[0] == '':
+        flash('No files selected for download', 'warning')
+        return redirect(request.referrer)
+
+    # If only one file, use the standard download endpoint
+    if len(keys) == 1:
+        return redirect(url_for('download_file', bucket_name=bucket_name, object_key=keys[0], env=selected_env))
+
+    # For multiple files, we would need to create a zip file
+    # This would require additional server-side processing
+    # For simplicity, we'll just show a message that this is not implemented
+    # In a real application, you'd implement zip functionality here
+    flash(
+        'Bulk download functionality is not fully implemented in this demo. For production use, implement ZIP file creation.',
+        'info')
+    return redirect(request.referrer) @ app.route('/bulk_delete/<bucket_name>', defaults={'prefix': ''},
+                                                  methods=['POST'])
+
+
+@app.route('/bulk_delete/<bucket_name>/<path:prefix>', methods=['POST'])
+def bulk_delete(bucket_name, prefix):
+    selected_env = request.args.get('env', '')
+    profile_name = ENVIRONMENTS.get(selected_env, None)
+
+    keys_json = request.form.get('keys', '[]')
+    try:
+        selected_items = json.loads(keys_json)
+        s3 = get_s3_client(profile_name)
+
+        deleted_count = 0
+        error_count = 0
+
+        for item in selected_items:
+            try:
+                if item['type'] == 'file':
+                    s3.delete_object(Bucket=bucket_name, Key=item['key'])
+                    deleted_count += 1
+                elif item['type'] == 'folder':
+                    # List all objects with this prefix
+                    folder_prefix = item['path']
+                    response = s3.list_objects_v2(Bucket=bucket_name, Prefix=folder_prefix)
+
+                    if 'Contents' in response:
+                        # Create a list of objects to delete
+                        objects_to_delete = [{'Key': obj['Key']} for obj in response['Contents']]
+
+                        # Delete objects in batches of 1000 (S3 limit)
+                        for i in range(0, len(objects_to_delete), 1000):
+                            batch = objects_to_delete[i:i + 1000]
+                            s3.delete_objects(
+                                Bucket=bucket_name,
+                                Delete={
+                                    'Objects': batch,
+                                    'Quiet': True
+                                }
+                            )
+                            deleted_count += len(batch)
+            except Exception as e:
+                error_count += 1
+                app.logger.error(f"Error deleting {item}: {str(e)}")
+
+        if error_count == 0:
+            flash(f'Successfully deleted {deleted_count} item(s)', 'success')
+        else:
+            flash(f'Deleted {deleted_count} item(s), but encountered {error_count} error(s)', 'warning')
+
+    except Exception as e:
+        flash(f"Error during bulk delete: {str(e)}", 'danger')
+
+    return redirect(url_for('list_objects', bucket_name=bucket_name, prefix=prefix, env=selected_env))
+    import os
+
+
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 import boto3
 from werkzeug.utils import secure_filename
 from botocore.exceptions import ClientError
 import tempfile
+import json
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -36,31 +115,20 @@ def allowed_file(filename):
 
 @app.route('/')
 def index():
-    # On initial load, just show the environment selector
     selected_env = request.args.get('env', '')
-
-    if not selected_env:
-        # If no environment is selected, just show the environment selection form
-        return render_template('env_select.html',
-                               environments=ENVIRONMENTS,
-                               selected_env=selected_env)
-
-    # Get the AWS profile associated with the selected environment
     profile_name = ENVIRONMENTS.get(selected_env, None)
 
     try:
-        # Connect to S3 using the selected profile
         s3 = get_s3_client(profile_name)
         buckets = s3.list_buckets()
-
         return render_template('index.html',
                                buckets=buckets['Buckets'],
                                environments=ENVIRONMENTS,
-                               selected_env=selected_env,
-                               profile_name=profile_name)
+                               selected_env=selected_env)
     except Exception as e:
-        flash(f"Error listing buckets using profile '{profile_name}': {str(e)}", 'danger')
-        return render_template('env_select.html',
+        flash(f"Error listing buckets: {str(e)}", 'danger')
+        return render_template('index.html',
+                               buckets=[],
                                environments=ENVIRONMENTS,
                                selected_env=selected_env)
 
