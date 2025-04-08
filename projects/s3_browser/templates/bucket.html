@@ -272,7 +272,7 @@
 </div>
 
 <!-- Hidden form for bulk download -->
-<form id="bulkDownloadForm" method="get" style="display: none;">
+<form id="bulkDownloadForm" action="{{ url_for('bulk_download', bucket_name=bucket_name, env=selected_env) }}" method="post" style="display: none;">
     <input type="hidden" id="bulkDownloadKeys" name="keys">
 </form>
 {% endblock %}
@@ -420,12 +420,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const selectedFiles = getSelectedItems().filter(item => item.type === 'file');
 
             if (selectedFiles.length > 0) {
-                // For now, we'll open each file in a new tab - in production, you might want
-                // to implement a proper zip download functionality on the server side
-                selectedFiles.forEach(file => {
-                    const downloadUrl = `{{ url_for('download_file', bucket_name=bucket_name, object_key='KEY_PLACEHOLDER', env=selected_env) }}`.replace('KEY_PLACEHOLDER', encodeURIComponent(file.key));
-                    window.open(downloadUrl, '_blank');
-                });
+                // Set the keys for the form submission
+                document.getElementById('bulkDownloadKeys').value = JSON.stringify(selectedFiles);
+
+                // Submit the form to download the files
+                document.getElementById('bulkDownloadForm').submit();
             }
         });
     }

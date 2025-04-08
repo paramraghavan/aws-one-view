@@ -1,26 +1,85 @@
-@app.route('/bulk_download/<bucket_name>', methods=['GET'])
+@app.route('/bulk_download/<bucket_name>', methods=['POST'])
 def bulk_download(bucket_name):
     selected_env = request.args.get('env', '')
     profile_name = ENVIRONMENTS.get(selected_env, None)
 
-    keys = request.args.get('keys', '').split(',')
-    if not keys or keys[0] == '':
-        flash('No files selected for download', 'warning')
-        return redirect(request.referrer)
+    keys_json = request.form.get('keys', '[]')
+    try:
+        selected_items = json.loads(keys_json)
 
-    # If only one file, use the standard download endpoint
-    if len(keys) == 1:
-        return redirect(url_for('download_file', bucket_name=bucket_name, object_key=keys[0], env=selected_env))
+        # Filter to only include files (not folders)
+        file_items = [item for item in selected_items if item['type'] == 'file']
 
-    # For multiple files, we would need to create a zip file
-    # This would require additional server-side processing
-    # For simplicity, we'll just show a message that this is not implemented
-    # In a real application, you'd implement zip functionality here
-    flash(
-        'Bulk download functionality is not fully implemented in this demo. For production use, implement ZIP file creation.',
-        'info')
-    return redirect(request.referrer) @ app.route('/bulk_delete/<bucket_name>', defaults={'prefix': ''},
-                                                  methods=['POST'])
+        if not file_items:
+            flash('No files selected for download', 'warning')
+            return redirect(request.referrer)
+
+        # If only one file, use the standard download endpoint
+        if len(file_items) == 1:
+            return redirect(url_for('download_file',
+                                    bucket_name=bucket_name,
+                                    object_key=file_items[0]['key'],
+                                    env=selected_env))
+
+        s3 = get_s3_client(profile_name)
+
+        # Create a temporary directory to store downloaded files
+        temp_dir = tempfile.mkdtemp()
+
+        try:
+            # Create a ZIP file in memory
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            zip_filename = f"{bucket_name}_files_{timestamp}.zip"
+            zip_path = os.path.join(temp_dir, zip_filename)
+
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for item in file_items:
+                    key = item['key']
+                    # Extract filename from the key
+                    filename = key.split('/')[-1]
+
+                    # Handle duplicate filenames by adding path info if needed
+                    if sum(1 for i in file_items if i['key'].split('/')[-1] == filename) > 1:
+                        # Use path information to make the filename unique
+                        path_parts = key.split('/')
+                        if len(path_parts) > 1:
+                            # Use the parent folder and filename
+                            arcname = f"{path_parts[-2]}_{filename}"
+                        else:
+                            # Just use the key as is
+                            arcname = key
+                    else:
+                        arcname = filename
+
+                    # Download the file to a temporary file
+                    temp_file = os.path.join(temp_dir, filename)
+                    s3.download_file(bucket_name, key, temp_file)
+
+                    # Add file to the ZIP
+                    zipf.write(temp_file, arcname=arcname)
+
+                    # Remove the temporary file
+                    os.remove(temp_file)
+
+            # Send the ZIP file
+            return send_file(
+                zip_path,
+                as_attachment=True,
+                download_name=zip_filename,
+                # Clean up the temp directory after sending
+                # Flask 2.0+ uses 'on_close' callback for cleanup
+                on_close=lambda: shutil.rmtree(temp_dir, ignore_errors=True)
+            )
+
+        except Exception as e:
+            # Clean up temp directory in case of error
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            raise e
+
+    except Exception as e:
+        flash(f"Error during bulk download: {str(e)}", 'danger')
+        return redirect(request.referrer) @ app.route('/bulk_delete/<bucket_name>', defaults={'prefix': ''},
+                                                      methods=['POST'])
 
 
 @app.route('/bulk_delete/<bucket_name>/<path:prefix>', methods=['POST'])
@@ -83,6 +142,11 @@ from werkzeug.utils import secure_filename
 from botocore.exceptions import ClientError
 import tempfile
 import json
+import zipfile
+import io
+import time
+import shutil
+from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
