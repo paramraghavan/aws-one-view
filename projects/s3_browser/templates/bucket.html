@@ -502,9 +502,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Enable/disable buttons
         if (bulkDownloadBtn) {
-            // Only enable download if there are files selected (not folders)
-            const selectedFiles = selectedItems.filter(item => item.type === 'file');
-            bulkDownloadBtn.disabled = selectedFiles.length === 0;
+            // Enable download if any files or folders are selected
+            bulkDownloadBtn.disabled = selectedCount === 0;
         }
 
         if (bulkDeleteBtn) {
@@ -517,4 +516,3 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 {% endblock extra_scripts %}
-{% endblock %}

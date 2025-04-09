@@ -6,22 +6,46 @@ def bulk_download(bucket_name):
     keys_json = request.form.get('keys', '[]')
     try:
         selected_items = json.loads(keys_json)
+        s3 = get_s3_client(profile_name)
 
-        # Filter to only include files (not folders)
+        # Collect all file keys to download
+        keys_to_download = []
+
+        # Process files directly selected
         file_items = [item for item in selected_items if item['type'] == 'file']
+        for item in file_items:
+            keys_to_download.append({
+                'key': item['key'],
+                'original_path': item['key']
+            })
 
-        if not file_items:
+        # Process folders - list all objects within each folder
+        folder_items = [item for item in selected_items if item['type'] == 'folder']
+        for folder in folder_items:
+            folder_prefix = folder['path']
+            # Get all objects with this prefix
+            paginator = s3.get_paginator('list_objects_v2')
+            pages = paginator.paginate(Bucket=bucket_name, Prefix=folder_prefix)
+
+            for page in pages:
+                if 'Contents' in page:
+                    for obj in page['Contents']:
+                        if obj['Key'] != folder_prefix:  # Skip the folder object itself
+                            keys_to_download.append({
+                                'key': obj['Key'],
+                                'original_path': obj['Key']
+                            })
+
+        if not keys_to_download:
             flash('No files selected for download', 'warning')
             return redirect(request.referrer)
 
         # If only one file, use the standard download endpoint
-        if len(file_items) == 1:
+        if len(keys_to_download) == 1:
             return redirect(url_for('download_file',
                                     bucket_name=bucket_name,
-                                    object_key=file_items[0]['key'],
+                                    object_key=keys_to_download[0]['key'],
                                     env=selected_env))
-
-        s3 = get_s3_client(profile_name)
 
         # Create a temporary directory to store downloaded files
         temp_dir = tempfile.mkdtemp()
@@ -33,29 +57,25 @@ def bulk_download(bucket_name):
             zip_path = os.path.join(temp_dir, zip_filename)
 
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for item in file_items:
+                for item in keys_to_download:
                     key = item['key']
-                    # Extract filename from the key
-                    filename = key.split('/')[-1]
+                    original_path = item['original_path']
 
-                    # Handle duplicate filenames by adding path info if needed
-                    if sum(1 for i in file_items if i['key'].split('/')[-1] == filename) > 1:
-                        # Use path information to make the filename unique
-                        path_parts = key.split('/')
-                        if len(path_parts) > 1:
-                            # Use the parent folder and filename
-                            arcname = f"{path_parts[-2]}_{filename}"
-                        else:
-                            # Just use the key as is
-                            arcname = key
+                    # Create a meaningful path inside the ZIP
+                    # For files directly in the bucket root, use just the filename
+                    # For files in folders, preserve the folder structure
+                    if '/' in original_path:
+                        # Use the full path after the bucket name
+                        arcname = original_path
                     else:
-                        arcname = filename
+                        # Just use the filename
+                        arcname = original_path
 
                     # Download the file to a temporary file
-                    temp_file = os.path.join(temp_dir, filename)
+                    temp_file = os.path.join(temp_dir, os.path.basename(key))
                     s3.download_file(bucket_name, key, temp_file)
 
-                    # Add file to the ZIP
+                    # Add file to the ZIP with its path structure
                     zipf.write(temp_file, arcname=arcname)
 
                     # Remove the temporary file
@@ -67,7 +87,6 @@ def bulk_download(bucket_name):
                 as_attachment=True,
                 download_name=zip_filename,
                 # Clean up the temp directory after sending
-                # Flask 2.0+ uses 'on_close' callback for cleanup
                 on_close=lambda: shutil.rmtree(temp_dir, ignore_errors=True)
             )
 
