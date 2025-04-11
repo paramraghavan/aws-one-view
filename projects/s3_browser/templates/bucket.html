@@ -417,14 +417,27 @@ document.addEventListener('DOMContentLoaded', function() {
     // Bulk Download button
     if (bulkDownloadBtn) {
         bulkDownloadBtn.addEventListener('click', function() {
-            const selectedFiles = getSelectedItems().filter(item => item.type === 'file');
+            const selectedItems = getSelectedItems();
 
-            if (selectedFiles.length > 0) {
+            if (selectedItems.length > 0) {
+                // Show a loading indicator if many items are selected or folders are included
+                const folderSelected = selectedItems.some(item => item.type === 'folder');
+                if (folderSelected || selectedItems.length > 10) {
+                    bulkDownloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Preparing Download...';
+                    bulkDownloadBtn.disabled = true;
+                }
+
                 // Set the keys for the form submission
-                document.getElementById('bulkDownloadKeys').value = JSON.stringify(selectedFiles);
+                document.getElementById('bulkDownloadKeys').value = JSON.stringify(selectedItems);
 
                 // Submit the form to download the files
                 document.getElementById('bulkDownloadForm').submit();
+
+                // Reset button after a delay
+                setTimeout(() => {
+                    bulkDownloadBtn.innerHTML = '<i class="fas fa-download me-1"></i>Download Selected';
+                    bulkDownloadBtn.disabled = false;
+                }, 3000);
             }
         });
     }
