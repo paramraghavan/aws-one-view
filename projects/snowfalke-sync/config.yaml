@@ -1,5 +1,6 @@
 # Snowflake Database Sync Configuration
 sync_interval_minutes: 60  # Configurable sync interval
+chunk_size: 10000  # Number of rows to read/write per chunk (adjust based on your needs)
 
 # Source and Target Database Configurations
 databases:

@@ -116,21 +116,46 @@ def get_snowflake_connection(db_config):
             conn.close()
 
 
+def get_table_row_count(cursor, table_name):
+    """Get the total number of rows in a table"""
+    try:
+        cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+        result = cursor.fetchone()
+        return result[0] if result else 0
+    except Exception as e:
+        logger.warning(f"Could not get row count for {table_name}: {e}")
+        return None
+
+
+def get_table_columns(cursor, table_name):
+    """Get column information for a table"""
+    try:
+        cursor.execute(f"SELECT * FROM {table_name} LIMIT 0")
+        return [desc[0] for desc in cursor.description]
+    except Exception as e:
+        logger.error(f"Could not get columns for {table_name}: {e}")
+        raise
+
+
 def sync_table(source_config, target_config, table_name):
-    """Sync a single table from source to target"""
+    """Sync a single table from source to target using chunked reading"""
     records_synced = 0
+    chunk_size = config.get('chunk_size', 10000)  # Default 10K rows per chunk
+
+    logger.info(f"Starting sync for table {table_name} with chunk size {chunk_size}")
 
     try:
-        # Connect to source database
+        # Connect to source database to get table info
         with get_snowflake_connection(source_config) as source_conn:
             source_cursor = source_conn.cursor()
 
-            # Get table data from source
-            source_cursor.execute(f"SELECT * FROM {table_name}")
-            source_data = source_cursor.fetchall()
-            columns = [desc[0] for desc in source_cursor.description]
+            # Get table columns
+            columns = get_table_columns(source_cursor, table_name)
+            logger.info(f"Table {table_name} has {len(columns)} columns")
 
-            if not source_data:
+            # Get total row count for progress tracking
+            total_rows = get_table_row_count(source_cursor, table_name)
+            if total_rows == 0:
                 add_log_entry(
                     source_config['database'],
                     target_config['database'],
@@ -139,26 +164,93 @@ def sync_table(source_config, target_config, table_name):
                     0,
                     'No data to sync'
                 )
+                logger.info(f"Table {table_name} is empty, skipping sync")
                 return
 
-            # Connect to target database
+            logger.info(f"Table {table_name} has {total_rows:,} total rows")
+
+            # Connect to target database and prepare for chunked insertion
             with get_snowflake_connection(target_config) as target_conn:
                 target_cursor = target_conn.cursor()
 
-                # Truncate target table (you might want to modify this logic)
+                # Truncate target table at the beginning
+                logger.info(f"Truncating target table {table_name}")
                 target_cursor.execute(f"TRUNCATE TABLE {table_name}")
+                target_conn.commit()
 
                 # Prepare insert statement
                 placeholders = ', '.join(['%s'] * len(columns))
                 insert_query = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders})"
 
-                # Insert data in batches
-                batch_size = 1000
-                for i in range(0, len(source_data), batch_size):
-                    batch = source_data[i:i + batch_size]
-                    target_cursor.executemany(insert_query, batch)
-                    records_synced += len(batch)
+                # Process data in chunks
+                offset = 0
+                chunk_number = 1
 
+                while True:
+                    if should_stop:
+                        logger.info(f"Sync stopped by user for table {table_name}")
+                        break
+
+                    # Read chunk from source
+                    chunk_query = f"SELECT * FROM {table_name} LIMIT {chunk_size} OFFSET {offset}"
+                    logger.debug(f"Executing chunk query: {chunk_query}")
+
+                    source_cursor.execute(chunk_query)
+                    chunk_data = source_cursor.fetchall()
+
+                    # If no more data, we're done
+                    if not chunk_data:
+                        logger.info(f"No more data to read for table {table_name}")
+                        break
+
+                    # Insert chunk into target
+                    chunk_size_actual = len(chunk_data)
+                    logger.info(
+                        f"Processing chunk {chunk_number} for table {table_name}: {chunk_size_actual:,} rows (offset: {offset:,})")
+
+                    try:
+                        # Insert data in smaller batches within the chunk to avoid memory issues
+                        insert_batch_size = min(1000, chunk_size_actual)
+
+                        for i in range(0, chunk_size_actual, insert_batch_size):
+                            batch = chunk_data[i:i + insert_batch_size]
+                            target_cursor.executemany(insert_query, batch)
+
+                            # Progress logging for large chunks
+                            if chunk_size_actual > 5000 and i > 0 and i % 5000 == 0:
+                                logger.debug(f"Inserted {i:,} rows of current chunk for table {table_name}")
+
+                        # Commit the entire chunk
+                        target_conn.commit()
+                        records_synced += chunk_size_actual
+
+                        # Progress reporting
+                        if total_rows:
+                            progress_pct = (records_synced / total_rows) * 100
+                            logger.info(
+                                f"Progress for {table_name}: {records_synced:,}/{total_rows:,} ({progress_pct:.1f}%)")
+                        else:
+                            logger.info(f"Synced {records_synced:,} rows for table {table_name}")
+
+                    except Exception as batch_error:
+                        logger.error(f"Error inserting chunk {chunk_number} for table {table_name}: {batch_error}")
+                        # Rollback the current transaction
+                        target_conn.rollback()
+                        raise batch_error
+
+                    # Move to next chunk
+                    offset += chunk_size_actual
+                    chunk_number += 1
+
+                    # If we got less data than requested, we've reached the end
+                    if chunk_size_actual < chunk_size:
+                        logger.info(f"Reached end of data for table {table_name}")
+                        break
+
+                    # Small delay to prevent overwhelming the databases
+                    time.sleep(0.1)
+
+                # Final commit
                 target_conn.commit()
 
                 add_log_entry(
@@ -169,7 +261,7 @@ def sync_table(source_config, target_config, table_name):
                     records_synced
                 )
 
-                logger.info(f"Successfully synced {records_synced} records for table {table_name}")
+                logger.info(f"Successfully synced {records_synced:,} records for table {table_name}")
 
     except Exception as e:
         error_msg = str(e)
@@ -182,6 +274,7 @@ def sync_table(source_config, target_config, table_name):
             error_msg
         )
         logger.error(f"Error syncing table {table_name}: {error_msg}")
+        logger.error(f"Records synced before error: {records_synced:,}")
 
 
 def sync_databases():
