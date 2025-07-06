@@ -1,0 +1,16 @@
+<!-- templates/proxy.html -->
+{% extends "base.html" %}
+
+{% block title %}{{ app.name }} - FlaskHub{% endblock %}
+
+{% block content %}
+<a href="/" class="back-btn">
+    <i class="fas fa-arrow-left"></i> Back to Hub
+</a>
+
+<div style="margin-top: 80px; height: calc(100vh - 80px);">
+    <iframe src="{{ app.url }}"
+            style="width: 100%; height: 100%; border: none; border-radius: 10px;">
+    </iframe>
+</div>
+{% endblock %}
