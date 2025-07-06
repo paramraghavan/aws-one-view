@@ -97,10 +97,11 @@ def index():
 @app.route('/proxy/<path:app_name>')
 def proxy_app(app_name):
     """Proxy page for embedding apps"""
-    # Find the app by name
+    # Find the app by name or slug
     target_app = None
     for app_config in FLASK_APPS:
-        if app_config['name'].lower().replace(' ', '-') == app_name.lower():
+        app_slug = app_config['name'].lower().replace(' ', '-')
+        if app_slug == app_name.lower():
             target_app = app_config
             break
 

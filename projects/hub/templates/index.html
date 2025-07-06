@@ -28,10 +28,16 @@
             <div class="app-description">{{ app.description }}</div>
             <div class="app-actions">
                 <button class="btn btn-primary" onclick="openInOverlay('{{ app.url }}', '{{ app.name }}')">
-                    <i class="fas fa-expand"></i> Open Overlay
+                    <i class="fas fa-expand"></i> Overlay
                 </button>
-                <a href="{{ app.url }}" target="_blank" class="btn btn-secondary">
-                    <i class="fas fa-external-link-alt"></i> New Tab
+                <button class="btn btn-secondary" onclick="openInAppTab('{{ app.url }}', '{{ app.name }}')">
+                    <i class="fas fa-tab"></i> App Tab
+                </button>
+                <button class="btn btn-tertiary" onclick="openInNewWindow('{{ app.url }}', '{{ app.name }}')">
+                    <i class="fas fa-external-link-alt"></i> Window
+                </button>
+                <a href="{{ app.url }}" target="_blank" class="btn btn-quaternary">
+                    <i class="fas fa-link"></i> Direct
                 </a>
             </div>
         </div>

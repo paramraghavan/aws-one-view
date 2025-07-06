@@ -62,12 +62,13 @@ flask_apps:
     icon: 📡
     category: monitoring
 
-  - name: Transfer
-    url: http://localhost:5010
-    description: Transfer data
-    status: development
-    icon:  🔄
-    category: utility
+
+  - name: Snowflake to S3 ETL
+    url: http://localhost:5011
+    description: Extract data from Snowflake and load to Amazon S3
+    status: active
+    icon: 🔄
+    category: etl
 
 # FlaskHub Configuration
 # Valid status values: active, maintenance, development, offline

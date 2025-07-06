@@ -92,22 +92,25 @@
 
         .app-actions {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             flex-wrap: wrap;
         }
 
         .btn {
-            padding: 10px 20px;
+            padding: 8px 16px;
             border: none;
-            border-radius: 8px;
+            border-radius: 6px;
             cursor: pointer;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             font-weight: 500;
             text-decoration: none;
             display: inline-flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             transition: all 0.3s ease;
+            flex: 1;
+            min-width: 90px;
+            justify-content: center;
         }
 
         .btn-primary {
@@ -120,11 +123,29 @@
         }
 
         .btn-secondary {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #38a169;
+        }
+
+        .btn-tertiary {
+            background: #ed8936;
+            color: white;
+        }
+
+        .btn-tertiary:hover {
+            background: #dd6b20;
+        }
+
+        .btn-quaternary {
             background: #e2e8f0;
             color: #4a5568;
         }
 
-        .btn-secondary:hover {
+        .btn-quaternary:hover {
             background: #cbd5e0;
         }
 
@@ -300,6 +321,18 @@
             document.getElementById('iframeTitle').textContent = title;
             document.getElementById('iframeContainer').style.display = 'block';
             document.body.style.overflow = 'hidden';
+        }
+
+        function openInNewWindow(url, title) {
+            const windowFeatures = 'width=1200,height=800,scrollbars=yes,resizable=yes,toolbar=no,menubar=no,location=no,status=no';
+            window.open(url, title.replace(/\s+/g, '_'), windowFeatures);
+        }
+
+        function openInAppTab(url, appName) {
+            // Create a new tab within the application
+            const appSlug = appName.toLowerCase().replace(/\s+/g, '-');
+            const tabUrl = `/proxy/${appSlug}`;
+            window.location.href = tabUrl;
         }
 
         function closeOverlay() {
