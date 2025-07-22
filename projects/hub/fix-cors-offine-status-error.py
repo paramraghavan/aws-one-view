@@ -37,60 +37,125 @@ def is_local_url(host):
     if host.lower() in local_hosts:
         return True
 
-    # Check if it's the same as current server's hostname/IP
     try:
-        current_ip = socket.gethostbyname(socket.gethostname())
-        target_ip = socket.gethostbyname(host)
-        return current_ip == target_ip
-    except:
-        return False
+        # Get current server's IP addresses
+        current_hostname = socket.gethostname()
+        current_fqdn = socket.getfqdn()
+
+        # Get all possible IPs for current server
+        current_ips = set()
+        try:
+            current_ips.add(socket.gethostbyname(current_hostname))
+            current_ips.add(socket.gethostbyname(current_fqdn))
+            # Also get all network interfaces
+            import netifaces
+            for interface in netifaces.interfaces():
+                addrs = netifaces.ifaddresses(interface)
+                if netifaces.AF_INET in addrs:
+                    for addr in addrs[netifaces.AF_INET]:
+                        current_ips.add(addr['addr'])
+        except ImportError:
+            # netifaces not available, use basic approach
+            current_ips.add(socket.gethostbyname(current_hostname))
+        except:
+            pass
+
+        # Check if target host resolves to any of our IPs
+        try:
+            target_ip = socket.gethostbyname(host)
+            if target_ip in current_ips:
+                return True
+        except:
+            pass
+
+        # Check if hostname matches
+        if host.lower() in [current_hostname.lower(), current_fqdn.lower()]:
+            return True
+
+    except Exception as e:
+        print(f"Error determining if {host} is local: {e}")
+
+    return False
 
 
 def check_local_app_status(url, host, port):
-    """Check status for local apps with multiple fallback methods"""
+    """Check status for local/same-server apps with multiple fallback methods"""
 
     # Method 1: Try direct HTTP request with headers that bypass CORS issues
     try:
         headers = {
             'User-Agent': 'Internal-Status-Check',
             'Accept': 'text/html,application/json,*/*',
-            'Cache-Control': 'no-cache'
+            'Cache-Control': 'no-cache',
+            'Connection': 'close'  # Avoid connection pooling issues
         }
-        response = requests.get(url, timeout=5, headers=headers)
+        response = requests.get(url, timeout=5, headers=headers, allow_redirects=True)
         if response.status_code == 200:
             return 'online'
-    except requests.exceptions.RequestException:
-        pass
+    except requests.exceptions.RequestException as e:
+        print(f"HTTP request failed for {url}: {e}")
 
-    # Method 2: Try a simple socket connection to check if port is open
+    # Method 2: Socket connection test (works for any same-server app regardless of CORS)
+    print(f"Trying socket connection to {host}:{port}")
     try:
+        # Try to resolve host first
+        resolved_ip = socket.gethostbyname(host)
+        print(f"Resolved {host} to {resolved_ip}")
+
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.settimeout(5)
-            result = sock.connect_ex((host, port))
+            result = sock.connect_ex((resolved_ip, port))
             if result == 0:
-                # Port is open, but let's try HTTP again with different approach
+                print(f"Socket connection successful to {host}:{port}")
+                # Port is open, try HTTP again with different approaches
+
+                # Try with the resolved IP
                 try:
-                    # Try with session to handle cookies/redirects better
+                    ip_url = url.replace(host, resolved_ip)
+                    response = requests.get(ip_url, timeout=3, headers={'Host': host})
+                    if response.status_code == 200:
+                        return 'online'
+                except:
+                    pass
+
+                # Try with session and different headers
+                try:
                     session = requests.Session()
                     session.headers.update({
-                        'Origin': f"http://{host}:{port}",
-                        'Referer': f"http://{host}:{port}"
+                        'User-Agent': 'Mozilla/5.0 (Internal Status Check)',
+                        'Accept': '*/*'
                     })
                     response = session.get(url, timeout=3)
-                    return 'online' if response.status_code == 200 else 'partial'
+                    if response.status_code == 200:
+                        return 'online'
                 except:
-                    return 'partial'  # Port open but HTTP not responding properly
-    except:
-        pass
+                    pass
 
-    # Method 3: Try different URL variations
-    try:
-        # Try with explicit localhost
-        local_url = url.replace(host, 'localhost')
-        response = requests.get(local_url, timeout=3)
-        return 'online' if response.status_code == 200 else 'offline'
-    except:
-        pass
+                return 'partial'  # Port open but HTTP not responding properly
+            else:
+                print(f"Socket connection failed to {host}:{port} with error code {result}")
+    except Exception as e:
+        print(f"Socket connection error: {e}")
+
+    # Method 3: Try localhost variations for same-server apps
+    if host not in ['localhost', '127.0.0.1']:
+        try:
+            print("Trying localhost fallback")
+            local_url = url.replace(host, 'localhost')
+            response = requests.get(local_url, timeout=3)
+            if response.status_code == 200:
+                return 'online'
+        except Exception as e:
+            print(f"Localhost fallback failed: {e}")
+
+        try:
+            print("Trying 127.0.0.1 fallback")
+            local_url = url.replace(host, '127.0.0.1')
+            response = requests.get(local_url, timeout=3)
+            if response.status_code == 200:
+                return 'online'
+        except Exception as e:
+            print(f"127.0.0.1 fallback failed: {e}")
 
     return 'offline'
 
@@ -160,7 +225,47 @@ def configure_flask_app_with_cors():
     return app
 
 
-# Usage example
+# Quick and simple version for immediate use
+def quick_check_app_status(url):
+    """Simplified version that handles CORS issues for same-server apps"""
+    try:
+        # First try normal HTTP request
+        headers = {'User-Agent': 'Internal-Status-Check'}
+        response = requests.get(url, timeout=5, headers=headers)
+        return 'online' if response.status_code == 200 else 'offline'
+    except:
+        # Fallback: try socket connection for same-server URLs
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            host = parsed.hostname
+            port = parsed.port or (443 if parsed.scheme == 'https' else 80)
+
+            # Check if this might be same server
+            is_same_server = (
+                    host in ['localhost', '127.0.0.1', '0.0.0.0'] or
+                    host == socket.gethostname() or
+                    host == socket.getfqdn()
+            )
+
+            if is_same_server or True:  # Try socket fallback for any failed HTTP request
+                print(f"Trying socket fallback for {host}:{port}")
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                    sock.settimeout(3)
+                    try:
+                        resolved_ip = socket.gethostbyname(host)
+                        result = sock.connect_ex((resolved_ip, port))
+                        return 'online' if result == 0 else 'offline'
+                    except:
+                        # If hostname resolution fails, try localhost
+                        result = sock.connect_ex(('localhost', port))
+                        return 'online' if result == 0 else 'offline'
+        except:
+            pass
+
+        return 'offline'
+
+
 def monitor_multiple_apps():
     """Example of monitoring multiple apps"""
     apps_to_monitor = [
@@ -179,7 +284,7 @@ def monitor_multiple_apps():
     return results
 
 
-# Enhanced status check with retry logic
+# Usage example
 def check_app_status_with_retry(url, max_retries=3, delay=1):
     """Check app status with retry logic"""
     import time

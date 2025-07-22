@@ -63,3 +63,23 @@ def check_app_status(url):
         return 'offline'
 ```
 
+### 5
+Test if the port is open and accepting connections, works whether it's localhost, myserver.com, or an IP address
+```python
+def quick_check_app_status(url):
+    try:
+        # Try HTTP first
+        response = requests.get(url, timeout=5, headers={'User-Agent': 'Internal-Status-Check'})
+        return 'online' if response.status_code == 200 else 'offline'
+    except:
+        # Socket fallback for same-server apps (bypasses CORS entirely)
+        parsed = urlparse(url)
+        host = parsed.hostname
+        port = parsed.port or (443 if parsed.scheme == 'https' else 80)
+        
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(3)
+            resolved_ip = socket.gethostbyname(host)
+            result = sock.connect_ex((resolved_ip, port))
+            return 'online' if result == 0 else 'offline'
+```
