@@ -1,0 +1,75 @@
+flask_apps:
+  - name: User Management App
+    url: http://localhost:5001
+    description: Handles user registration and authentication
+    status: active
+    icon: 👤
+    category: backend
+
+  - name: Data Analytics Dashboard
+    url: http://localhost:5002
+    description: Analytics and reporting dashboard
+    status: active
+    icon: 📊
+    category: frontend
+
+  - name: File Manager
+    url: http://localhost:5003
+    description: File upload and management system
+    status: active
+    icon: 📁
+    category: utility
+
+  - name: API Gateway
+    url: http://localhost:5004
+    description: Central API management service
+    status: active
+    icon: 🌐
+    category: backend
+
+  - name: Task Scheduler
+    url: http://localhost:5005
+    description: Background task management
+    status: maintenance
+    icon: ⏰
+    category: service
+
+  - name: E-commerce API
+    url: http://localhost:5006
+    description: Product catalog and order management
+    status: active
+    icon: 🛒
+    category: backend
+
+  - name: Notification Service
+    url: http://localhost:5007
+    description: Email and SMS notification system
+    status: active
+    icon: 📧
+    category: service
+
+  - name: Content Management
+    url: http://localhost:5008
+    description: CMS for blog and content pages
+    status: active
+    icon: 📝
+    category: frontend
+
+  - name: Monitoring Dashboard
+    url: http://localhost:5009
+    description: System monitoring and alerts
+    status: active
+    icon: 📡
+    category: monitoring
+
+
+  - name: Snowflake to S3 ETL
+    url: http://localhost:5011
+    description: Extract data from Snowflake and load to Amazon S3
+    status: active
+    icon: 🔄
+    category: etl
+
+# FlaskHub Configuration
+# Valid status values: active, maintenance, development, offline
+# Valid categories: backend, frontend, utility, service, monitoring, api

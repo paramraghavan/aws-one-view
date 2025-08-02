@@ -1,0 +1,57 @@
+<!-- templates/index.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="header">
+        <h1><i class="fas fa-rocket"></i> FlaskHub</h1>
+        <p>Your Central Flask Application Manager</p>
+    </div>
+
+    <div class="apps-grid">
+        {% for app in apps %}
+        <div class="app-card">
+            <div class="app-header">
+                <div class="app-icon">{{ app.icon }}</div>
+                <div>
+                    <div class="app-title">
+                        {{ app.name }}
+                        {% if app.category %}
+                        <span class="app-category category-{{ app.category }}">{{ app.category }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="status-indicator status-{{ app.status }}" id="status-{{ app.name.lower().replace(' ', '-') }}">
+                        <i class="fas fa-circle"></i> {{ app.status.title() }}
+                    </div>
+                </div>
+            </div>
+            <div class="app-description">{{ app.description }}</div>
+            <div class="app-actions">
+                <button class="btn btn-primary" onclick="openInOverlay('{{ app.url }}', '{{ app.name }}')">
+                    <i class="fas fa-expand"></i> Overlay
+                </button>
+                <button class="btn btn-secondary" onclick="openInAppTab('{{ app.url }}', '{{ app.name }}')">
+                    <i class="fas fa-tab"></i> App Tab
+                </button>
+                <button class="btn btn-tertiary" onclick="openInNewWindow('{{ app.url }}', '{{ app.name }}')">
+                    <i class="fas fa-external-link-alt"></i> Window
+                </button>
+                <a href="{{ app.url }}" target="_blank" class="btn btn-quaternary">
+                    <i class="fas fa-link"></i> Direct
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div id="notification" class="notification"></div>
+
+<button class="refresh-btn" onclick="refreshStatus()" title="Refresh Status">
+    <i class="fas fa-sync-alt"></i>
+</button>
+
+<button class="reload-btn" onclick="reloadConfig()" title="Reload Configuration">
+    <i class="fas fa-redo-alt"></i>
+</button>
+{% endblock %}

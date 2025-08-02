@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMR Job Cost Calculator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            opacity: 0.8;
+            font-size: 1.1em;
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 30px;
+            padding: 30px;
+        }
+
+        .sidebar {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        .main-content {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        }
+
+        .form-section {
+            margin-bottom: 30px;
+        }
+
+        .form-section h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 5px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e6ed;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .pricing-item {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #ddd;
+        }
+
+        .pricing-item label {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .pricing-item input {
+            margin-top: 5px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(52, 152, 219, 0.3);
+        }
+
+        .btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .results-container {
+            margin-top: 20px;
+        }
+
+        .cluster-info {
+            background: #e8f6f3;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #16a085;
+        }
+
+        .cluster-info h4 {
+            color: #16a085;
+            margin-bottom: 10px;
+        }
+
+        .job-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .job-table th {
+            background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 500;
+        }
+
+        .job-table td {
+            padding: 15px;
+            border-bottom: 1px solid #ecf0f1;
+            transition: background-color 0.3s ease;
+        }
+
+        .job-table tr:hover td {
+            background-color: #f8f9fa;
+        }
+
+        .job-table tr:nth-child(even) td {
+            background-color: #fdfdfd;
+        }
+
+        .cost-cell {
+            font-weight: bold;
+            color: #e74c3c;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #bdc3c7;
+            border-radius: 50%;
+            border-top-color: #3498db;
+            animation: spin 1s ease-in-out infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .total-cost {
+            background: #fff5f5;
+            border: 2px solid #e53e3e;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .total-cost h3 {
+            color: #e53e3e;
+            font-size: 1.5em;
+        }
+
+        .error {
+            background: #fee;
+            color: #c53030;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 4px solid #e53e3e;
+        }
+
+        .success {
+            background: #f0fff4;
+            color: #22543d;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 4px solid #38a169;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.85em;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .status-running {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-terminated {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-waiting {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        @media (max-width: 1024px) {
+            .content {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+
+            .content {
+                padding: 20px;
+            }
+
+            .job-table {
+                font-size: 0.9em;
+            }
+
+            .job-table th,
+            .job-table td {
+                padding: 10px 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>EMR Job Cost Calculator</h1>
+            <p>Calculate and analyze costs for your Spark jobs running on EMR clusters</p>
+        </div>
+
+        <div class="content">
+            <div class="sidebar">
+                <div class="form-section">
+                    <h3>Cluster Configuration</h3>
+                    <div class="form-group">
+                        <label for="clusterId">Cluster ID</label>
+                        <input type="text" id="clusterId" placeholder="j-XXXXXXXXXXXXX">
+                    </div>
+                    <div class="form-group">
+                        <label for="region">AWS Region</label>
+                        <select id="region">
+                            <option value="us-east-1">US East (N. Virginia)</option>
+                            <option value="us-west-1">US West (N. California)</option>
+                            <option value="us-west-2">US West (Oregon)</option>
+                            <option value="eu-west-1">Europe (Ireland)</option>
+                            <option value="eu-central-1">Europe (Frankfurt)</option>
+                            <option value="ap-south-1">Asia Pacific (Mumbai)</option>
+                            <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="jobFilter">Job Name Filter (optional)</label>
+                        <input type="text" id="jobFilter" placeholder="Enter job name to filter">
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3>Pricing Configuration ($/hour)</h3>
+                    <div class="pricing-grid">
+                        <div class="pricing-item">
+                            <label for="masterOnDemand">Master (On-Demand)</label>
+                            <input type="number" id="masterOnDemand" value="0.27" step="0.01" min="0">
+                        </div>
+                        <div class="pricing-item">
+                            <label for="masterSpot">Master (Spot)</label>
+                            <input type="number" id="masterSpot" value="0.08" step="0.01" min="0">
+                        </div>
+                        <div class="pricing-item">
+                            <label for="coreOnDemand">Core (On-Demand)</label>
+                            <input type="number" id="coreOnDemand" value="0.27" step="0.01" min="0">
+                        </div>
+                        <div class="pricing-item">
+                            <label for="coreSpot">Core (Spot)</label>
+                            <input type="number" id="coreSpot" value="0.08" step="0.01" min="0">
+                        </div>
+                        <div class="pricing-item">
+                            <label for="taskOnDemand">Task (On-Demand)</label>
+                            <input type="number" id="taskOnDemand" value="0.27" step="0.01" min="0">
+                        </div>
+                        <div class="pricing-item">
+                            <label for="taskSpot">Task (Spot)</label>
+                            <input type="number" id="taskSpot" value="0.08" step="0.01" min="0">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-top: 15px;">
+                        <label for="taskSpotPercentage">Task Nodes Spot Percentage (%)</label>
+                        <input type="range" id="taskSpotPercentage" min="0" max="100" value="70"
+                               oninput="updateSpotPercentageDisplay(this.value)" style="width: 100%;">
+                        <div style="text-align: center; margin-top: 5px; font-weight: bold; color: #3498db;">
+                            <span id="spotPercentageDisplay">70%</span> Spot, <span id="onDemandPercentageDisplay">30%</span> On-Demand
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn" onclick="calculateCosts()">Calculate Job Costs</button>
+            </div>
+
+            <div class="main-content">
+                <div id="results-container">
+                    <div style="text-align: center; padding: 60px 20px; color: #7f8c8d;">
+                        <h3>Enter cluster details and click "Calculate Job Costs" to view results</h3>
+                        <p style="margin-top: 15px; opacity: 0.8;">Configure your cluster ID, region, and pricing to get started</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showLoading() {
+            document.getElementById('results-container').innerHTML = `
+                <div class="loading">
+                    Connecting to AWS and calculating costs...
+                </div>
+            `;
+        }
+
+        function showError(message) {
+            document.getElementById('results-container').innerHTML = `
+                <div class="error">
+                    <strong>Error:</strong> ${message}
+                </div>
+            `;
+        }
+
+        function formatDateTime(dateString) {
+            if (!dateString) return 'N/A';
+            try {
+                const date = new Date(dateString);
+                return date.toLocaleString();
+            } catch {
+                return dateString;
+            }
+        }
+
+        function getStatusClass(state) {
+            const stateMap = {
+                'RUNNING': 'status-running',
+                'WAITING': 'status-waiting',
+                'TERMINATED': 'status-terminated',
+                'TERMINATING': 'status-terminated'
+            };
+            return stateMap[state] || 'status-waiting';
+        }
+
+        function updateSpotPercentageDisplay(value) {
+            document.getElementById('spotPercentageDisplay').textContent = value + '%';
+            document.getElementById('onDemandPercentageDisplay').textContent = (100 - value) + '%';
+        }
+
+        function displayResults(data) {
+            const filter = document.getElementById('jobFilter').value;
+
+            let filterMessage = '';
+            if (filter) {
+                filterMessage = `<div class="success">Showing ${data.jobs.length} jobs filtered by "${filter}"</div>`;
+            }
+
+            const resultsHtml = `
+                <div class="cluster-info">
+                    <h4>Cluster Information</h4>
+                    <p><strong>Name:</strong> ${data.cluster_info.name}</p>
+                    <p><strong>State:</strong> <span class="status-indicator ${getStatusClass(data.cluster_info.state)}">${data.cluster_info.state}</span></p>
+                    <p><strong>Configuration:</strong> ${data.cluster_info.master_nodes} Master + ${data.cluster_info.core_nodes} Core + ${data.cluster_info.task_nodes} Task Nodes</p>
+                    <p><strong>Always-On Rate:</strong> ${data.base_hourly_rate.toFixed(4)}/hour (Master + Core)</p>
+                    <p><strong>Task Nodes Rate:</strong> ${data.task_hourly_rate.toFixed(4)}/hour</p>
+                    <p><strong>Total Hourly Rate:</strong> ${data.hourly_rate.toFixed(4)}/hour</p>
+                    ${data.cluster_info.created_time ? `<p><strong>Created:</strong> ${formatDateTime(data.cluster_info.created_time)}</p>` : ''}
+                </div>
+
+                ${data.cost_breakdown ? `
+                <div class="cluster-info" style="background: #f8f9fa; border-left-color: #6c757d;">
+                    <h4>Cost Breakdown</h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 10px;">
+                        ${Object.entries(data.cost_breakdown).map(([nodeType, breakdown]) => `
+                            <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #dee2e6;">
+                                <h5 style="color: #495057; margin-bottom: 8px; text-transform: capitalize;">${nodeType} Nodes</h5>
+                                <p><strong>Count:</strong> ${breakdown.count}</p>
+                                <p><strong>Rate:</strong> ${breakdown.rate.toFixed(4)}/hr${breakdown.spot_percentage ? ` (${breakdown.spot_percentage.toFixed(0)}% spot)` : ''}</p>
+                                <p><strong>Cost:</strong> ${breakdown.cost.toFixed(4)}/hr</p>
+                                <p><strong>Type:</strong> ${breakdown.always_on ? 'Always On' : 'Job Duration'}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                ` : ''}
+
+                ${filterMessage}
+
+                ${data.jobs.length > 0 ? `
+                <table class="job-table">
+                    <thead>
+                        <tr>
+                            <th>Job Name</th>
+                            <th>Duration (hrs)</th>
+                            <th>Base Cost ($)</th>
+                            <th>Task Cost ($)</th>
+                            <th>Total Cost ($)</th>
+                            <th>Start Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.jobs.map(job => `
+                            <tr>
+                                <td title="${job.step_id}">${job.job_name}</td>
+                                <td>${job.duration_hours.toFixed(2)}</td>
+                                <td class="cost-cell">${job.base_cost.toFixed(4)}</td>
+                                <td class="cost-cell">${job.task_cost.toFixed(4)}</td>
+                                <td class="cost-cell" style="font-weight: bold; color: #c0392b;">${job.estimated_cost.toFixed(4)}</td>
+                                <td>${formatDateTime(job.start_time)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+
+                <div class="total-cost">
+                    <h3>Total Estimated Cost: ${data.total_cost.toFixed(4)}</h3>
+                    <p>Base Cost (Always-On): ${data.total_base_cost.toFixed(4)} | Task Nodes: ${(data.total_cost - data.total_base_cost).toFixed(4)}</p>
+                    <p>Based on ${data.job_count} completed job(s)</p>
+                </div>
+                ` : `
+                <div style="text-align: center; padding: 40px; color: #7f8c8d;">
+                    <h3>No completed jobs found</h3>
+                    <p>Try adjusting your job name filter or check if jobs have completed execution.</p>
+                </div>
+                `}
+            `;
+
+            document.getElementById('results-container').innerHTML = resultsHtml;
+        }
+
+        async function calculateCosts() {
+            const clusterId = document.getElementById('clusterId').value.trim();
+            const region = document.getElementById('region').value;
+            const jobFilter = document.getElementById('jobFilter').value.trim();
+
+            if (!clusterId) {
+                showError('Please enter a valid Cluster ID');
+                return;
+            }
+
+            showLoading();
+
+            try {
+                const response = await fetch('/api/calculate-costs', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        cluster_id: clusterId,
+                        region: region,
+                        job_name_filter: jobFilter || null,
+                        pricing: {
+                            master_on_demand: parseFloat(document.getElementById('masterOnDemand').value),
+                            master_spot: parseFloat(document.getElementById('masterSpot').value),
+                            core_on_demand: parseFloat(document.getElementById('coreOnDemand').value),
+                            core_spot: parseFloat(document.getElementById('coreSpot').value),
+                            task_on_demand: parseFloat(document.getElementById('taskOnDemand').value),
+                            task_spot: parseFloat(document.getElementById('taskSpot').value),
+                            task_spot_percentage: parseInt(document.getElementById('taskSpotPercentage').value)
+                        }
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Unknown error occurred');
+                }
+
+                displayResults(data);
+
+            } catch (error) {
+                showError(error.message || 'Failed to connect to the server');
+            }
+        }
+
+        // Check server health on page load
+        window.addEventListener('load', async () => {
+            try {
+                const response = await fetch('/api/health');
+                const health = await response.json();
+
+                if (!health.aws_configured) {
+                    showError('AWS credentials not configured. Please set up your AWS credentials.');
+                }
+            } catch (error) {
+                showError('Unable to connect to the server');
+            }
+        });
+    </script>
+</body>
+</html>

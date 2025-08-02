@@ -1,0 +1,52 @@
+# Snowflake Database Sync Configuration
+sync_interval_minutes: 60  # Configurable sync interval
+chunk_size: 10000  # Number of rows to read/write per chunk (adjust based on your needs)
+
+# Multithreading Configuration
+use_multithreading: true  # Enable/disable multithreading
+multithreading_threshold: 500000  # Use multithreading for tables with this many rows or more
+max_workers: 4  # Number of parallel reader threads (2-8 recommended)
+
+# Source and Target Database Configurations
+databases:
+  - source:
+      account: "source_account.region"
+      user: "source_username"
+      password: "source_password"
+      warehouse: "SOURCE_WH"
+      database: "SOURCE_DB"
+      schema: "PUBLIC"
+    target:
+      account: "target_account.region"
+      user: "target_username"
+      password: "target_password"
+      warehouse: "TARGET_WH"
+      database: "TARGET_DB"
+      schema: "PUBLIC"
+    tables:
+      - "CUSTOMERS"
+      - "ORDERS"
+      - "PRODUCTS"
+
+  - source:
+      account: "another_source.region"
+      user: "another_username"
+      password: "another_password"
+      warehouse: "ANOTHER_WH"
+      database: "ANOTHER_DB"
+      schema: "PUBLIC"
+    target:
+      account: "another_target.region"
+      user: "another_target_user"
+      password: "another_target_pass"
+      warehouse: "ANOTHER_TARGET_WH"
+      database: "ANOTHER_TARGET_DB"
+      schema: "PUBLIC"
+    tables:
+      - "EMPLOYEES"
+      - "DEPARTMENTS"
+
+# Logging Configuration
+logging:
+  pickle_file: "sync_log.pkl"
+  max_records: 10000  # Maximum records to keep in memory

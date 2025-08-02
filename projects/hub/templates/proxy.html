@@ -1,0 +1,29 @@
+<!-- templates/proxy.html -->
+{% extends "base.html" %}
+
+{% block title %}{{ app.name }} - FlaskHub{% endblock %}
+
+{% block content %}
+<a href="/" class="back-btn">
+    <i class="fas fa-arrow-left"></i> Back to Hub
+</a>
+
+<div style="margin-top: 20px; height: calc(100vh - 20px);">
+    <div style="background: white; padding: 10px 20px; border-radius: 10px 10px 0 0; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 1.5rem;">{{ app.icon }}</span>
+        <div>
+            <h2 style="margin: 0; color: #333;">{{ app.name }}</h2>
+            <p style="margin: 0; color: #666; font-size: 0.9rem;">{{ app.description }}</p>
+        </div>
+        <div style="margin-left: auto;">
+            <a href="{{ app.url }}" target="_blank" class="btn btn-secondary" style="margin: 0;">
+                <i class="fas fa-external-link-alt"></i> Open Direct
+            </a>
+        </div>
+    </div>
+    <iframe src="{{ app.url }}"
+            style="width: 100%; height: calc(100% - 80px); border: none; border-radius: 0 0 10px 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1);">
+        <p>Your browser does not support iframes. <a href="{{ app.url }}" target="_blank">Click here to open {{ app.name }}</a></p>
+    </iframe>
+</div>
+{% endblock %}
