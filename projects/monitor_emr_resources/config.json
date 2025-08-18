@@ -1,0 +1,40 @@
+{
+  "environments": {
+    "production": {
+      "name": "Production EMR",
+      "spark_url": "http://production-master:18080",
+      "yarn_url": "http://production-master:8088",
+      "description": "Production EMR cluster"
+    },
+    "staging": {
+      "name": "Staging EMR",
+      "spark_url": "http://staging-master:18080",
+      "yarn_url": "http://staging-master:8088",
+      "description": "Staging EMR cluster"
+    },
+    "development": {
+      "name": "Development EMR",
+      "spark_url": "http://dev-master:18080",
+      "yarn_url": "http://dev-master:8088",
+      "description": "Development EMR cluster"
+    },
+    "test-cluster-1": {
+      "name": "Test Cluster 1",
+      "spark_url": "http://test1-master:18080",
+      "yarn_url": "http://test1-master:8088",
+      "description": "Test cluster for experiments"
+    }
+  },
+  "settings": {
+    "default_environment": "production",
+    "auto_refresh_interval": 30,
+    "max_completed_jobs": 200,
+    "request_timeout": 10,
+    "enable_notifications": true,
+    "thresholds": {
+      "high_memory_usage_gb": 100,
+      "long_running_job_hours": 2,
+      "max_failed_jobs_per_hour": 5
+    }
+  }
+}
