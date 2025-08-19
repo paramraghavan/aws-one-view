@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enhanced EMR Job Resource Monitor</title>
+    <title>EMR Job Monitor</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -11,53 +11,95 @@
         .status-failed { background-color: #f8d7da; color: #721c24; }
         .status-error { background-color: #fff3cd; color: #856404; }
         .status-running { background-color: #cce7ff; color: #004085; }
-        .priority-high { background-color: #ff6b6b; color: white; font-weight: bold; }
-        .priority-medium { background-color: #feca57; color: black; }
-        .priority-low { background-color: #48dbfb; color: black; }
-        .table-container { max-height: 600px; overflow-y: auto; }
+
         .metric-card {
-            transition: all 0.3s ease;
+            transition: transform 0.2s;
             border-left: 4px solid transparent;
+            height: 100%;
         }
         .metric-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
         .metric-card.bg-primary { border-left-color: #0d6efd; }
         .metric-card.bg-info { border-left-color: #0dcaf0; }
         .metric-card.bg-success { border-left-color: #198754; }
         .metric-card.bg-warning { border-left-color: #ffc107; }
         .metric-card.bg-danger { border-left-color: #dc3545; }
-        .loading { display: none; }
-        .loading.show { display: block; }
-        .tab-content { min-height: 500px; }
-        .filter-section {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 25px;
-            border: 1px solid #dee2e6;
-        }
-        .no-data {
+
+        .metric-card .card-body {
             text-align: center;
-            padding: 60px;
-            color: #6c757d;
-            background: #f8f9fa;
-            border-radius: 10px;
-            margin: 20px 0;
+            padding: 1.25rem;
         }
+
+        /* Tooltip styling */
+        .tooltip-trigger {
+            cursor: help;
+            border-bottom: 1px dotted rgba(255,255,255,0.7);
+        }
+
+        .custom-tooltip {
+            position: relative;
+            display: inline-block;
+        }
+
+        .custom-tooltip .tooltiptext {
+            visibility: hidden;
+            width: 280px;
+            background-color: #333;
+            color: white;
+            text-align: left;
+            border-radius: 6px;
+            padding: 10px;
+            position: absolute;
+            z-index: 1000;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -140px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 0.875rem;
+            line-height: 1.4;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .custom-tooltip .tooltiptext::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #333 transparent transparent transparent;
+        }
+
+        .custom-tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .table-container {
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+        }
+
         .environment-selector {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 15px;
+            padding: 20px;
             border-radius: 10px;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
         }
+
         .cluster-status {
             display: flex;
             align-items: center;
             gap: 10px;
         }
+
         .status-indicator {
             width: 12px;
             height: 12px;
@@ -67,13 +109,43 @@
         .status-healthy { background-color: #28a745; }
         .status-warning { background-color: #ffc107; }
         .status-critical { background-color: #dc3545; }
-        .chart-container {
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
+
+        .loading { display: none; }
+        .loading.show { display: block; }
+
+        .filter-section {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
             margin-bottom: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border: 1px solid #e9ecef;
         }
+
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .table th {
+            background-color: #343a40;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .progress-sm {
+            height: 8px;
+        }
+
+        .badge-priority {
+            font-size: 0.75em;
+        }
+
         .alert-banner {
             position: fixed;
             top: 0;
@@ -82,29 +154,13 @@
             z-index: 1050;
             display: none;
         }
-        .table th {
-            background-color: #343a40;
-            color: white;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-        .efficiency-score {
-            padding: 4px 8px;
-            border-radius: 15px;
-            font-size: 0.85em;
-            font-weight: bold;
-        }
-        .efficiency-high { background-color: #d4edda; color: #155724; }
-        .efficiency-medium { background-color: #fff3cd; color: #856404; }
-        .efficiency-low { background-color: #f8d7da; color: #721c24; }
     </style>
 </head>
 <body>
     <!-- Alert Banner -->
-    <div class="alert alert-danger alert-dismissible alert-banner" id="alertBanner">
+    <div class="alert alert-info alert-dismissible alert-banner" id="alertBanner">
         <div class="container-fluid">
-            <strong>Alert!</strong> <span id="alertMessage"></span>
+            <span id="alertMessage"></span>
             <button type="button" class="btn-close" onclick="hideAlert()"></button>
         </div>
     </div>
@@ -113,108 +169,112 @@
         <div class="row">
             <div class="col-12">
                 <h1 class="text-center mt-3 mb-4">
-                    <i class="fas fa-server"></i> Enhanced EMR Job Resource Monitor
+                    <i class="fas fa-server text-primary"></i> EMR Job Monitor
                 </h1>
 
                 <!-- Environment Selection -->
                 <div class="environment-selector">
                     <div class="row align-items-center">
                         <div class="col-md-4">
-                            <label for="environmentSelect" class="form-label">
-                                <i class="fas fa-cloud"></i> Select EMR Environment
+                            <label for="environmentSelect" class="form-label fw-bold">
+                                <i class="fas fa-cloud"></i> EMR Environment
                             </label>
                             <select class="form-select" id="environmentSelect" onchange="environmentChanged()">
-                                <!-- Options will be populated by JavaScript -->
+                                <!-- Options populated by JavaScript -->
                             </select>
                         </div>
                         <div class="col-md-4">
                             <div class="cluster-status">
                                 <span class="status-indicator status-healthy" id="clusterStatusIndicator"></span>
-                                <span id="clusterStatusText">Checking cluster status...</span>
+                                <span id="clusterStatusText">Checking status...</span>
                             </div>
-                            <small class="text-light" id="environmentDescription">Select an environment to view details</small>
+                            <small class="text-light opacity-75" id="environmentDescription">Select environment</small>
                         </div>
                         <div class="col-md-4 text-end">
-                            <button class="btn btn-light" onclick="refreshData()">
-                                <i class="fas fa-sync-alt"></i> Refresh Data
+                            <button class="btn btn-light me-2" onclick="refreshData()">
+                                <i class="fas fa-sync-alt"></i> Refresh
                             </button>
-                            <div class="form-check form-switch mt-2">
+                            <div class="form-check form-switch d-inline-block">
                                 <input class="form-check-input" type="checkbox" id="autoRefresh">
-                                <label class="form-check-label text-light" for="autoRefresh">
-                                    Auto-refresh (30s)
-                                </label>
+                                <label class="form-check-label text-light" for="autoRefresh">Auto-refresh</label>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Cluster Overview Cards -->
+                <!-- Cluster Overview -->
                 <div class="row mb-4" id="clusterOverview">
-                    <div class="col-md-2">
+                    <div class="col-md-3">
                         <div class="card metric-card bg-primary text-white">
-                            <div class="card-body text-center">
-                                <i class="fas fa-memory fa-2x mb-2"></i>
-                                <h6>Memory Utilization</h6>
-                                <h4 id="memoryUtilization">0%</h4>
+                            <div class="card-body">
+                                <i class="fas fa-play-circle fa-2x mb-2"></i>
+                                <div class="custom-tooltip">
+                                    <h6 class="tooltip-trigger">Running Jobs</h6>
+                                    <span class="tooltiptext">
+                                        <strong>Running Jobs:</strong> Number of Spark applications currently executing on the cluster.
+                                        These are jobs that have been submitted and are actively processing data using cluster resources.
+                                    </span>
+                                </div>
+                                <h3 id="totalRunningJobs">0</h3>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-2">
-                        <div class="card metric-card bg-info text-white">
-                            <div class="card-body text-center">
-                                <i class="fas fa-microchip fa-2x mb-2"></i>
-                                <h6>CPU Utilization</h6>
-                                <h4 id="cpuUtilization">0%</h4>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-2">
+                    <div class="col-md-3">
                         <div class="card metric-card bg-success text-white">
-                            <div class="card-body text-center">
-                                <i class="fas fa-server fa-2x mb-2"></i>
-                                <h6>Active Nodes</h6>
-                                <h4 id="activeNodes">0</h4>
+                            <div class="card-body">
+                                <i class="fas fa-memory fa-2x mb-2"></i>
+                                <div class="custom-tooltip">
+                                    <h6 class="tooltip-trigger">Memory Usage</h6>
+                                    <span class="tooltiptext">
+                                        <strong>Memory Usage:</strong> Percentage of cluster memory currently allocated to running jobs.
+                                        Shows how much of your total available RAM is being used. High values (>85%) may indicate resource constraints.
+                                    </span>
+                                </div>
+                                <h3 id="memoryUtilization">0%</h3>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-2">
+                    <div class="col-md-3">
                         <div class="card metric-card bg-warning text-white">
-                            <div class="card-body text-center">
+                            <div class="card-body">
                                 <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
-                                <h6>Failed Jobs (24h)</h6>
-                                <h4 id="failedJobs24h">0</h4>
+                                <div class="custom-tooltip">
+                                    <h6 class="tooltip-trigger">Failed Jobs (24h)</h6>
+                                    <span class="tooltiptext">
+                                        <strong>Failed Jobs (24h):</strong> Number of jobs that failed to complete successfully in the last 24 hours.
+                                        Failed jobs can indicate code issues, resource problems, or data quality issues.
+                                    </span>
+                                </div>
+                                <h3 id="failedJobs24h">0</h3>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-2">
+                    <div class="col-md-3">
                         <div class="card metric-card bg-danger text-white">
-                            <div class="card-body text-center">
+                            <div class="card-body">
                                 <i class="fas fa-percentage fa-2x mb-2"></i>
-                                <h6>Failure Rate</h6>
-                                <h4 id="failureRate">0%</h4>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-2">
-                        <div class="card metric-card bg-dark text-white">
-                            <div class="card-body text-center">
-                                <i class="fas fa-dollar-sign fa-2x mb-2"></i>
-                                <h6>Est. Cost (24h)</h6>
-                                <h4 id="estimatedCost">$0</h4>
+                                <div class="custom-tooltip">
+                                    <h6 class="tooltip-trigger">Success Rate</h6>
+                                    <span class="tooltiptext">
+                                        <strong>Success Rate:</strong> Percentage of jobs that completed successfully.
+                                        Calculated as (successful jobs / total jobs) × 100. A healthy cluster typically shows >95% success rate.
+                                    </span>
+                                </div>
+                                <h3 id="successRate">0%</h3>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Loading Indicator -->
-                <div class="loading text-center">
+                <div class="loading text-center py-5">
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
                     <p class="mt-2">Loading job data...</p>
                 </div>
 
-                <!-- Enhanced Tabs -->
+                <!-- Simplified Tabs -->
                 <ul class="nav nav-tabs" id="jobTabs" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active" id="running-tab" data-bs-toggle="tab" data-bs-target="#running"
@@ -226,26 +286,14 @@
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="completed-tab" data-bs-toggle="tab" data-bs-target="#completed"
                                 type="button" role="tab">
-                            <i class="fas fa-check-circle"></i> Completed Jobs
+                            <i class="fas fa-check-circle"></i> Job History
                             <span class="badge bg-success ms-2" id="completedJobsBadge">0</span>
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="hourly-tab" data-bs-toggle="tab" data-bs-target="#hourly"
-                                type="button" role="tab">
-                            <i class="fas fa-chart-bar"></i> Hourly Analysis
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="summary-tab" data-bs-toggle="tab" data-bs-target="#summary"
                                 type="button" role="tab">
-                            <i class="fas fa-list"></i> Job Summary
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="insights-tab" data-bs-toggle="tab" data-bs-target="#insights"
-                                type="button" role="tab">
-                            <i class="fas fa-lightbulb"></i> Insights
+                            <i class="fas fa-chart-pie"></i> Job Summary
                         </button>
                     </li>
                 </ul>
@@ -255,123 +303,99 @@
                     <!-- Running Jobs Tab -->
                     <div class="tab-pane fade show active" id="running" role="tabpanel">
                         <div class="mt-3">
-                            <!-- Enhanced Summary Cards -->
-                            <div class="row mb-4" id="runningSummary">
-                                <div class="col-md-2">
-                                    <div class="card metric-card bg-primary text-white">
-                                        <div class="card-body">
-                                            <h6><i class="fas fa-tasks"></i> Total Jobs</h6>
-                                            <h3 id="runningJobsCount">0</h3>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-2">
+                            <!-- Key Metrics for Running Jobs -->
+                            <div class="row mb-4">
+                                <div class="col-md-3">
                                     <div class="card metric-card bg-info text-white">
                                         <div class="card-body">
-                                            <h6><i class="fas fa-memory"></i> Memory (GB)</h6>
-                                            <h3 id="runningMemory">0</h3>
+                                            <div class="custom-tooltip">
+                                                <h6 class="tooltip-trigger"><i class="fas fa-memory"></i> Total Memory</h6>
+                                                <span class="tooltiptext">
+                                                    <strong>Total Memory:</strong> Sum of memory allocated to all currently running jobs in GB (Gigabytes).
+                                                    This represents the total RAM being used across all active Spark applications on your cluster.
+                                                </span>
+                                            </div>
+                                            <h4 id="runningMemory">0 GB</h4>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-md-2">
+                                <div class="col-md-3">
                                     <div class="card metric-card bg-success text-white">
                                         <div class="card-body">
-                                            <h6><i class="fas fa-microchip"></i> vCores</h6>
-                                            <h3 id="runningVCores">0</h3>
+                                            <div class="custom-tooltip">
+                                                <h6 class="tooltip-trigger"><i class="fas fa-microchip"></i> Total vCores</h6>
+                                                <span class="tooltiptext">
+                                                    <strong>Total vCores:</strong> Sum of virtual CPU cores allocated to all running jobs.
+                                                    vCores represent the processing power being used. Each vCore typically corresponds to one thread of execution.
+                                                </span>
+                                            </div>
+                                            <h4 id="runningVCores">0</h4>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-md-2">
+                                <div class="col-md-3">
                                     <div class="card metric-card bg-warning text-white">
                                         <div class="card-body">
-                                            <h6><i class="fas fa-cube"></i> Containers</h6>
-                                            <h3 id="runningContainers">0</h3>
+                                            <div class="custom-tooltip">
+                                                <h6 class="tooltip-trigger"><i class="fas fa-clock"></i> Avg Progress</h6>
+                                                <span class="tooltiptext">
+                                                    <strong>Average Progress:</strong> Average completion percentage across all running jobs.
+                                                    Calculated from each job's reported progress (0-100%). Helps estimate overall cluster workload completion.
+                                                </span>
+                                            </div>
+                                            <h4 id="avgProgress">0%</h4>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-md-2">
+                                <div class="col-md-3">
                                     <div class="card metric-card bg-danger text-white">
                                         <div class="card-body">
-                                            <h6><i class="fas fa-exclamation"></i> High Priority</h6>
-                                            <h3 id="highPriorityJobs">0</h3>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-2">
-                                    <div class="card metric-card bg-dark text-white">
-                                        <div class="card-body">
-                                            <h6><i class="fas fa-clock"></i> Long Running</h6>
-                                            <h3 id="longRunningJobs">0</h3>
+                                            <div class="custom-tooltip">
+                                                <h6 class="tooltip-trigger"><i class="fas fa-flag"></i> High Priority</h6>
+                                                <span class="tooltiptext">
+                                                    <strong>High Priority Jobs:</strong> Number of jobs using significant resources (>50GB memory or >20 vCores).
+                                                    These jobs may impact cluster performance and should be monitored closely for optimization opportunities.
+                                                </span>
+                                            </div>
+                                            <h4 id="highPriorityJobs">0</h4>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Enhanced Filters -->
+                            <!-- Simple Filters -->
                             <div class="filter-section">
                                 <div class="row">
-                                    <div class="col-md-2">
-                                        <label class="form-label"><i class="fas fa-filter"></i> Job Name</label>
-                                        <select class="form-select" id="runningJobFilter">
-                                            <option value="">All Jobs</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-2">
-                                        <label class="form-label"><i class="fas fa-user"></i> User</label>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Filter by User</label>
                                         <select class="form-select" id="runningUserFilter">
                                             <option value="">All Users</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-2">
-                                        <label class="form-label"><i class="fas fa-flag"></i> Priority</label>
-                                        <select class="form-select" id="runningPriorityFilter">
-                                            <option value="">All Priorities</option>
-                                            <option value="HIGH">High</option>
-                                            <option value="MEDIUM">Medium</option>
-                                            <option value="LOW">Low</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-2">
-                                        <label class="form-label"><i class="fas fa-memory"></i> Min Memory (GB)</label>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Min Memory (GB)</label>
                                         <input type="number" class="form-control" id="runningMemoryFilter"
-                                               min="0" step="0.1" value="0">
+                                               min="0" step="1" value="0" placeholder="0">
                                     </div>
-                                    <div class="col-md-2">
-                                        <label class="form-label"><i class="fas fa-sort"></i> Sort By</label>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Sort By</label>
                                         <select class="form-select" id="runningSortBy">
                                             <option value="Submit Time">Submit Time</option>
-                                            <option value="Memory (GB)">Memory (GB)</option>
-                                            <option value="vCores">vCores</option>
-                                            <option value="Elapsed Time (mins)">Elapsed Time</option>
+                                            <option value="Memory (GB)">Memory Usage</option>
+                                            <option value="Elapsed Time (mins)">Runtime</option>
                                             <option value="Progress (%)">Progress</option>
-                                            <option value="Priority">Priority</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-2">
+                                    <div class="col-md-3">
                                         <label class="form-label">&nbsp;</label>
                                         <div class="d-flex gap-2">
-                                            <button class="btn btn-outline-primary flex-fill" onclick="applyRunningFilters()">
+                                            <button class="btn btn-primary flex-fill" onclick="applyRunningFilters()">
                                                 <i class="fas fa-filter"></i> Apply
                                             </button>
                                             <button class="btn btn-outline-success" onclick="downloadCSV('running')">
                                                 <i class="fas fa-download"></i>
                                             </button>
                                         </div>
-                                    </div>
-                                </div>
-                                <div class="row mt-2">
-                                    <div class="col-md-3">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" id="runningSortAsc">
-                                            <label class="form-check-label" for="runningSortAsc">
-                                                <i class="fas fa-sort-alpha-up"></i> Ascending Order
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-9 text-end">
-                                        <small class="text-muted">
-                                            Showing jobs with real-time progress tracking and resource utilization
-                                        </small>
                                     </div>
                                 </div>
                             </div>
@@ -386,132 +410,111 @@
                                 </table>
                             </div>
                             <div class="no-data" id="runningNoData" style="display: none;">
-                                <i class="fas fa-coffee fa-3x mb-3"></i>
-                                <h4>No jobs currently running</h4>
-                                <p class="text-muted">All quiet on the cluster front!</p>
+                                <i class="fas fa-coffee fa-3x mb-3 text-muted"></i>
+                                <h4>No jobs running</h4>
+                                <p class="text-muted">All quiet on the cluster!</p>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Completed Jobs Tab -->
+                    <!-- Job History Tab -->
                     <div class="tab-pane fade" id="completed" role="tabpanel">
                         <div class="mt-3">
-                            <!-- Enhanced Summary Cards -->
-                            <div class="row mb-4" id="completedSummary">
-                                <div class="col-md-2">
+                            <!-- Key Metrics for Completed Jobs -->
+                            <div class="row mb-4">
+                                <div class="col-md-3">
                                     <div class="card metric-card bg-primary text-white">
                                         <div class="card-body">
-                                            <h6><i class="fas fa-check-circle"></i> Completed</h6>
-                                            <h3 id="completedJobsCount">0</h3>
+                                            <div class="custom-tooltip">
+                                                <h6 class="tooltip-trigger"><i class="fas fa-check-circle"></i> Completed</h6>
+                                                <span class="tooltiptext">
+                                                    <strong>Completed Jobs:</strong> Total number of jobs that have finished execution (both successful and failed).
+                                                    This count includes all jobs from the selected time range, providing insight into cluster activity levels.
+                                                </span>
+                                            </div>
+                                            <h4 id="completedJobsCount">0</h4>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-md-2">
+                                <div class="col-md-3">
                                     <div class="card metric-card bg-info text-white">
                                         <div class="card-body">
-                                            <h6><i class="fas fa-clock"></i> Memory-Hours</h6>
-                                            <h3 id="completedMemoryHours">0</h3>
+                                            <div class="custom-tooltip">
+                                                <h6 class="tooltip-trigger"><i class="fas fa-clock"></i> Avg Duration</h6>
+                                                <span class="tooltiptext">
+                                                    <strong>Average Duration:</strong> Mean execution time for completed jobs in minutes.
+                                                    Helps identify if jobs are taking longer than expected and can indicate performance issues or optimization opportunities.
+                                                </span>
+                                            </div>
+                                            <h4 id="avgDuration">0 min</h4>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-md-2">
+                                <div class="col-md-3">
                                     <div class="card metric-card bg-success text-white">
                                         <div class="card-body">
-                                            <h6><i class="fas fa-microchip"></i> vCore-Hours</h6>
-                                            <h3 id="completedVCoreHours">0</h3>
+                                            <div class="custom-tooltip">
+                                                <h6 class="tooltip-trigger"><i class="fas fa-percentage"></i> Success Rate</h6>
+                                                <span class="tooltiptext">
+                                                    <strong>Success Rate:</strong> Percentage of completed jobs that finished successfully without errors.
+                                                    A healthy cluster should maintain >95% success rate. Lower rates may indicate code, data, or infrastructure issues.
+                                                </span>
+                                            </div>
+                                            <h4 id="completedSuccessRate">0%</h4>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-md-2">
+                                <div class="col-md-3">
                                     <div class="card metric-card bg-warning text-white">
                                         <div class="card-body">
-                                            <h6><i class="fas fa-percentage"></i> Success Rate</h6>
-                                            <h3 id="completedSuccessRate">0%</h3>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-2">
-                                    <div class="card metric-card bg-danger text-white">
-                                        <div class="card-body">
-                                            <h6><i class="fas fa-tachometer-alt"></i> Avg Efficiency</h6>
-                                            <h3 id="avgEfficiency">0</h3>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-2">
-                                    <div class="card metric-card bg-dark text-white">
-                                        <div class="card-body">
-                                            <h6><i class="fas fa-dollar-sign"></i> Total Cost</h6>
-                                            <h3 id="totalCost">$0</h3>
+                                            <div class="custom-tooltip">
+                                                <h6 class="tooltip-trigger"><i class="fas fa-dollar-sign"></i> Total Cost</h6>
+                                                <span class="tooltiptext">
+                                                    <strong>Total Cost:</strong> Estimated total cost for all completed jobs based on resource usage.
+                                                    Calculated using memory-hours and vCore-hours consumed. Helps track spending and identify cost optimization opportunities.
+                                                </span>
+                                            </div>
+                                            <h4 id="totalCost">$0</h4>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Enhanced Filters -->
+                            <!-- Simple Filters -->
                             <div class="filter-section">
                                 <div class="row">
-                                    <div class="col-md-2">
-                                        <label class="form-label"><i class="fas fa-tasks"></i> Job Name</label>
-                                        <select class="form-select" id="completedJobFilter">
-                                            <option value="">All Jobs</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-2">
-                                        <label class="form-label"><i class="fas fa-user"></i> User</label>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Filter by User</label>
                                         <select class="form-select" id="completedUserFilter">
                                             <option value="">All Users</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-2">
-                                        <label class="form-label"><i class="fas fa-info-circle"></i> Status</label>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Status</label>
                                         <select class="form-select" id="completedStatusFilter">
                                             <option value="">All Status</option>
                                             <option value="COMPLETED">Completed</option>
                                             <option value="FAILED">Failed</option>
-                                            <option value="ERROR">Error</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-2">
-                                        <label class="form-label"><i class="fas fa-calendar"></i> Last N Hours</label>
-                                        <input type="number" class="form-control" id="completedHoursFilter"
-                                               min="1" value="24">
-                                    </div>
-                                    <div class="col-md-2">
-                                        <label class="form-label"><i class="fas fa-sort"></i> Sort By</label>
-                                        <select class="form-select" id="completedSortBy">
-                                            <option value="Submit Time">Submit Time</option>
-                                            <option value="Duration (mins)">Duration</option>
-                                            <option value="Memory (GB)">Memory</option>
-                                            <option value="Efficiency Score">Efficiency</option>
-                                            <option value="Cost Estimate">Cost</option>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Last N Hours</label>
+                                        <select class="form-select" id="completedHoursFilter">
+                                            <option value="24">Last 24 hours</option>
+                                            <option value="48">Last 48 hours</option>
+                                            <option value="168">Last week</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-2">
+                                    <div class="col-md-3">
                                         <label class="form-label">&nbsp;</label>
                                         <div class="d-flex gap-2">
-                                            <button class="btn btn-outline-primary flex-fill" onclick="applyCompletedFilters()">
+                                            <button class="btn btn-primary flex-fill" onclick="applyCompletedFilters()">
                                                 <i class="fas fa-filter"></i> Apply
                                             </button>
                                             <button class="btn btn-outline-success" onclick="downloadCSV('completed')">
                                                 <i class="fas fa-download"></i>
                                             </button>
                                         </div>
-                                    </div>
-                                </div>
-                                <div class="row mt-2">
-                                    <div class="col-md-3">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" id="completedSortAsc">
-                                            <label class="form-check-label" for="completedSortAsc">
-                                                <i class="fas fa-sort-alpha-up"></i> Ascending Order
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-9 text-end">
-                                        <small class="text-muted">
-                                            Historical job data with efficiency metrics and cost analysis
-                                        </small>
                                     </div>
                                 </div>
                             </div>
@@ -526,70 +529,9 @@
                                 </table>
                             </div>
                             <div class="no-data" id="completedNoData" style="display: none;">
-                                <i class="fas fa-history fa-3x mb-3"></i>
+                                <i class="fas fa-history fa-3x mb-3 text-muted"></i>
                                 <h4>No completed jobs found</h4>
-                                <p class="text-muted">No jobs match the current filter criteria</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Hourly Analysis Tab -->
-                    <div class="tab-pane fade" id="hourly" role="tabpanel">
-                        <div class="mt-3">
-                            <div class="row mb-3">
-                                <div class="col-md-6">
-                                    <label class="form-label"><i class="fas fa-clock"></i> Time Range (Hours)</label>
-                                    <input type="range" class="form-range" id="hourlyRange"
-                                           min="6" max="168" value="48" oninput="updateHourlyRange()">
-                                    <div class="d-flex justify-content-between">
-                                        <small class="text-muted">6 hours</small>
-                                        <small id="hourlyRangeValue" class="text-primary fw-bold">48 hours</small>
-                                        <small class="text-muted">168 hours (1 week)</small>
-                                    </div>
-                                </div>
-                                <div class="col-md-6 text-end">
-                                    <button class="btn btn-outline-success" onclick="downloadCSV('hourly')">
-                                        <i class="fas fa-download"></i> Download CSV
-                                    </button>
-                                    <button class="btn btn-outline-info ms-2" onclick="refreshHourlyData()">
-                                        <i class="fas fa-sync-alt"></i> Refresh
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Enhanced Summary Statistics -->
-                            <div class="chart-container">
-                                <h5><i class="fas fa-chart-line"></i> Hourly Trends & Statistics</h5>
-                                <div class="row">
-                                    <div class="col-md-8">
-                                        <div class="table-responsive">
-                                            <table class="table table-sm" id="hourlySummaryTable">
-                                                <tbody></tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <div class="text-center">
-                                            <h6 class="text-muted">Peak Activity Hours</h6>
-                                            <div id="busyHoursList"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Hourly Data Table -->
-                            <div class="table-container">
-                                <table class="table table-striped table-hover" id="hourlyTable">
-                                    <thead class="table-dark sticky-top">
-                                        <tr id="hourlyTableHeader"></tr>
-                                    </thead>
-                                    <tbody id="hourlyTableBody"></tbody>
-                                </table>
-                            </div>
-                            <div class="no-data" id="hourlyNoData" style="display: none;">
-                                <i class="fas fa-chart-bar fa-3x mb-3"></i>
-                                <h4>No hourly data available</h4>
-                                <p class="text-muted">Not enough job history for hourly aggregation</p>
+                                <p class="text-muted">No jobs match the current criteria</p>
                             </div>
                         </div>
                     </div>
@@ -597,29 +539,40 @@
                     <!-- Job Summary Tab -->
                     <div class="tab-pane fade" id="summary" role="tabpanel">
                         <div class="mt-3">
-                            <!-- Enhanced Filters -->
+                            <!-- Simple Summary Info -->
+                            <div class="row mb-4">
+                                <div class="col-md-12">
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle"></i>
+                                        <strong>Job Summary:</strong> View aggregated statistics by job name to identify resource usage patterns and optimization opportunities.
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Simple Filters -->
                             <div class="filter-section">
                                 <div class="row">
-                                    <div class="col-md-3">
-                                        <label class="form-label"><i class="fas fa-hashtag"></i> Min Runs</label>
-                                        <input type="number" class="form-control" id="summaryMinRuns"
-                                               min="1" value="1">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Min Runs</label>
+                                        <select class="form-select" id="summaryMinRuns">
+                                            <option value="1">1 or more runs</option>
+                                            <option value="5">5 or more runs</option>
+                                            <option value="10">10 or more runs</option>
+                                        </select>
                                     </div>
-                                    <div class="col-md-3">
-                                        <label class="form-label"><i class="fas fa-memory"></i> Min Memory-Hours</label>
-                                        <input type="number" class="form-control" id="summaryMinMemoryHours"
-                                               min="0" step="0.1" value="0">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Sort By</label>
+                                        <select class="form-select" id="summarySortBy">
+                                            <option value="Total Runs">Number of Runs</option>
+                                            <option value="Total Memory-Hours">Total Memory Usage</option>
+                                            <option value="Total Cost">Total Cost</option>
+                                        </select>
                                     </div>
-                                    <div class="col-md-3">
-                                        <label class="form-label"><i class="fas fa-tachometer-alt"></i> Min Efficiency</label>
-                                        <input type="number" class="form-control" id="summaryMinEfficiency"
-                                               min="0" max="100" value="0">
-                                    </div>
-                                    <div class="col-md-3">
+                                    <div class="col-md-4">
                                         <label class="form-label">&nbsp;</label>
                                         <div class="d-flex gap-2">
-                                            <button class="btn btn-outline-primary flex-fill" onclick="applySummaryFilters()">
-                                                <i class="fas fa-filter"></i> Apply Filters
+                                            <button class="btn btn-primary flex-fill" onclick="applySummaryFilters()">
+                                                <i class="fas fa-filter"></i> Apply
                                             </button>
                                             <button class="btn btn-outline-success" onclick="downloadCSV('summary')">
                                                 <i class="fas fa-download"></i>
@@ -639,70 +592,9 @@
                                 </table>
                             </div>
                             <div class="no-data" id="summaryNoData" style="display: none;">
-                                <i class="fas fa-clipboard-list fa-3x mb-3"></i>
-                                <h4>No job summary data available</h4>
+                                <i class="fas fa-chart-pie fa-3x mb-3 text-muted"></i>
+                                <h4>No summary data available</h4>
                                 <p class="text-muted">No jobs match the summary criteria</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- New Insights Tab -->
-                    <div class="tab-pane fade" id="insights" role="tabpanel">
-                        <div class="mt-3">
-                            <div class="row">
-                                <!-- Resource Optimization -->
-                                <div class="col-md-6">
-                                    <div class="chart-container">
-                                        <h5><i class="fas fa-lightbulb text-warning"></i> Resource Optimization</h5>
-                                        <div id="optimizationInsights">
-                                            <div class="d-flex align-items-center mb-2">
-                                                <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-                                                <span>Analyzing resource usage patterns...</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Cost Analysis -->
-                                <div class="col-md-6">
-                                    <div class="chart-container">
-                                        <h5><i class="fas fa-dollar-sign text-success"></i> Cost Analysis</h5>
-                                        <div id="costInsights">
-                                            <div class="d-flex align-items-center mb-2">
-                                                <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-                                                <span>Calculating cost trends...</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="row mt-4">
-                                <!-- Performance Trends -->
-                                <div class="col-md-6">
-                                    <div class="chart-container">
-                                        <h5><i class="fas fa-chart-line text-info"></i> Performance Trends</h5>
-                                        <div id="performanceInsights">
-                                            <div class="d-flex align-items-center mb-2">
-                                                <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-                                                <span>Evaluating job performance...</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Recommendations -->
-                                <div class="col-md-6">
-                                    <div class="chart-container">
-                                        <h5><i class="fas fa-magic text-purple"></i> Recommendations</h5>
-                                        <div id="recommendations">
-                                            <div class="d-flex align-items-center mb-2">
-                                                <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-                                                <span>Generating recommendations...</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -716,7 +608,6 @@
         let jobData = {
             running: [],
             completed: [],
-            hourly: [],
             summary: []
         };
 
@@ -735,21 +626,11 @@
             document.getElementById('autoRefresh').addEventListener('change', function() {
                 if (this.checked) {
                     autoRefreshInterval = setInterval(refreshData, 30000);
-                    showAlert('Auto-refresh enabled - data will update every 30 seconds', 'success');
+                    showAlert('Auto-refresh enabled (30 seconds)', 'success');
                 } else {
                     clearInterval(autoRefreshInterval);
                     showAlert('Auto-refresh disabled', 'info');
                 }
-            });
-
-            // Tab change event
-            document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
-                tab.addEventListener('shown.bs.tab', function (e) {
-                    const targetTab = e.target.getAttribute('data-bs-target');
-                    if (targetTab === '#insights') {
-                        loadInsights();
-                    }
-                });
             });
         }
 
@@ -778,7 +659,7 @@
                 select.appendChild(option);
             });
 
-            // Set default environment if available
+            // Set default environment
             const defaultEnv = Object.keys(environments)[0];
             if (defaultEnv) {
                 select.value = defaultEnv;
@@ -802,51 +683,43 @@
             const indicator = document.getElementById('clusterStatusIndicator');
             const text = document.getElementById('clusterStatusText');
 
-            // Check cluster health
             fetch(`/api/cluster-metrics?environment=${currentEnvironment}`)
                 .then(response => response.json())
                 .then(data => {
-                    const cluster = data.cluster_metrics;
-                    const utilization = data.utilization_trends;
-                    const failures = data.failure_analysis;
+                    const utilization = data.utilization_trends || {};
+                    const failures = data.failure_analysis || {};
 
-                    // Determine cluster health
+                    // Simple health determination
                     let status = 'healthy';
-                    let statusText = 'Cluster Healthy';
+                    let statusText = 'Healthy';
 
-                    if (utilization.memory_utilization_pct > 90 || utilization.vcores_utilization_pct > 90) {
+                    if (utilization.memory_utilization_pct > 85) {
                         status = 'warning';
-                        statusText = 'High Resource Usage';
+                        statusText = 'High Usage';
                     }
 
-                    if (utilization.healthy_nodes_pct < 90 || failures.failure_rate > 20) {
+                    if (failures.failure_rate > 15) {
                         status = 'critical';
-                        statusText = 'Cluster Issues Detected';
+                        statusText = 'Issues Detected';
                     }
 
                     indicator.className = `status-indicator status-${status}`;
                     text.textContent = statusText;
 
-                    // Update cluster overview cards
-                    updateClusterOverview(cluster, utilization, failures);
+                    // Update overview cards
+                    updateOverviewCards(utilization, failures);
                 })
                 .catch(error => {
                     console.error('Error checking cluster status:', error);
                     indicator.className = 'status-indicator status-critical';
-                    text.textContent = 'Status Unknown';
+                    text.textContent = 'Unknown';
                 });
         }
 
-        function updateClusterOverview(cluster, utilization, failures) {
-            document.getElementById('memoryUtilization').textContent = utilization.memory_utilization_pct + '%';
-            document.getElementById('cpuUtilization').textContent = utilization.vcores_utilization_pct + '%';
-            document.getElementById('activeNodes').textContent = cluster.active_nodes || 0;
+        function updateOverviewCards(utilization, failures) {
+            document.getElementById('memoryUtilization').textContent = (utilization.memory_utilization_pct || 0) + '%';
             document.getElementById('failedJobs24h').textContent = failures.failed_jobs_24h || 0;
-            document.getElementById('failureRate').textContent = failures.failure_rate + '%';
-
-            // Estimate daily cost (simplified calculation)
-            const dailyCost = (utilization.memory_utilization_pct * 0.1 + utilization.vcores_utilization_pct * 0.2) * 24;
-            document.getElementById('estimatedCost').textContent = ' + dailyCost.toFixed(0);
+            document.getElementById('successRate').textContent = (100 - (failures.failure_rate || 0)).toFixed(0) + '%';
         }
 
         function showLoading() {
@@ -865,10 +738,7 @@
             alertMessage.textContent = message;
             alertBanner.style.display = 'block';
 
-            // Auto-hide after 5 seconds
-            setTimeout(() => {
-                hideAlert();
-            }, 5000);
+            setTimeout(() => hideAlert(), 4000);
         }
 
         function hideAlert() {
@@ -877,7 +747,7 @@
 
         async function refreshData() {
             if (!currentEnvironment) {
-                showAlert('Please select an environment first', 'warning');
+                showAlert('Please select an environment', 'warning');
                 return;
             }
 
@@ -887,14 +757,13 @@
                 await Promise.all([
                     loadRunningJobs(),
                     loadCompletedJobs(),
-                    loadHourlyAggregation(),
                     loadJobSummary()
                 ]);
 
                 showAlert('Data refreshed successfully', 'success');
             } catch (error) {
                 console.error('Error refreshing data:', error);
-                showAlert('Error loading data: ' + error.message, 'danger');
+                showAlert('Error loading data', 'danger');
             } finally {
                 hideLoading();
             }
@@ -904,77 +773,60 @@
             const response = await fetch(`/api/running-jobs?environment=${currentEnvironment}`);
             const data = await response.json();
 
-            if (data.error) {
-                throw new Error(data.error);
-            }
+            if (data.error) throw new Error(data.error);
 
             jobData.running = data.data || [];
             updateRunningSummary(data.summary || {});
             updateRunningTable(data.data || [], data.columns || []);
             populateRunningFilters(data.data || []);
 
-            // Update badge
+            // Update badges and overview
             document.getElementById('runningJobsBadge').textContent = data.data ? data.data.length : 0;
+            document.getElementById('totalRunningJobs').textContent = data.data ? data.data.length : 0;
         }
 
         async function loadCompletedJobs() {
             const response = await fetch(`/api/completed-jobs?environment=${currentEnvironment}`);
             const data = await response.json();
 
-            if (data.error) {
-                throw new Error(data.error);
-            }
+            if (data.error) throw new Error(data.error);
 
             jobData.completed = data.data || [];
             updateCompletedSummary(data.summary || {});
             updateCompletedTable(data.data || [], data.columns || []);
             populateCompletedFilters(data.data || []);
 
-            // Update badge
             document.getElementById('completedJobsBadge').textContent = data.data ? data.data.length : 0;
-        }
-
-        async function loadHourlyAggregation() {
-            const response = await fetch(`/api/hourly-aggregation?environment=${currentEnvironment}`);
-            const data = await response.json();
-
-            if (data.error) {
-                throw new Error(data.error);
-            }
-
-            jobData.hourly = data.data || [];
-            updateHourlyTable(data.data || [], data.columns || []);
-            updateHourlySummary(data.summary || {});
         }
 
         async function loadJobSummary() {
             const response = await fetch(`/api/job-summary?environment=${currentEnvironment}`);
             const data = await response.json();
 
-            if (data.error) {
-                throw new Error(data.error);
-            }
+            if (data.error) throw new Error(data.error);
 
             jobData.summary = data.data || [];
             updateSummaryTable(data.data || [], data.columns || []);
         }
 
         function updateRunningSummary(summary) {
-            document.getElementById('runningJobsCount').textContent = summary.total_jobs || 0;
-            document.getElementById('runningMemory').textContent = summary.total_memory || 0;
+            document.getElementById('runningMemory').textContent = (summary.total_memory || 0) + ' GB';
             document.getElementById('runningVCores').textContent = summary.total_vcores || 0;
-            document.getElementById('runningContainers').textContent = summary.total_containers || 0;
+            document.getElementById('avgProgress').textContent = (summary.avg_progress || 0) + '%';
             document.getElementById('highPriorityJobs').textContent = summary.high_priority_jobs || 0;
-            document.getElementById('longRunningJobs').textContent = summary.long_running_jobs || 0;
         }
 
         function updateCompletedSummary(summary) {
             document.getElementById('completedJobsCount').textContent = summary.total_jobs || 0;
-            document.getElementById('completedMemoryHours').textContent = summary.total_memory_hours || 0;
-            document.getElementById('completedVCoreHours').textContent = summary.total_vcore_hours || 0;
             document.getElementById('completedSuccessRate').textContent = (summary.success_rate || 0) + '%';
-            document.getElementById('avgEfficiency').textContent = summary.avg_efficiency || 0;
             document.getElementById('totalCost').textContent = summary.total_estimated_cost || '$0.00';
+
+            // Calculate average duration
+            if (jobData.completed.length > 0) {
+                const avgDur = jobData.completed.reduce((sum, job) =>
+                    sum + (parseFloat(job['Duration (mins)']) || 0), 0) / jobData.completed.length;
+                document.getElementById('avgDuration').textContent = Math.round(avgDur) + ' min';
+            }
         }
 
         function updateRunningTable(data, columns) {
@@ -1016,21 +868,31 @@
                 if (col === 'Status') {
                     cellClass = `status-${value.toLowerCase()}`;
                 } else if (col === 'Priority') {
-                    cellClass = `priority-${value.toLowerCase()}`;
-                    cellContent = `<span class="${cellClass} px-2 py-1 rounded">${value}</span>`;
+                    const priorityColors = {
+                        'HIGH': 'danger',
+                        'MEDIUM': 'warning',
+                        'LOW': 'info'
+                    };
+                    const badgeColor = priorityColors[value] || 'secondary';
+                    cellContent = `<span class="badge bg-${badgeColor} badge-priority">${value}</span>`;
                 } else if (col === 'Progress (%)') {
                     const progress = parseFloat(value) || 0;
                     cellContent = `
-                        <div class="progress" style="height: 20px;">
-                            <div class="progress-bar" role="progressbar"
-                                 style="width: ${progress}%"
-                                 aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">
-                                ${progress}%
-                            </div>
+                        <div class="progress progress-sm">
+                            <div class="progress-bar" style="width: ${progress}%">${progress}%</div>
                         </div>
                     `;
-                } else if (col === 'Estimated Completion') {
-                    cellContent = `<span class="badge bg-info">${value}</span>`;
+                } else if (col === 'Memory (GB)' || col === 'vCores') {
+                    cellContent = `<strong>${value}</strong>`;
+                } else if (col === 'Elapsed Time (mins)') {
+                    const mins = parseFloat(value) || 0;
+                    if (mins > 60) {
+                        const hours = Math.floor(mins / 60);
+                        const remainingMins = Math.round(mins % 60);
+                        cellContent = `${hours}h ${remainingMins}m`;
+                    } else {
+                        cellContent = `${Math.round(mins)}m`;
+                    }
                 }
 
                 return `<td class="${cellClass}">${cellContent}</td>`;
@@ -1046,89 +908,37 @@
 
                 if (col === 'Status') {
                     cellClass = `status-${value.toLowerCase()}`;
-                } else if (col === 'Efficiency Score') {
-                    const score = parseFloat(value) || 0;
-                    let scoreClass = 'efficiency-low';
-                    if (score >= 70) scoreClass = 'efficiency-high';
-                    else if (score >= 40) scoreClass = 'efficiency-medium';
-                    cellContent = `<span class="efficiency-score ${scoreClass}">${score}</span>`;
+                    const statusIcons = {
+                        'COMPLETED': 'fas fa-check-circle text-success',
+                        'FAILED': 'fas fa-times-circle text-danger',
+                        'ERROR': 'fas fa-exclamation-triangle text-warning'
+                    };
+                    const icon = statusIcons[value] || '';
+                    cellContent = `<i class="${icon}"></i> ${value}`;
+                } else if (col === 'Duration (mins)') {
+                    const mins = parseFloat(value) || 0;
+                    if (mins > 60) {
+                        const hours = Math.floor(mins / 60);
+                        const remainingMins = Math.round(mins % 60);
+                        cellContent = `${hours}h ${remainingMins}m`;
+                    } else {
+                        cellContent = `${Math.round(mins)}m`;
+                    }
+                } else if (col === 'Memory (GB)' || col === 'vCores') {
+                    cellContent = `<strong>${value}</strong>`;
                 } else if (col === 'Cost Estimate') {
                     cellContent = `<span class="badge bg-dark">${value}</span>`;
+                } else if (col === 'Efficiency Score') {
+                    const score = parseFloat(value) || 0;
+                    let badgeColor = 'danger';
+                    if (score >= 70) badgeColor = 'success';
+                    else if (score >= 40) badgeColor = 'warning';
+                    cellContent = `<span class="badge bg-${badgeColor}">${score}</span>`;
                 }
 
                 return `<td class="${cellClass}">${cellContent}</td>`;
             }).join('');
             return `<tr>${cells}</tr>`;
-        }
-
-        function updateHourlyTable(data, columns) {
-            const noDataDiv = document.getElementById('hourlyNoData');
-            const table = document.getElementById('hourlyTable');
-
-            if (!data || data.length === 0) {
-                noDataDiv.style.display = 'block';
-                table.style.display = 'none';
-                return;
-            }
-
-            noDataDiv.style.display = 'none';
-            table.style.display = 'table';
-
-            // Update header
-            const header = document.getElementById('hourlyTableHeader');
-            header.innerHTML = columns.map(col => `<th>${col}</th>`).join('');
-
-            // Update body (limit to range value)
-            const range = parseInt(document.getElementById('hourlyRange').value);
-            const limitedData = data.slice(0, range);
-
-            const body = document.getElementById('hourlyTableBody');
-            body.innerHTML = limitedData.map(row => {
-                const cells = columns.map(col => {
-                    let value = row[col] || '';
-                    let cellContent = value;
-
-                    if (col === 'Success Rate (%)') {
-                        const rate = parseFloat(value) || 0;
-                        let badgeClass = 'bg-danger';
-                        if (rate >= 90) badgeClass = 'bg-success';
-                        else if (rate >= 70) badgeClass = 'bg-warning';
-                        cellContent = `<span class="badge ${badgeClass}">${rate}%</span>`;
-                    }
-
-                    return `<td>${cellContent}</td>`;
-                }).join('');
-                return `<tr>${cells}</tr>`;
-            }).join('');
-        }
-
-        function updateHourlySummary(summary) {
-            const table = document.getElementById('hourlySummaryTable');
-            const tbody = table.querySelector('tbody');
-
-            if (!summary || Object.keys(summary).length === 0) {
-                tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">No summary data available</td></tr>';
-                return;
-            }
-
-            tbody.innerHTML = Object.entries(summary).map(([key, value]) => {
-                let displayKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                let displayValue = value;
-
-                if (key.includes('hour') && key !== 'avg_success_rate') {
-                    displayValue = `<span class="badge bg-primary">${value}</span>`;
-                }
-
-                return `<tr><td><strong>${displayKey}</strong></td><td>${displayValue}</td></tr>`;
-            }).join('');
-
-            // Update busy hours list
-            if (summary.busiest_hours) {
-                const busyHoursList = document.getElementById('busyHoursList');
-                busyHoursList.innerHTML = summary.busiest_hours.map(hour =>
-                    `<span class="badge bg-warning mb-1 d-block">${hour}</span>`
-                ).join('');
-            }
         }
 
         function updateSummaryTable(data, columns) {
@@ -1148,7 +958,7 @@
             const header = document.getElementById('summaryTableHeader');
             header.innerHTML = columns.map(col => `<th>${col}</th>`).join('');
 
-            // Update body
+            // Update body with simplified formatting
             const body = document.getElementById('summaryTableBody');
             body.innerHTML = data.map(row => {
                 const cells = columns.map(col => {
@@ -1157,12 +967,12 @@
 
                     if (col === 'Total Cost') {
                         cellContent = `<span class="badge bg-dark">${value}</span>`;
-                    } else if (col === 'Avg Efficiency Score') {
-                        const score = parseFloat(value) || 0;
-                        let scoreClass = 'efficiency-low';
-                        if (score >= 70) scoreClass = 'efficiency-high';
-                        else if (score >= 40) scoreClass = 'efficiency-medium';
-                        cellContent = `<span class="efficiency-score ${scoreClass}">${score}</span>`;
+                    } else if (col === 'Job Name') {
+                        cellContent = `<strong>${value}</strong>`;
+                    } else if (col.includes('Total') && col.includes('GB')) {
+                        cellContent = `<span class="text-info fw-bold">${value}</span>`;
+                    } else if (col === 'Total Runs') {
+                        cellContent = `<span class="badge bg-primary">${value}</span>`;
                     }
 
                     return `<td>${cellContent}</td>`;
@@ -1172,12 +982,10 @@
         }
 
         function populateRunningFilters(data) {
-            populateSelectFilter('runningJobFilter', data, 'Job Name');
             populateSelectFilter('runningUserFilter', data, 'User');
         }
 
         function populateCompletedFilters(data) {
-            populateSelectFilter('completedJobFilter', data, 'Job Name');
             populateSelectFilter('completedUserFilter', data, 'User');
         }
 
@@ -1204,7 +1012,7 @@
                 select.appendChild(option);
             });
 
-            // Restore previous selection if it still exists
+            // Restore previous selection
             if (currentValue && uniqueValues.includes(currentValue)) {
                 select.value = currentValue;
             }
@@ -1222,24 +1030,6 @@
             loadJobSummary();
         }
 
-        function updateHourlyRange() {
-            const range = document.getElementById('hourlyRange');
-            const valueLabel = document.getElementById('hourlyRangeValue');
-            valueLabel.textContent = range.value + ' hours';
-
-            // Update table display
-            if (jobData.hourly.length > 0) {
-                const columns = ['Submit Hour', 'Job Count', 'Total Memory (GB)', 'Avg Memory (GB)', 'Max Memory (GB)',
-                              'Total vCores', 'Avg vCores', 'Max vCores', 'Avg Duration (mins)', 'Max Duration (mins)',
-                              'Total Memory-Hours', 'Total vCore-Hours', 'Unique Users', 'Success Rate (%)'];
-                updateHourlyTable(jobData.hourly, columns);
-            }
-        }
-
-        function refreshHourlyData() {
-            loadHourlyAggregation();
-        }
-
         function downloadCSV(dataType) {
             if (!currentEnvironment) {
                 showAlert('Please select an environment first', 'warning');
@@ -1247,8 +1037,6 @@
             }
 
             const url = `/download/${dataType}?environment=${currentEnvironment}`;
-
-            // Create a temporary link and click it
             const link = document.createElement('a');
             link.href = url;
             link.download = `${dataType}_jobs_${currentEnvironment}.csv`;
@@ -1257,228 +1045,6 @@
             document.body.removeChild(link);
 
             showAlert(`Downloading ${dataType} jobs data...`, 'info');
-        }
-
-        async function loadInsights() {
-            // Generate insights based on current data
-            generateOptimizationInsights();
-            generateCostInsights();
-            generatePerformanceInsights();
-            generateRecommendations();
-        }
-
-        function generateOptimizationInsights() {
-            const container = document.getElementById('optimizationInsights');
-
-            // Analyze running jobs for optimization opportunities
-            const runningJobs = jobData.running || [];
-            const highMemoryJobs = runningJobs.filter(job => parseFloat(job['Memory (GB)']) > 50);
-            const longRunningJobs = runningJobs.filter(job => parseFloat(job['Elapsed Time (mins)']) > 120);
-
-            let insights = [];
-
-            if (highMemoryJobs.length > 0) {
-                insights.push({
-                    type: 'warning',
-                    icon: 'fas fa-memory',
-                    title: 'High Memory Usage',
-                    description: `${highMemoryJobs.length} jobs using >50GB memory. Consider optimizing data processing.`
-                });
-            }
-
-            if (longRunningJobs.length > 0) {
-                insights.push({
-                    type: 'info',
-                    icon: 'fas fa-clock',
-                    title: 'Long Running Jobs',
-                    description: `${longRunningJobs.length} jobs running >2 hours. Review for potential optimizations.`
-                });
-            }
-
-            if (insights.length === 0) {
-                insights.push({
-                    type: 'success',
-                    icon: 'fas fa-check-circle',
-                    title: 'Well Optimized',
-                    description: 'No immediate optimization issues detected.'
-                });
-            }
-
-            container.innerHTML = insights.map(insight => `
-                <div class="alert alert-${insight.type} d-flex align-items-center">
-                    <i class="${insight.icon} me-2"></i>
-                    <div>
-                        <strong>${insight.title}</strong><br>
-                        <small>${insight.description}</small>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function generateCostInsights() {
-            const container = document.getElementById('costInsights');
-
-            // Analyze cost trends from completed jobs
-            const completedJobs = jobData.completed || [];
-            const totalCosts = completedJobs.map(job => {
-                const costStr = job['Cost Estimate'] || '$0.00';
-                return parseFloat(costStr.replace(', ''));
-            });
-
-            const totalCost = totalCosts.reduce((sum, cost) => sum + cost, 0);
-            const avgCost = totalCosts.length > 0 ? totalCost / totalCosts.length : 0;
-            const highCostJobs = completedJobs.filter(job => {
-                const cost = parseFloat((job['Cost Estimate'] || '$0.00').replace(', ''));
-                return cost > avgCost * 2;
-            });
-
-            let insights = [];
-
-            insights.push({
-                type: 'info',
-                icon: 'fas fa-calculator',
-                title: 'Cost Overview',
-                description: `Total estimated cost: ${totalCost.toFixed(2)} | Average per job: ${avgCost.toFixed(2)}`
-            });
-
-            if (highCostJobs.length > 0) {
-                insights.push({
-                    type: 'warning',
-                    icon: 'fas fa-exclamation-triangle',
-                    title: 'High Cost Jobs',
-                    description: `${highCostJobs.length} jobs cost >2x average. Review resource allocation.`
-                });
-            }
-
-            container.innerHTML = insights.map(insight => `
-                <div class="alert alert-${insight.type} d-flex align-items-center">
-                    <i class="${insight.icon} me-2"></i>
-                    <div>
-                        <strong>${insight.title}</strong><br>
-                        <small>${insight.description}</small>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function generatePerformanceInsights() {
-            const container = document.getElementById('performanceInsights');
-
-            // Analyze performance from completed jobs
-            const completedJobs = jobData.completed || [];
-            const efficiencyScores = completedJobs.map(job => parseFloat(job['Efficiency Score']) || 0);
-            const avgEfficiency = efficiencyScores.length > 0 ?
-                efficiencyScores.reduce((sum, score) => sum + score, 0) / efficiencyScores.length : 0;
-
-            const lowEfficiencyJobs = completedJobs.filter(job =>
-                parseFloat(job['Efficiency Score']) < 40
-            );
-
-            let insights = [];
-
-            insights.push({
-                type: 'info',
-                icon: 'fas fa-tachometer-alt',
-                title: 'Performance Overview',
-                description: `Average efficiency score: ${avgEfficiency.toFixed(1)}/100`
-            });
-
-            if (avgEfficiency < 60) {
-                insights.push({
-                    type: 'warning',
-                    icon: 'fas fa-arrow-down',
-                    title: 'Performance Issues',
-                    description: 'Below average efficiency detected. Consider job optimization.'
-                });
-            } else if (avgEfficiency > 80) {
-                insights.push({
-                    type: 'success',
-                    icon: 'fas fa-arrow-up',
-                    title: 'Excellent Performance',
-                    description: 'Jobs are running efficiently with good resource utilization.'
-                });
-            }
-
-            container.innerHTML = insights.map(insight => `
-                <div class="alert alert-${insight.type} d-flex align-items-center">
-                    <i class="${insight.icon} me-2"></i>
-                    <div>
-                        <strong>${insight.title}</strong><br>
-                        <small>${insight.description}</small>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function generateRecommendations() {
-            const container = document.getElementById('recommendations');
-
-            const runningJobs = jobData.running || [];
-            const completedJobs = jobData.completed || [];
-            const hourlyData = jobData.hourly || [];
-
-            let recommendations = [];
-
-            // Resource optimization recommendations
-            if (runningJobs.length > 10) {
-                recommendations.push({
-                    icon: 'fas fa-server',
-                    title: 'Consider Cluster Scaling',
-                    description: 'High job volume detected. Consider adding more nodes for better throughput.'
-                });
-            }
-
-            // Scheduling recommendations
-            if (hourlyData.length > 0) {
-                const busyHours = hourlyData.slice(0, 5);
-                const peakHour = busyHours.reduce((max, hour) =>
-                    hour['Job Count'] > max['Job Count'] ? hour : max, busyHours[0]
-                );
-
-                if (peakHour && peakHour['Job Count'] > 20) {
-                    recommendations.push({
-                        icon: 'fas fa-calendar-alt',
-                        title: 'Optimize Job Scheduling',
-                        description: `Peak usage at ${peakHour['Submit Hour']}. Distribute jobs across off-peak hours.`
-                    });
-                }
-            }
-
-            // Efficiency recommendations
-            const lowEfficiencyJobs = completedJobs.filter(job =>
-                parseFloat(job['Efficiency Score']) < 40
-            );
-
-            if (lowEfficiencyJobs.length > 0) {
-                recommendations.push({
-                    icon: 'fas fa-cogs',
-                    title: 'Improve Job Efficiency',
-                    description: `${lowEfficiencyJobs.length} jobs have low efficiency. Review Spark configurations.`
-                });
-            }
-
-            // Default recommendation
-            if (recommendations.length === 0) {
-                recommendations.push({
-                    icon: 'fas fa-thumbs-up',
-                    title: 'System Running Well',
-                    description: 'No critical issues detected. Continue monitoring for optimal performance.'
-                });
-            }
-
-            container.innerHTML = recommendations.map(rec => `
-                <div class="card mb-2">
-                    <div class="card-body py-2">
-                        <div class="d-flex align-items-center">
-                            <i class="${rec.icon} text-primary me-2"></i>
-                            <div>
-                                <strong>${rec.title}</strong><br>
-                                <small class="text-muted">${rec.description}</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
         }
     </script>
 </body>
