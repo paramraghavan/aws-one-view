@@ -1,0 +1,11 @@
+{
+  "aws_script_path": "./get_aws_tokens.py",
+  "default_bucket": "my-default-bucket",
+  "available_buckets": [
+    "my-default-bucket",
+    "data-processing-bucket",
+    "backup-bucket",
+    "staging-bucket"
+  ],
+  "aws_region": "us-east-1"
+}
