@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMR Monitoring Dashboard</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .cluster-selector {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1.5rem;
+            border-radius: 15px;
+            margin-bottom: 2rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .cluster-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .cluster-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cluster-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .cluster-card.pinned {
+            border: 2px solid #f39c12;
+        }
+
+        .cluster-card.active {
+            background: linear-gradient(135deg, #43a047 0%, #66bb6a 100%);
+        }
+
+        .pin-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            color: #f39c12;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .pin-btn:hover {
+            transform: scale(1.2);
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 2rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h3 {
+            color: #2c3e50;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .metric-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .metric-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .job-list {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .job-item {
+            background: #f8f9fa;
+            border-left: 4px solid #28a745;
+            margin-bottom: 1rem;
+            padding: 1rem;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .job-item:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            transform: translateX(5px);
+        }
+
+        .job-item.running {
+            border-left-color: #007bff;
+            background: linear-gradient(90deg, #e3f2fd 0%, #f8f9fa 100%);
+        }
+
+        .job-item.failed {
+            border-left-color: #dc3545;
+            background: linear-gradient(90deg, #ffebee 0%, #f8f9fa 100%);
+        }
+
+        .job-item.problematic {
+            border-left-color: #ff9800;
+            background: linear-gradient(90deg, #fff3e0 0%, #f8f9fa 100%);
+        }
+
+        .job-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .job-name {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .job-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .status-running {
+            background: #007bff;
+            color: white;
+        }
+
+        .status-completed {
+            background: #28a745;
+            color: white;
+        }
+
+        .status-failed {
+            background: #dc3545;
+            color: white;
+        }
+
+        .job-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .refresh-btn {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            margin-left: auto;
+        }
+
+        .refresh-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .progress-bar {
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            height: 8px;
+            margin-top: 0.5rem;
+        }
+
+        .progress-fill {
+            background: linear-gradient(90deg, #28a745, #20c997);
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        .auto-refresh {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 25px;
+            background: #ccc;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .toggle-switch.active {
+            background: #28a745;
+        }
+
+        .toggle-switch::before {
+            content: '';
+            position: absolute;
+            width: 21px;
+            height: 21px;
+            border-radius: 50%;
+            background: white;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.3s ease;
+        }
+
+        .toggle-switch.active::before {
+            transform: translateX(25px);
+        }
+
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+
+            .container {
+                padding: 1rem;
+            }
+
+            .metrics-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1><i class="fas fa-server"></i> EMR Monitoring Dashboard</h1>
+    </header>
+
+    <div class="container">
+        <!-- Cluster Selector -->
+        <div class="cluster-selector">
+            <h2><i class="fas fa-cloud"></i> Select EMR Cluster</h2>
+            <div class="cluster-grid" id="clusterGrid">
+                <!-- Clusters will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Auto-refresh controls -->
+        <div class="auto-refresh">
+            <label for="autoRefresh">Auto-refresh:</label>
+            <div class="toggle-switch" id="autoRefreshToggle"></div>
+            <button class="refresh-btn" onclick="refreshData()">
+                <i class="fas fa-sync-alt"></i> Refresh Now
+            </button>
+        </div>
+
+        <!-- Cluster Metrics -->
+        <div class="metrics-grid" id="metricsGrid" style="display: none;">
+            <!-- Metrics will be loaded here -->
+        </div>
+
+        <!-- Main Dashboard -->
+        <div class="dashboard" id="dashboard" style="display: none;">
+            <!-- Running Jobs -->
+            <div class="card">
+                <h3><i class="fas fa-play"></i> Running Jobs</h3>
+                <div class="job-list" id="runningJobs">
+                    <div class="loading">Select a cluster to view jobs</div>
+                </div>
+            </div>
+
+            <!-- Problematic Jobs -->
+            <div class="card">
+                <h3><i class="fas fa-exclamation-triangle"></i> Problematic Jobs</h3>
+                <div class="job-list" id="problematicJobs">
+                    <div class="loading">Select a cluster to view issues</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- All Jobs -->
+        <div class="card" id="allJobsCard" style="display: none;">
+            <h3><i class="fas fa-list"></i> All Applications</h3>
+            <div class="job-list" id="allJobs">
+                <div class="loading">Select a cluster to view all applications</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentCluster = null;
+        let autoRefreshInterval = null;
+        let pinnedClusters = [];
+
+        // Load clusters and pinned clusters on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadClusters();
+            loadPinnedClusters();
+            setupAutoRefresh();
+        });
+
+        async function loadClusters() {
+            try {
+                const response = await fetch('/api/clusters');
+                const clusters = await response.json();
+
+                const grid = document.getElementById('clusterGrid');
+                grid.innerHTML = '';
+
+                Object.entries(clusters).forEach(([id, cluster]) => {
+                    const card = document.createElement('div');
+                    card.className = `cluster-card ${pinnedClusters.includes(id) ? 'pinned' : ''}`;
+                    card.innerHTML = `
+                        <button class="pin-btn" onclick="togglePin('${id}')" title="${pinnedClusters.includes(id) ? 'Unpin' : 'Pin'} cluster">
+                            <i class="fas fa-thumbtack"></i>
+                        </button>
+                        <h4>${cluster.name}</h4>
+                        <p>${cluster.description}</p>
+                        <small>Spark: ${cluster.spark_url}</small><br>
+                        <small>YARN: ${cluster.yarn_url}</small>
+                    `;
+                    card.onclick = (e) => {
+                        if (!e.target.closest('.pin-btn')) {
+                            selectCluster(id);
+                        }
+                    };
+                    grid.appendChild(card);
+                });
+            } catch (error) {
+                console.error('Error loading clusters:', error);
+            }
+        }
+
+        async function loadPinnedClusters() {
+            try {
+                const response = await fetch('/api/pinned-clusters');
+                pinnedClusters = await response.json();
+            } catch (error) {
+                console.error('Error loading pinned clusters:', error);
+            }
+        }
+
+        async function togglePin(clusterId) {
+            try {
+                const isPinned = pinnedClusters.includes(clusterId);
+                const endpoint = isPinned ? '/api/unpin-cluster' : '/api/pin-cluster';
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cluster_id: clusterId })
+                });
+
+                const result = await response.json();
+                pinnedClusters = result.pinned_clusters;
+                loadClusters(); // Refresh the cluster display
+            } catch (error) {
+                console.error('Error toggling pin:', error);
+            }
+        }
+
+        function selectCluster(clusterId) {
+            currentCluster = clusterId;
+
+            // Update cluster card styles
+            document.querySelectorAll('.cluster-card').forEach(card => {
+                card.classList.remove('active');
+            });
+            event.target.closest('.cluster-card').classList.add('active');
+
+            // Show dashboard
+            document.getElementById('dashboard').style.display = 'grid';
+            document.getElementById('allJobsCard').style.display = 'block';
+            document.getElementById('metricsGrid').style.display = 'grid';
+
+            // Load data
+            refreshData();
+        }
+
+        async function refreshData() {
+            if (!currentCluster) return;
+
+            // Show loading states
+            document.getElementById('runningJobs').innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+            document.getElementById('problematicJobs').innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+            document.getElementById('allJobs').innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+
+            try {
+                // Load all data in parallel
+                const [sparkApps, yarnApps, metrics, problematicJobs] = await Promise.all([
+                    fetch(`/api/cluster/${currentCluster}/spark-apps`).then(r => r.json()),
+                    fetch(`/api/cluster/${currentCluster}/yarn-apps`).then(r => r.json()),
+                    fetch(`/api/cluster/${currentCluster}/metrics`).then(r => r.json()),
+                    fetch(`/api/cluster/${currentCluster}/problematic-jobs`).then(r => r.json())
+                ]);
+
+                displayMetrics(metrics);
+                displayRunningJobs(sparkApps);
+                displayProblematicJobs(problematicJobs);
+                displayAllJobs([...sparkApps, ...yarnApps]);
+
+            } catch (error) {
+                console.error('Error refreshing data:', error);
+                showError('Failed to load cluster data. Please check your connection and cluster configuration.');
+            }
+        }
+
+        function displayMetrics(metrics) {
+            const grid = document.getElementById('metricsGrid');
+
+            if (metrics.error) {
+                grid.innerHTML = `<div class="error">Error loading metrics: ${metrics.error}</div>`;
+                return;
+            }
+
+            grid.innerHTML = `
+                <div class="metric-card">
+                    <div class="metric-value">${metrics.totalMB || 0}</div>
+                    <div class="metric-label">Total Memory (MB)</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${metrics.totalVirtualCores || 0}</div>
+                    <div class="metric-label">Total vCores</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${metrics.allocatedMB || 0}</div>
+                    <div class="metric-label">Allocated Memory (MB)</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${metrics.allocatedVirtualCores || 0}</div>
+                    <div class="metric-label">Allocated vCores</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${metrics.appsRunning || 0}</div>
+                    <div class="metric-label">Running Apps</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${metrics.activeNodes || 0}</div>
+                    <div class="metric-label">Active Nodes</div>
+                </div>
+            `;
+        }
+
+        function displayRunningJobs(jobs) {
+            const container = document.getElementById('runningJobs');
+
+            if (jobs.error) {
+                container.innerHTML = `<div class="error">Error: ${jobs.error}</div>`;
+                return;
+            }
+
+            if (!jobs.length) {
+                container.innerHTML = '<div class="loading">No running jobs found</div>';
+                return;
+            }
+
+            const runningJobs = jobs.filter(job =>
+                job.attempts && job.attempts[0] && !job.attempts[0].endTime
+            );
+
+            if (!runningJobs.length) {
+                container.innerHTML = '<div class="loading">No currently running jobs</div>';
+                return;
+            }
+
+            container.innerHTML = runningJobs.map(job => createJobElement(job, 'running')).join('');
+        }
+
+        function displayProblematicJobs(problematicJobs) {
+            const container = document.getElementById('problematicJobs');
+
+            if (problematicJobs.error) {
+                container.innerHTML = `<div class="error">Error: ${problematicJobs.error}</div>`;
+                return;
+            }
+
+            if (!problematicJobs.length) {
+                container.innerHTML = '<div class="loading">No problematic jobs detected</div>';
+                return;
+            }
+
+            container.innerHTML = problematicJobs.map(item => {
+                const jobHtml = createJobElement(item.app, 'problematic');
+                const issuesHtml = `<div class="job-issues"><strong>Issues:</strong><ul>${item.issues.map(issue => `<li>${issue}</li>`).join('')}</ul></div>`;
+                return jobHtml.replace('</div>', issuesHtml + '</div>');
+            }).join('');
+        }
+
+        function displayAllJobs(jobs) {
+            const container = document.getElementById('allJobs');
+
+            if (!jobs.length) {
+                container.innerHTML = '<div class="loading">No applications found</div>';
+                return;
+            }
+
+            // Sort by start time (newest first)
+            jobs.sort((a, b) => {
+                const aTime = a.attempts ? a.attempts[0]?.startTime : a.startedTime;
+                const bTime = b.attempts ? b.attempts[0]?.startTime : b.startedTime;
+                return (bTime || 0) - (aTime || 0);
+            });
+
+            container.innerHTML = jobs.map(job => {
+                let status = 'completed';
+                if (job.attempts && job.attempts[0] && !job.attempts[0].endTime) {
+                    status = 'running';
+                } else if (job.finalStatus === 'FAILED' || job.state === 'FAILED') {
+                    status = 'failed';
+                }
+                return createJobElement(job, status);
+            }).join('');
+        }
+
+        function createJobElement(job, type = 'completed') {
+            const startTime = job.attempts ? job.attempts[0]?.startTime : job.startedTime;
+            const endTime = job.attempts ? job.attempts[0]?.endTime : job.finishedTime;
+            const duration = calculateDuration(startTime, endTime);
+            const memoryUsage = job.total_memory ? formatBytes(job.total_memory) : 'N/A';
+            const cores = job.total_cores || job.allocatedVCores || 'N/A';
+
+            return `
+                <div class="job-item ${type}">
+                    <div class="job-header">
+                        <div class="job-name">${job.name || job.id || 'Unknown Job'}</div>
+                        <div class="job-status status-${type}">${type.toUpperCase()}</div>
+                    </div>
+                    <div class="job-details">
+                        <div><strong>Duration:</strong> ${duration}</div>
+                        <div><strong>Memory:</strong> ${memoryUsage}</div>
+                        <div><strong>Cores:</strong> ${cores}</div>
+                        <div><strong>User:</strong> ${job.user || 'N/A'}</div>
+                        <div><strong>Queue:</strong> ${job.queue || 'default'}</div>
+                        <div><strong>Progress:</strong> ${((job.progress || 0) * 100).toFixed(1)}%</div>
+                    </div>
+                    ${job.progress !== undefined ? `
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${(job.progress * 100)}%"></div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        function calculateDuration(startTime, endTime) {
+            if (!startTime) return 'N/A';
+
+            const start = new Date(startTime);
+            const end = endTime ? new Date(endTime) : new Date();
+            const diff = end - start;
+
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+            if (hours > 0) {
+                return `${hours}h ${minutes}m`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${seconds}s`;
+            } else {
+                return `${seconds}s`;
+            }
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function showError(message) {
+            const containers = ['runningJobs', 'problematicJobs', 'allJobs'];
+            containers.forEach(id => {
+                document.getElementById(id).innerHTML = `<div class="error">${message}</div>`;
+            });
+        }
+
+        function setupAutoRefresh() {
+            const toggle = document.getElementById('autoRefreshToggle');
+
+            toggle.addEventListener('click', function() {
+                if (autoRefreshInterval) {
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                    toggle.classList.remove('active');
+                } else {
+                    autoRefreshInterval = setInterval(refreshData, 30000); // Refresh every 30 seconds
+                    toggle.classList.add('active');
+                }
+            });
+        }
+
+        // Cleanup interval on page unload
+        window.addEventListener('beforeunload', function() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+        });
+    </script>
+</body>
+</html>
