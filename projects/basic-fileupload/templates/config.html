@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuration - File Processing App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .main-content {
+            padding: 40px;
+        }
+
+        .config-section {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 1.5em;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .config-editor {
+            position: relative;
+        }
+
+        .config-textarea {
+            width: 100%;
+            height: 400px;
+            padding: 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            resize: vertical;
+            background: #f8f9fa;
+            transition: border-color 0.3s ease;
+        }
+
+        .config-textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            justify-content: center;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            min-width: 120px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            box-shadow: 0 8px 20px rgba(108, 117, 125, 0.3);
+        }
+
+        .btn-success {
+            background: #28a745;
+        }
+
+        .btn-success:hover {
+            box-shadow: 0 8px 20px rgba(40, 167, 69, 0.3);
+        }
+
+        .message {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-weight: 500;
+        }
+
+        .message-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .message-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .navigation {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .nav-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+            margin: 0 15px;
+            padding: 10px 20px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .nav-link:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .config-info {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .config-info h3 {
+            color: #0066cc;
+            margin-bottom: 10px;
+        }
+
+        .config-info ul {
+            margin-left: 20px;
+            color: #333;
+        }
+
+        .config-info li {
+            margin: 5px 0;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #e0e0e0;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>⚙️ Configuration</h1>
+        <p>Manage application settings and processing parameters</p>
+    </div>
+
+    <div class="main-content">
+        <div class="config-info">
+            <h3>📋 Configuration Guide</h3>
+            <ul>
+                <li><strong>processing.delay_seconds:</strong> Simulated processing delay per file (in seconds)</li>
+                <li><strong>processing.log_level:</strong> Logging level (DEBUG, INFO, WARNING, ERROR)</li>
+                <li><strong>processing.max_concurrent_files:</strong> Maximum files to process simultaneously</li>
+                <li><strong>output.show_file_content:</strong> Whether to display file content in logs</li>
+                <li><strong>output.detailed_logging:</strong> Enable detailed processing logs</li>
+            </ul>
+        </div>
+
+        <div class="config-section">
+            <div class="section-title">YAML Configuration</div>
+            <div class="config-editor">
+                <textarea id="configTextarea" class="config-textarea" placeholder="Loading configuration...">{{ config }}</textarea>
+            </div>
+        </div>
+
+        <div id="messageContainer"></div>
+
+        <div class="controls">
+            <button id="resetBtn" class="btn btn-secondary">Reset to Default</button>
+            <button id="saveBtn" class="btn btn-success">Save Configuration</button>
+        </div>
+
+        <div class="navigation">
+            <a href="/" class="nav-link">🏠 Back to Main</a>
+            <a href="#" id="validateBtn" class="nav-link">✅ Validate YAML</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    // DOM elements
+    const configTextarea = document.getElementById('configTextarea');
+    const saveBtn = document.getElementById('saveBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const validateBtn = document.getElementById('validateBtn');
+    const messageContainer = document.getElementById('messageContainer');
+
+    // Default configuration
+    const defaultConfig = `processing:
+delay_seconds: 2
+log_level: INFO
+max_concurrent_files: 3
+output:
+show_file_content: false
+detailed_logging: true`;
+
+    let originalConfig = configTextarea.value;
+
+    function showMessage(message, type = 'success') {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message message-${type}`;
+        messageDiv.textContent = message;
+
+        messageContainer.innerHTML = '';
+        messageContainer.appendChild(messageDiv);
+
+        // Auto-hide success messages after 5 seconds
+        if (type === 'success') {
+            setTimeout(() => {
+                messageDiv.style.opacity = '0';
+                setTimeout(() => messageDiv.remove(), 300);
+            }, 5000);
+        }
+    }
+
+    function showLoading(button) {
+        const originalText = button.textContent;
+        button.innerHTML = `<span class="spinner"></span>${originalText}`;
+        button.disabled = true;
+        return originalText;
+    }
+
+    function hideLoading(button, originalText) {
+        button.textContent = originalText;
+        button.disabled = false;
+    }
+
+    // Save configuration
+    saveBtn.addEventListener('click', async () => {
+        const originalText = showLoading(saveBtn);
+
+        try {
+            const response = await fetch('/config/update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    config: configTextarea.value
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                showMessage('✅ Configuration saved successfully!', 'success');
+                originalConfig = configTextarea.value;
+            } else {
+                showMessage('❌ ' + result.message, 'error');
+            }
+        } catch (error) {
+            showMessage('❌ Error saving configuration: ' + error.message, 'error');
+        } finally {
+            hideLoading(saveBtn, originalText);
+        }
+    });
+
+    // Reset to default
+    resetBtn.addEventListener('click', () => {
+        if (confirm('Are you sure you want to reset to default configuration? This will lose all current changes.')) {
+            configTextarea.value = defaultConfig;
+            showMessage('🔄 Configuration reset to default', 'success');
+        }
+    });
+
+    // Validate YAML
+    validateBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const originalText = showLoading(validateBtn);
+
+        try {
+            // Try to parse the YAML by sending it to the server
+            const response = await fetch('/config/update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    config: configTextarea.value
+                })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                showMessage('✅ YAML syntax is valid!', 'success');
+                // Restore original config since this was just validation
+                setTimeout(async () => {
+                    await fetch('/config/update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            config: originalConfig
+                        })
+                    });
+                }, 100);
+            } else {
+                showMessage('❌ YAML validation failed: ' + result.message, 'error');
+            }
+        } catch (error) {
+            showMessage('❌ Validation error: ' + error.message, 'error');
+        } finally {
+            hideLoading(validateBtn, originalText);
+        }
+    });
+
+    // Track changes
+    configTextarea.addEventListener('input', () => {
+        const hasChanges = configTextarea.value !== originalConfig;
+        saveBtn.style.opacity = hasChanges ? '1' : '0.7';
+    });
+
+    // Keyboard shortcuts
+    configTextarea.addEventListener('keydown', (e) => {
+        // Ctrl+S to save
+        if (e.ctrlKey && e.key === 's') {
+            e.preventDefault();
+            saveBtn.click();
+        }
+    });
+
+    // Auto-resize textarea based on content
+    function autoResize() {
+        configTextarea.style.height = 'auto';
+        configTextarea.style.height = Math.max(400, configTextarea.scrollHeight) + 'px';
+    }
+
+    configTextarea.addEventListener('input', autoResize);
+
+    // Initial resize
+    setTimeout(autoResize, 100);
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+processing:
+  delay_seconds: 2
+  log_level: INFO
+  max_concurrent_files: 3
+output:
+  show_file_content: false
+  detailed_logging: true

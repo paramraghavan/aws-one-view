@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Processing App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .main-content {
+            padding: 40px;
+        }
+
+        .drop-zone {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 60px 20px;
+            text-align: center;
+            margin-bottom: 30px;
+            transition: all 0.3s ease;
+            background: #f8f9ff;
+            cursor: pointer;
+        }
+
+        .drop-zone.dragover {
+            border-color: #764ba2;
+            background: #f0f4ff;
+            transform: scale(1.02);
+        }
+
+        .drop-zone-content {
+            pointer-events: none;
+        }
+
+        .drop-zone h3 {
+            color: #667eea;
+            font-size: 1.5em;
+            margin-bottom: 15px;
+        }
+
+        .drop-zone p {
+            color: #666;
+            font-size: 1.1em;
+            margin-bottom: 20px;
+        }
+
+        .file-icon {
+            font-size: 4em;
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .file-list {
+            margin: 20px 0;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: #f9f9f9;
+        }
+
+        .file-item {
+            padding: 10px 15px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: between;
+            align-items: center;
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .file-name {
+            font-weight: 500;
+            color: #333;
+            flex: 1;
+        }
+
+        .file-size {
+            color: #666;
+            font-size: 0.9em;
+            margin-left: 10px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            justify-content: center;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            min-width: 120px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            box-shadow: 0 8px 20px rgba(108, 117, 125, 0.3);
+        }
+
+        .progress-section {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .progress-title {
+            font-size: 1.3em;
+            color: #333;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .loading-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #e0e0e0;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .progress-log {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 4px;
+        }
+
+        .log-processing {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .log-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .log-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .navigation {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .nav-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+            margin: 0 15px;
+            padding: 10px 20px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .nav-link:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 500;
+            margin-left: 10px;
+        }
+
+        .status-processing {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>📁 File Processing Center</h1>
+        <p>Drag and drop your files for processing</p>
+    </div>
+
+    <div class="main-content">
+        <div id="dropZone" class="drop-zone">
+            <div class="drop-zone-content">
+                <div class="file-icon">📁</div>
+                <h3>Drop Files Here</h3>
+                <p>Drag and drop files from your desktop, or click to browse</p>
+                <input type="file" id="fileInput" multiple style="display: none;">
+            </div>
+        </div>
+
+        <div id="fileList" class="file-list" style="display: none;"></div>
+
+        <div class="controls">
+            <button id="clearBtn" class="btn btn-secondary" disabled>Clear Files</button>
+            <button id="submitBtn" class="btn" disabled>Process Files</button>
+        </div>
+
+        <div id="progressSection" class="progress-section">
+            <div class="progress-title">
+                <div class="loading-spinner"></div>
+                <span>Processing Files...</span>
+            </div>
+            <div id="progressLog" class="progress-log"></div>
+        </div>
+
+        <div class="navigation">
+            <a href="/config" class="nav-link">⚙️ Configuration</a>
+            <a href="#" id="viewLogsBtn" class="nav-link">📋 View Logs</a>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+<script>
+    // Initialize Socket.IO
+    const socket = io();
+
+    // DOM elements
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileList = document.getElementById('fileList');
+    const clearBtn = document.getElementById('clearBtn');
+    const submitBtn = document.getElementById('submitBtn');
+    const progressSection = document.getElementById('progressSection');
+    const progressLog = document.getElementById('progressLog');
+    const viewLogsBtn = document.getElementById('viewLogsBtn');
+
+    let selectedFiles = [];
+
+    // File handling functions
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function updateFileList() {
+        if (selectedFiles.length === 0) {
+            fileList.style.display = 'none';
+            clearBtn.disabled = true;
+            submitBtn.disabled = true;
+            return;
+        }
+
+        fileList.style.display = 'block';
+        fileList.innerHTML = selectedFiles.map(file => `
+            <div class="file-item">
+                <span class="file-name">${file.name}</span>
+                <span class="file-size">${formatFileSize(file.size)}</span>
+            </div>
+        `).join('');
+
+        clearBtn.disabled = false;
+        submitBtn.disabled = false;
+    }
+
+    function addFiles(files) {
+        Array.from(files).forEach(file => {
+            if (!selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
+                selectedFiles.push(file);
+            }
+        });
+        updateFileList();
+    }
+
+    function clearFiles() {
+        selectedFiles = [];
+        updateFileList();
+        progressSection.style.display = 'none';
+        progressLog.innerHTML = '';
+    }
+
+    // Drag and drop events
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        addFiles(e.dataTransfer.files);
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        addFiles(e.target.files);
+    });
+
+    // Control buttons
+    clearBtn.addEventListener('click', clearFiles);
+
+    submitBtn.addEventListener('click', async () => {
+        if (selectedFiles.length === 0) return;
+
+        // Show progress section
+        progressSection.style.display = 'block';
+        progressLog.innerHTML = '<div class="log-entry">Starting file processing...</div>';
+
+        // Disable controls during processing
+        submitBtn.disabled = true;
+        clearBtn.disabled = true;
+
+        // Create FormData
+        const formData = new FormData();
+        selectedFiles.forEach(file => {
+            formData.append('files[]', file);
+        });
+
+        try {
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                addLogEntry('info', result.message);
+            } else {
+                addLogEntry('error', result.error || 'Upload failed');
+                submitBtn.disabled = false;
+                clearBtn.disabled = false;
+            }
+        } catch (error) {
+            addLogEntry('error', `Upload error: ${error.message}`);
+            submitBtn.disabled = false;
+            clearBtn.disabled = false;
+        }
+    });
+
+    // Socket.IO events
+    socket.on('connect', () => {
+        console.log('Connected to server');
+    });
+
+    socket.on('file_progress', (data) => {
+        addLogEntry(data.status, data.message, data.filename);
+
+        // Update file list with status badges
+        updateFileStatus(data.filename, data.status);
+
+        // If all files are processed, re-enable controls
+        if (data.status === 'completed' || data.status === 'error') {
+            checkAllFilesProcessed();
+        }
+    });
+
+    function addLogEntry(type, message, filename = '') {
+        const timestamp = new Date().toLocaleTimeString();
+        const entry = document.createElement('div');
+        entry.className = `log-entry log-${type}`;
+        entry.innerHTML = `<strong>[${timestamp}]</strong> ${message}`;
+
+        progressLog.appendChild(entry);
+        progressLog.scrollTop = progressLog.scrollHeight;
+    }
+
+    function updateFileStatus(filename, status) {
+        const fileItems = fileList.querySelectorAll('.file-item');
+        fileItems.forEach(item => {
+            const nameElement = item.querySelector('.file-name');
+            if (nameElement.textContent === filename) {
+                // Remove existing status badge
+                const existingBadge = item.querySelector('.status-badge');
+                if (existingBadge) existingBadge.remove();
+
+                // Add new status badge
+                const badge = document.createElement('span');
+                badge.className = `status-badge status-${status}`;
+                badge.textContent = status.toUpperCase();
+                item.appendChild(badge);
+            }
+        });
+    }
+
+    function checkAllFilesProcessed() {
+        const badges = fileList.querySelectorAll('.status-badge');
+        const processedCount = Array.from(badges).filter(badge =>
+            badge.textContent === 'COMPLETED' || badge.textContent === 'ERROR'
+        ).length;
+
+        if (processedCount === selectedFiles.length) {
+            addLogEntry('info', '✅ All files processing completed!');
+            submitBtn.disabled = false;
+            clearBtn.disabled = false;
+        }
+    }
+
+    // View logs functionality
+    viewLogsBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        try {
+            const response = await fetch('/logs');
+            const result = await response.json();
+
+            if (response.ok) {
+                // Open logs in a new window
+                const logWindow = window.open('', 'logs', 'width=800,height=600');
+                logWindow.document.write(`
+                    <html>
+                        <head><title>Application Logs</title></head>
+                        <body style="font-family: monospace; padding: 20px; background: #f8f9fa;">
+                            <h2>Application Logs</h2>
+                            <pre style="background: white; padding: 15px; border: 1px solid #ddd; border-radius: 5px; white-space: pre-wrap;">${result.logs}</pre>
+                        </body>
+                    </html>
+                `);
+            } else {
+                alert('Error loading logs: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error loading logs: ' + error.message);
+        }
+    });
+</script>
+</body>
+</html>
