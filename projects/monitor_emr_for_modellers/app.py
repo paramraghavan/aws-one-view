@@ -188,8 +188,60 @@ class EMRMonitor:
             return {"error": str(e)}
 
 
-# Initialize EMR Monitor at module level (global scope)
+# Persistent storage for pinned clusters
+class PersistentPins:
+    def __init__(self, filename='pinned_clusters.json'):
+        self.filename = filename
+        self.pins_data = self.load_pins()
+
+    def load_pins(self):
+        """Load pinned clusters from JSON file"""
+        try:
+            if os.path.exists(self.filename):
+                with open(self.filename, 'r') as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"⚠️  Error loading pinned clusters: {e}")
+        return {}
+
+    def save_pins(self):
+        """Save pinned clusters to JSON file"""
+        try:
+            with open(self.filename, 'w') as f:
+                json.dump(self.pins_data, f, indent=2)
+        except Exception as e:
+            print(f"❌ Error saving pinned clusters: {e}")
+
+    def get_user_pins(self, session_id):
+        """Get pinned clusters for a specific session/user"""
+        return self.pins_data.get(session_id, [])
+
+    def set_user_pins(self, session_id, pinned_clusters):
+        """Set pinned clusters for a specific session/user"""
+        if pinned_clusters:
+            self.pins_data[session_id] = pinned_clusters
+        elif session_id in self.pins_data:
+            del self.pins_data[session_id]
+        self.save_pins()
+
+    def cleanup_old_sessions(self, max_age_days=30):
+        """Remove old session data to prevent file bloat"""
+        # This would need session timestamp tracking for full implementation
+        pass
+
+
+# Initialize EMR Monitor and persistent pins at module level (global scope)
 monitor = EMRMonitor()
+persistent_pins = PersistentPins()
+
+
+def get_session_id():
+    """Get or create a unique session ID"""
+    if 'session_id' not in session:
+        import uuid
+        session['session_id'] = str(uuid.uuid4())
+        session.permanent = True
+    return session['session_id']
 
 
 def add_session_persistence(app):
@@ -208,6 +260,7 @@ def add_session_persistence(app):
 
     Session(app)
     print(f"✅ Session persistence enabled: {sessions_dir}")
+    print(f"✅ Pinned clusters stored in: {persistent_pins.filename}")
     return app
 
 
@@ -256,14 +309,23 @@ def pin_cluster():
     """Pin a cluster as favorite"""
     data = request.get_json()
     cluster_id = data.get('cluster_id')
+    session_id = get_session_id()
 
-    if 'pinned_clusters' not in session:
-        session['pinned_clusters'] = []
+    # Load existing pins from persistent storage
+    pinned_clusters = persistent_pins.get_user_pins(session_id)
 
-    if cluster_id not in session['pinned_clusters']:
-        session['pinned_clusters'].append(cluster_id)
+    if cluster_id not in pinned_clusters:
+        pinned_clusters.append(cluster_id)
 
-    return jsonify({"status": "success", "pinned_clusters": session['pinned_clusters']})
+    # Save to both session and persistent storage
+    session['pinned_clusters'] = pinned_clusters
+    persistent_pins.set_user_pins(session_id, pinned_clusters)
+
+    return jsonify({
+        "status": "success",
+        "pinned_clusters": pinned_clusters,
+        "message": f"Pinned {cluster_id}"
+    })
 
 
 @app.route('/api/unpin-cluster', methods=['POST'])
@@ -271,17 +333,43 @@ def unpin_cluster():
     """Unpin a cluster"""
     data = request.get_json()
     cluster_id = data.get('cluster_id')
+    session_id = get_session_id()
 
-    if 'pinned_clusters' in session and cluster_id in session['pinned_clusters']:
-        session['pinned_clusters'].remove(cluster_id)
+    # Load existing pins from persistent storage
+    pinned_clusters = persistent_pins.get_user_pins(session_id)
 
-    return jsonify({"status": "success", "pinned_clusters": session.get('pinned_clusters', [])})
+    if cluster_id in pinned_clusters:
+        pinned_clusters.remove(cluster_id)
+
+    # Save to both session and persistent storage
+    session['pinned_clusters'] = pinned_clusters
+    persistent_pins.set_user_pins(session_id, pinned_clusters)
+
+    return jsonify({
+        "status": "success",
+        "pinned_clusters": pinned_clusters,
+        "message": f"Unpinned {cluster_id}"
+    })
 
 
 @app.route('/api/pinned-clusters')
 def get_pinned_clusters():
     """Get user's pinned clusters"""
-    return jsonify(session.get('pinned_clusters', []))
+    session_id = get_session_id()
+
+    # Load from persistent storage first, then fallback to session
+    pinned_clusters = persistent_pins.get_user_pins(session_id)
+
+    if not pinned_clusters:
+        pinned_clusters = session.get('pinned_clusters', [])
+        if pinned_clusters:
+            # Sync session data to persistent storage
+            persistent_pins.set_user_pins(session_id, pinned_clusters)
+    else:
+        # Sync persistent data back to session
+        session['pinned_clusters'] = pinned_clusters
+
+    return jsonify(pinned_clusters)
 
 
 @app.route('/api/reload-config')
@@ -307,7 +395,16 @@ if __name__ == '__main__':
     # Add session persistence
     app = add_session_persistence(app)
 
-    print("✅ EMR Monitor ready with persistent sessions")
+    # Show pinned clusters from file on startup
+    total_users = len(persistent_pins.pins_data)
+    if total_users > 0:
+        print(f"📌 Loaded pinned clusters for {total_users} users")
+        for session_id, pins in list(persistent_pins.pins_data.items())[:3]:  # Show first 3
+            print(f"   Session {session_id[:8]}...: {pins}")
+        if total_users > 3:
+            print(f"   ... and {total_users - 3} more users")
+
+    print("✅ EMR Monitor ready with persistent pinned clusters")
     print("🌐 Visit: http://localhost:5000")
 
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5001)

@@ -51,51 +51,84 @@
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
         }
 
-        .cluster-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1rem;
+        .dropdown-container {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
             margin-top: 1rem;
+            flex-wrap: wrap;
         }
 
-        .cluster-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 1.5rem;
-            border-radius: 12px;
+        .cluster-dropdown {
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
+            min-width: 300px;
             cursor: pointer;
             transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
         }
 
-        .cluster-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+        .cluster-dropdown:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
         }
 
-        .cluster-card.pinned {
-            border: 2px solid #f39c12;
+        .cluster-dropdown option {
+            padding: 0.5rem;
         }
 
-        .cluster-card.active {
-            background: linear-gradient(135deg, #43a047 0%, #66bb6a 100%);
+        .pinned-clusters {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .pinned-label {
+            font-weight: bold;
+            color: #666;
+        }
+
+        .pinned-cluster {
+            background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 15px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .pinned-cluster:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(243, 156, 18, 0.3);
         }
 
         .pin-btn {
-            position: absolute;
-            top: 10px;
-            right: 10px;
             background: none;
             border: none;
             color: #f39c12;
-            font-size: 1.2rem;
             cursor: pointer;
+            padding: 0.5rem;
+            margin-left: 1rem;
+            border-radius: 5px;
             transition: all 0.3s ease;
+            font-size: 1.2rem;
         }
 
         .pin-btn:hover {
-            transform: scale(1.2);
+            background: rgba(243, 156, 18, 0.1);
+            transform: scale(1.1);
+        }
+
+        .pin-btn.pinned {
+            color: #e67e22;
         }
 
         .dashboard {
@@ -330,8 +363,15 @@
         <!-- Cluster Selector -->
         <div class="cluster-selector">
             <h2><i class="fas fa-cloud"></i> Select EMR Cluster</h2>
-            <div class="cluster-grid" id="clusterGrid">
-                <!-- Clusters will be loaded here -->
+            <div class="dropdown-container">
+                <select id="clusterDropdown" class="cluster-dropdown">
+                    <option value="">-- Select a cluster --</option>
+                    <!-- Clusters will be loaded here -->
+                </select>
+                <div class="pinned-clusters" id="pinnedClusters">
+                    <span class="pinned-label">📌 Pinned:</span>
+                    <!-- Pinned clusters will appear here -->
+                </div>
             </div>
         </div>
 
@@ -394,31 +434,68 @@
                 const response = await fetch('/api/clusters');
                 const clusters = await response.json();
 
-                const grid = document.getElementById('clusterGrid');
-                grid.innerHTML = '';
+                const dropdown = document.getElementById('clusterDropdown');
+                dropdown.innerHTML = '<option value="">-- Select a cluster --</option>';
 
                 Object.entries(clusters).forEach(([id, cluster]) => {
-                    const card = document.createElement('div');
-                    card.className = `cluster-card ${pinnedClusters.includes(id) ? 'pinned' : ''}`;
-                    card.innerHTML = `
-                        <button class="pin-btn" onclick="togglePin('${id}')" title="${pinnedClusters.includes(id) ? 'Unpin' : 'Pin'} cluster">
-                            <i class="fas fa-thumbtack"></i>
-                        </button>
-                        <h4>${cluster.name}</h4>
-                        <p>${cluster.description}</p>
-                        <small>Spark: ${cluster.spark_url}</small><br>
-                        <small>YARN: ${cluster.yarn_url}</small>
-                    `;
-                    card.onclick = (e) => {
-                        if (!e.target.closest('.pin-btn')) {
-                            selectCluster(id);
-                        }
-                    };
-                    grid.appendChild(card);
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = `${cluster.name} - ${cluster.description}`;
+                    dropdown.appendChild(option);
                 });
+
+                // Add change event listener
+                dropdown.addEventListener('change', function() {
+                    if (this.value) {
+                        selectCluster(this.value);
+                    } else {
+                        // Hide dashboard when no cluster selected
+                        document.getElementById('dashboard').style.display = 'none';
+                        document.getElementById('allJobsCard').style.display = 'none';
+                        document.getElementById('metricsGrid').style.display = 'none';
+                    }
+                });
+
+                // Update pinned clusters display
+                updatePinnedClustersDisplay(clusters);
+
             } catch (error) {
                 console.error('Error loading clusters:', error);
             }
+        }
+
+        function updatePinnedClustersDisplay(clusters) {
+            const pinnedContainer = document.getElementById('pinnedClusters');
+            const pinnedLabel = pinnedContainer.querySelector('.pinned-label');
+
+            // Clear existing pinned clusters (keep the label)
+            pinnedContainer.innerHTML = '<span class="pinned-label">📌 Pinned:</span>';
+
+            if (pinnedClusters.length === 0) {
+                pinnedContainer.style.display = 'none';
+                return;
+            }
+
+            pinnedContainer.style.display = 'flex';
+
+            pinnedClusters.forEach(clusterId => {
+                const cluster = clusters[clusterId];
+                if (cluster) {
+                    const pinnedElement = document.createElement('div');
+                    pinnedElement.className = 'pinned-cluster';
+                    pinnedElement.innerHTML = `
+                        ${cluster.name}
+                        <i class="fas fa-times" onclick="togglePin('${clusterId}')" title="Unpin cluster"></i>
+                    `;
+                    pinnedElement.onclick = (e) => {
+                        if (!e.target.closest('.fa-times')) {
+                            document.getElementById('clusterDropdown').value = clusterId;
+                            selectCluster(clusterId);
+                        }
+                    };
+                    pinnedContainer.appendChild(pinnedElement);
+                }
+            });
         }
 
         async function loadPinnedClusters() {
@@ -443,7 +520,20 @@
 
                 const result = await response.json();
                 pinnedClusters = result.pinned_clusters;
-                loadClusters(); // Refresh the cluster display
+
+                // Reload clusters and update displays
+                const clustersResponse = await fetch('/api/clusters');
+                const clusters = await clustersResponse.json();
+                updatePinnedClustersDisplay(clusters);
+
+                // Update current pin button if it exists
+                const currentPinBtn = document.querySelector('.current-cluster-pin');
+                if (currentPinBtn && currentCluster === clusterId) {
+                    const newIsPinned = pinnedClusters.includes(clusterId);
+                    currentPinBtn.className = `pin-btn current-cluster-pin ${newIsPinned ? 'pinned' : ''}`;
+                    currentPinBtn.title = newIsPinned ? 'Unpin cluster' : 'Pin cluster';
+                }
+
             } catch (error) {
                 console.error('Error toggling pin:', error);
             }
@@ -452,19 +542,35 @@
         function selectCluster(clusterId) {
             currentCluster = clusterId;
 
-            // Update cluster card styles
-            document.querySelectorAll('.cluster-card').forEach(card => {
-                card.classList.remove('active');
-            });
-            event.target.closest('.cluster-card').classList.add('active');
-
             // Show dashboard
             document.getElementById('dashboard').style.display = 'grid';
             document.getElementById('allJobsCard').style.display = 'block';
             document.getElementById('metricsGrid').style.display = 'grid';
 
+            // Add pin button next to dropdown if not already pinned
+            addPinButton(clusterId);
+
             // Load data
             refreshData();
+        }
+
+        function addPinButton(clusterId) {
+            // Remove existing pin button
+            const existingBtn = document.querySelector('.current-cluster-pin');
+            if (existingBtn) {
+                existingBtn.remove();
+            }
+
+            // Add pin button next to dropdown
+            const isPinned = pinnedClusters.includes(clusterId);
+            const pinBtn = document.createElement('button');
+            pinBtn.className = `pin-btn current-cluster-pin ${isPinned ? 'pinned' : ''}`;
+            pinBtn.innerHTML = `<i class="fas fa-thumbtack"></i>`;
+            pinBtn.title = isPinned ? 'Unpin cluster' : 'Pin cluster';
+            pinBtn.onclick = () => togglePin(clusterId);
+
+            const dropdownContainer = document.querySelector('.dropdown-container');
+            dropdownContainer.appendChild(pinBtn);
         }
 
         async function refreshData() {
