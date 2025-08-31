@@ -1,13 +1,13 @@
 from flask import Flask, render_template, jsonify, request, session
 from flask_cors import CORS
+from flask_session import Session
 import requests
 import json
 import yaml
 import os
 from datetime import datetime, timedelta
-import threading
-import time
 
+# Create Flask app
 app = Flask(__name__)
 app.secret_key = 'emr-monitor-secret-key'
 CORS(app)
@@ -44,6 +44,7 @@ class EMRMonitor:
                         "description": "Production EMR cluster"
                     }
                 }
+                print("⚠️  Using default cluster configuration. Create config.yaml for custom clusters.")
         except Exception as e:
             print(f"Error loading config: {e}")
             self.clusters = {}
@@ -187,8 +188,27 @@ class EMRMonitor:
             return {"error": str(e)}
 
 
-# Initialize EMR Monitor
+# Initialize EMR Monitor at module level (global scope)
 monitor = EMRMonitor()
+
+
+def add_session_persistence(app):
+    """Add persistent session storage to EMR monitor"""
+    sessions_dir = os.path.join(os.path.dirname(__file__), 'flask_sessions')
+    os.makedirs(sessions_dir, exist_ok=True)
+
+    app.config.update(
+        SESSION_TYPE='filesystem',
+        SESSION_FILE_DIR=sessions_dir,
+        SESSION_PERMANENT=True,
+        SESSION_USE_SIGNER=True,
+        SESSION_KEY_PREFIX='emr_monitor:',
+        PERMANENT_SESSION_LIFETIME=86400 * 30  # 30 days
+    )
+
+    Session(app)
+    print(f"✅ Session persistence enabled: {sessions_dir}")
+    return app
 
 
 @app.route('/')
@@ -264,5 +284,30 @@ def get_pinned_clusters():
     return jsonify(session.get('pinned_clusters', []))
 
 
+@app.route('/api/reload-config')
+def reload_config():
+    """Reload cluster configuration from file"""
+    monitor.load_config()
+    return jsonify({
+        "status": "success",
+        "message": "Configuration reloaded",
+        "clusters": monitor.clusters
+    })
+
+"""
+# pip install flask flask-cors flask-session requests pyyaml
+"""
 if __name__ == '__main__':
+    print("🚀 EMR Monitor Starting...")
+    print(f"📡 Monitoring {len(monitor.clusters)} EMR clusters:")
+
+    for cluster_id, cluster_info in monitor.clusters.items():
+        print(f"  • {cluster_info['name']} ({cluster_id})")
+
+    # Add session persistence
+    app = add_session_persistence(app)
+
+    print("✅ EMR Monitor ready with persistent sessions")
+    print("🌐 Visit: http://localhost:5000")
+
     app.run(debug=True, host='0.0.0.0', port=5000)
