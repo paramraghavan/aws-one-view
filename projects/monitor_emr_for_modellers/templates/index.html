@@ -1,4 +1,140 @@
-<!DOCTYPE html>
+async function viewLogs(appId) {
+            try {
+                updateRefreshStatus('Loading logs...');
+                const response = await fetch(`/api/cluster/${currentCluster}/application/${appId}/logs`);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    displayLogsModal(appId, data.logs_data);
+                    updateRefreshStatus('Logs loaded successfully');
+                } else {
+                    throw new Error('Failed to load logs');
+                }
+            } catch (error) {
+                console.error('Failed to view logs:', error);
+                showError('Failed to load logs: ' + error.message);
+            }
+        }
+
+        function displayLogsModal(appId, logsData) {
+            let logsHtml = `
+                <div style="max-width: 90vw; max-height: 85vh; overflow: hidden; padding: 20px; display: flex; flex-direction: column;">
+                    <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 20px; flex-shrink: 0;">
+                        <h3 style="color: #2c3e50; margin: 0;">Application Logs: ${appId}</h3>
+                        <button onclick="closeModal()" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; margin-left: auto;">Close</button>
+                    </div>
+
+                    <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">`;
+
+            // Create tabs for different log types
+            const logTypes = [];
+            if (logsData.driver_logs) logTypes.push({key: 'driver', name: 'Driver Logs', content: logsData.driver_logs});
+            if (logsData.executor_logs) {
+                Object.entries(logsData.executor_logs).forEach(([key, content]) => {
+                    if (content) logTypes.push({key: key, name: key.replace('_', ' ').toUpperCase(), content: content});
+                });
+            }
+            if (logsData.container_logs) {
+                Object.entries(logsData.container_logs).forEach(([key, content]) => {
+                    if (content) logTypes.push({key: key, name: `Container ${key.slice(-12)}`, content: content});
+                });
+            }
+            if (logsData.yarn_info) logTypes.push({key: 'yarn_info', name: 'YARN Info', content: JSON.stringify(logsData.yarn_info, null, 2), isJson: true});
+            if (logsData.spark_jobs) logTypes.push({key: 'spark_jobs', name: 'Spark Jobs', content: JSON.stringify(logsData.spark_jobs, null, 2), isJson: true});
+            if (logsData.environment) logTypes.push({key: 'environment', name: 'Environment', content: JSON.stringify(logsData.environment, null, 2), isJson: true});
+
+            if (logTypes.length === 0) {
+                logsHtml += `<p style="text-align: center; color: #7f8c8d; padding: 40px;">No logs available for this application</p>`;
+            } else {
+                // Tabs
+                logsHtml += `<div style="display: flex; gap: 5px; margin-bottom: 15px; flex-wrap: wrap; flex-shrink: 0;">`;
+                logTypes.forEach((logType, index) => {
+                    logsHtml += `<button onclick="showLogTab('${logType.key}')" id="tab-${logType.key}" style="padding: 8px 12px; border: 2px solid #e0e6ed; background: white; border-radius: 5px; cursor: pointer; font-size: 12px; ${index === 0 ? 'background: #667eea; color: white; border-color: #667eea;' : ''}">${logType.name}</button>`;
+                });
+                logsHtml += `</div>`;
+
+                // Log content areas
+                logTypes.forEach((logType, index) => {
+                    const displayStyle = index === 0 ? 'block' : 'none';
+                    const backgroundColor = logType.isJson ? '#f8f9fa' : '#000';
+                    const textColor = logType.isJson ? '#333' : '#0f0';
+                    const fontFamily = logType.isJson ? 'Consolas, Monaco, monospace' : 'Courier New, monospace';
+
+                    logsHtml += `
+                        <div id="log-${logType.key}" style="display: ${displayStyle}; flex: 1; overflow: hidden; display: flex; flex-direction: column;">
+                            <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 10px;">
+                                <h4 style="margin: 0; color: #2c3e50; font-size: 14px;">${logType.name}</h4>
+                                <button onclick="downloadSingleLog('${appId}', '${logType.key}', '${logType.name}')" style="background: #28a745; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;">Download</button>
+                            </div>
+                            <div style="flex: 1; overflow: auto; background: ${backgroundColor}; color: ${textColor}; padding: 15px; border-radius: 5px; font-family: ${fontFamily}; font-size: 12px; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word;">
+                                ${logType.content || 'No content available'}
+                            </div>
+                        </div>`;
+                });
+            }
+
+            logsHtml += `
+                    </div>
+                    <div style="display: flex; justify-content: center; gap: 10px; margin-top: 15px; flex-shrink: 0;">
+                        <button onclick="downloadLogs('${appId}')" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Download All Logs</button>
+                    </div>
+                </div>`;
+
+            showModal(logsHtml);
+
+            // Store log data for single downloads
+            window.currentLogsData = {};
+            logTypes.forEach(logType => {
+                window.currentLogsData[logType.key] = {name: logType.name, content: logType.content};
+            });
+        }
+
+        function showLogTab(tabKey) {
+            // Hide all log content areas
+            document.querySelectorAll('[id^="log-"]').forEach(el => {
+                el.style.display = 'none';
+            });
+
+            // Remove active style from all tabs
+            document.querySelectorAll('[id^="tab-"]').forEach(el => {
+                el.style.background = 'white';
+                el.style.color = '#333';
+                el.style.borderColor = '#e0e6ed';
+            });
+
+            // Show selected log content
+            document.getElementById(`log-${tabKey}`).style.display = 'flex';
+
+            // Style active tab
+            const activeTab = document.getElementById(`tab-${tabKey}`);
+            activeTab.style.background = '#667eea';
+            activeTab.style.color = 'white';
+            activeTab.style.borderColor = '#667eea';
+        }
+
+        function downloadSingleLog(appId, logKey, logName) {
+            if (!window.currentLogsData || !window.currentLogsData[logKey]) {
+                showError('Log data not available');
+                return;
+            }
+
+            const logData = window.currentLogsData[logKey];
+            const content = logData.content;
+            const filename = `${appId}_${logKey}.${logKey.includes('info') || logKey.includes('jobs') || logKey.includes('environment') ? 'json' : 'log'}`;
+
+            // Create and trigger download
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            updateRefreshStatus(`Downloaded ${filename}`);
+        }<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -608,6 +744,9 @@
                     <div class="app-actions">
                         <button class="btn-small btn-primary" onclick="viewApplicationDetails('${app.id}')">
                             View Details
+                        </button>
+                        <button class="btn-small btn-secondary" onclick="viewLogs('${app.id}')">
+                            View Logs
                         </button>
                         <button class="btn-small btn-secondary" onclick="downloadLogs('${app.id}')">
                             Download Logs

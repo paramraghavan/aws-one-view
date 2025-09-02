@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Application Logs - {{ app_id }}</title>
+    <style>
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .header {
+            background: #2d2d30;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        .header h1 {
+            margin: 0;
+            color: #569cd6;
+            font-size: 1.5em;
+        }
+
+        .header p {
+            margin: 5px 0 0;
+            color: #9cdcfe;
+        }
+
+        .log-tabs {
+            display: flex;
+            gap: 2px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .log-tab {
+            background: #3c3c3c;
+            border: none;
+            color: #d4d4d4;
+            padding: 10px 15px;
+            cursor: pointer;
+            border-radius: 4px 4px 0 0;
+            font-size: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .log-tab.active {
+            background: #007acc;
+            color: white;
+        }
+
+        .log-tab:hover {
+            background: #4a4a4a;
+        }
+
+        .log-tab.active:hover {
+            background: #005a9e;
+        }
+
+        .log-content {
+            background: #1e1e1e;
+            border: 1px solid #3c3c3c;
+            border-radius: 4px;
+            padding: 15px;
+            max-height: 70vh;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .log-section {
+            display: none;
+        }
+
+        .log-section.active {
+            display: block;
+        }
+
+        .json-content {
+            color: #ce9178;
+        }
+
+        .log-content::-webkit-scrollbar {
+            width: 12px;
+        }
+
+        .log-content::-webkit-scrollbar-track {
+            background: #252526;
+        }
+
+        .log-content::-webkit-scrollbar-thumb {
+            background: #424242;
+            border-radius: 6px;
+        }
+
+        .log-content::-webkit-scrollbar-thumb:hover {
+            background: #4a4a4a;
+        }
+
+        .actions {
+            margin: 20px 0;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.3s ease;
+        }
+
+        .btn:hover {
+            background: #1177bb;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .error-line {
+            color: #f44747;
+            background: rgba(244, 71, 71, 0.1);
+            padding: 2px 4px;
+            border-left: 3px solid #f44747;
+            margin: 2px 0;
+        }
+
+        .warning-line {
+            color: #ffcc02;
+            background: rgba(255, 204, 2, 0.1);
+            padding: 2px 4px;
+            border-left: 3px solid #ffcc02;
+            margin: 2px 0;
+        }
+
+        .info-line {
+            color: #569cd6;
+        }
+
+        .search-box {
+            margin-bottom: 15px;
+        }
+
+        .search-input {
+            background: #3c3c3c;
+            border: 1px solid #5a5a5a;
+            color: #d4d4d4;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            width: 300px;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #007acc;
+        }
+
+        .highlight {
+            background: #ffff00;
+            color: #000;
+        }
+
+        .no-logs {
+            text-align: center;
+            color: #808080;
+            padding: 40px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Application Logs</h1>
+        <p>Application ID: {{ app_id }} | Cluster: {{ cluster_key }}</p>
+    </div>
+
+    <div class="actions">
+        <a href="/" class="btn btn-secondary">← Back to Dashboard</a>
+        <button onclick="downloadAllLogs()" class="btn">Download All Logs</button>
+        <button onclick="refreshLogs()" class="btn btn-secondary">Refresh</button>
+    </div>
+
+    {% if logs_data %}
+    <div class="search-box">
+        <input type="text" class="search-input" placeholder="Search logs..." onkeyup="searchLogs(this.value)">
+    </div>
+
+    <div class="log-tabs">
+        {% if logs_data.driver_logs %}
+        <button class="log-tab active" onclick="showLogSection('driver')">Driver Logs</button>
+        {% endif %}
+
+        {% if logs_data.executor_logs %}
+            {% for executor_name in logs_data.executor_logs.keys() %}
+                {% if logs_data.executor_logs[executor_name] %}
+                <button class="log-tab" onclick="showLogSection('{{ executor_name }}')">{{ executor_name.replace('_', ' ').title() }}</button>
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+
+        {% if logs_data.container_logs %}
+            {% for container_id in logs_data.container_logs.keys() %}
+                {% if logs_data.container_logs[container_id] %}
+                <button class="log-tab" onclick="showLogSection('{{ container_id }}')">Container {{ container_id[-12:] }}</button>
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+
+        {% if logs_data.yarn_info %}
+        <button class="log-tab" onclick="showLogSection('yarn_info')">YARN Info</button>
+        {% endif %}
+
+        {% if logs_data.spark_jobs %}
+        <button class="log-tab" onclick="showLogSection('spark_jobs')">Spark Jobs</button>
+        {% endif %}
+
+        {% if logs_data.environment %}
+        <button class="log-tab" onclick="showLogSection('environment')">Environment</button>
+        {% endif %}
+    </div>
+
+    <!-- Driver Logs -->
+    {% if logs_data.driver_logs %}
+    <div id="driver" class="log-section active">
+        <div class="log-content">{{ logs_data.driver_logs }}</div>
+    </div>
+    {% endif %}
+
+    <!-- Executor Logs -->
+    {% if logs_data.executor_logs %}
+        {% for executor_name, executor_logs in logs_data.executor_logs.items() %}
+            {% if executor_logs %}
+            <div id="{{ executor_name }}" class="log-section">
+                <div class="log-content">{{ executor_logs }}</div>
+            </div>
+            {% endif %}
+        {% endfor %}
+    {% endif %}
+
+    <!-- Container Logs -->
+    {% if logs_data.container_logs %}
+        {% for container_id, container_logs in logs_data.container_logs.items() %}
+            {% if container_logs %}
+            <div id="{{ container_id }}" class="log-section">
+                <div class="log-content">{{ container_logs }}</div>
+            </div>
+            {% endif %}
+        {% endfor %}
+    {% endif %}
+
+    <!-- YARN Info -->
+    {% if logs_data.yarn_info %}
+    <div id="yarn_info" class="log-section">
+        <div class="log-content json-content">{{ logs_data.yarn_info | tojson(indent=2) }}</div>
+    </div>
+    {% endif %}
+
+    <!-- Spark Jobs -->
+    {% if logs_data.spark_jobs %}
+    <div id="spark_jobs" class="log-section">
+        <div class="log-content json-content">{{ logs_data.spark_jobs | tojson(indent=2) }}</div>
+    </div>
+    {% endif %}
+
+    <!-- Environment -->
+    {% if logs_data.environment %}
+    <div id="environment" class="log-section">
+        <div class="log-content json-content">{{ logs_data.environment | tojson(indent=2) }}</div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="no-logs">
+        <p>No logs available for this application.</p>
+        <p>This could mean:</p>
+        <ul style="text-align: left; display: inline-block;">
+            <li>The application is still starting up</li>
+            <li>Logs are stored in a different location (HDFS/S3)</li>
+            <li>The application hasn't generated any logs yet</li>
+            <li>Log access is restricted</li>
+        </ul>
+    </div>
+    {% endif %}
+
+    <script>
+        let currentSection = 'driver';
+
+        function showLogSection(sectionId) {
+            // Hide all sections
+            document.querySelectorAll('.log-section').forEach(section => {
+                section.classList.remove('active');
+            });
+
+            // Remove active class from all tabs
+            document.querySelectorAll('.log-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Show selected section
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.classList.add('active');
+                currentSection = sectionId;
+            }
+
+            // Mark tab as active
+            event.target.classList.add('active');
+
+            // Apply syntax highlighting
+            highlightLogContent(sectionId);
+        }
+
+        function highlightLogContent(sectionId) {
+            const content = document.querySelector(`#${sectionId} .log-content`);
+            if (!content) return;
+
+            let text = content.textContent;
+
+            // Highlight error lines
+            text = text.replace(/(^.*ERROR.*$)/gm, '<div class="error-line">$1</div>');
+            text = text.replace(/(^.*FATAL.*$)/gm, '<div class="error-line">$1</div>');
+            text = text.replace(/(^.*Exception.*$)/gm, '<div class="error-line">$1</div>');
+
+            // Highlight warning lines
+            text = text.replace(/(^.*WARN.*$)/gm, '<div class="warning-line">$1</div>');
+            text = text.replace(/(^.*WARNING.*$)/gm, '<div class="warning-line">$1</div>');
+
+            // Highlight info lines
+            text = text.replace(/(^.*INFO.*$)/gm, '<div class="info-line">$1</div>');
+
+            content.innerHTML = text;
+        }
+
+        function searchLogs(searchTerm) {
+            const activeContent = document.querySelector('.log-section.active .log-content');
+            if (!activeContent) return;
+
+            // Remove existing highlights
+            let text = activeContent.textContent;
+
+            if (searchTerm.trim() === '') {
+                highlightLogContent(currentSection);
+                return;
+            }
+
+            // Highlight search terms
+            const regex = new RegExp(`(${searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+            text = text.replace(regex, '<span class="highlight">$1</span>');
+
+            activeContent.innerHTML = text;
+        }
+
+        function downloadAllLogs() {
+            window.location.href = `/api/cluster/{{ cluster_key }}/application/{{ app_id }}/download_logs`;
+        }
+
+        function refreshLogs() {
+            window.location.reload();
+        }
+
+        // Initialize highlighting on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            {% if logs_data.driver_logs %}
+                highlightLogContent('driver');
+            {% endif %}
+        });
+
+        // Auto-scroll to bottom for active logs
+        function autoScroll() {
+            const activeContent = document.querySelector('.log-section.active .log-content');
+            if (activeContent && activeContent.scrollHeight > activeContent.clientHeight) {
+                // Only auto-scroll if user is near the bottom
+                const isNearBottom = activeContent.scrollTop + activeContent.clientHeight >= activeContent.scrollHeight - 100;
+                if (isNearBottom) {
+                    activeContent.scrollTop = activeContent.scrollHeight;
+                }
+            }
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'f') {
+                e.preventDefault();
+                document.querySelector('.search-input').focus();
+            }
+            if (e.key === 'Escape') {
+                document.querySelector('.search-input').value = '';
+                searchLogs('');
+            }
+        });
+    </script>
+</body>
+</html>
