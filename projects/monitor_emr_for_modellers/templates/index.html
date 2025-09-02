@@ -189,84 +189,221 @@
         }
 
         .applications-grid {
-            display: grid;
-            gap: 20px;
-        }
-
-        .application-card {
-            border: 2px solid #e0e6ed;
-            border-radius: 12px;
-            padding: 20px;
-            transition: all 0.3s ease;
-            background: white;
-        }
-
-        .application-card:hover {
-            border-color: #667eea;
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.1);
-        }
-
-        .app-header {
             display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 15px;
-            flex-wrap: wrap;
-            gap: 10px;
+            flex-direction: column;
+            gap: 2px;
         }
 
-        .app-name {
-            font-size: 1.2em;
+        .application-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto;
+            gap: 15px;
+            padding: 12px 20px;
+            background: white;
+            border: 1px solid #e0e6ed;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            align-items: center;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .application-row:hover {
+            border-color: #667eea;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+            transform: translateY(-1px);
+        }
+
+        .application-row.expanded {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        }
+
+        .app-name-cell {
             font-weight: 600;
             color: #2c3e50;
-            flex-grow: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
-        .app-status {
-            padding: 4px 12px;
-            border-radius: 20px;
+        .app-name-cell .app-id {
             font-size: 12px;
+            color: #6c757d;
+            font-weight: normal;
+            display: block;
+            margin-top: 2px;
+        }
+
+        .status-cell .app-status {
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
             font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
         }
 
-        .status-running { background: #e8f5e8; color: #27ae60; }
-        .status-succeeded { background: #e3f2fd; color: #2196f3; }
-        .status-failed { background: #ffebee; color: #f44336; }
-        .status-accepted { background: #fff3e0; color: #ff9800; }
-        .status-killed { background: #f3e5f5; color: #9c27b0; }
+        .metric-cell {
+            color: #495057;
+            font-weight: 500;
+        }
 
-        .app-details {
+        .actions-cell {
+            display: flex;
+            gap: 5px;
+        }
+
+        .btn-icon {
+            padding: 6px 8px;
+            font-size: 11px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+            background: #f8f9fa;
+            color: #495057;
+            border: 1px solid #dee2e6;
+        }
+
+        .btn-icon:hover {
+            background: #e9ecef;
+            transform: translateY(-1px);
+        }
+
+        .btn-icon.primary:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-icon.danger:hover {
+            background: #dc3545;
+            color: white;
+        }
+
+        .application-details {
+            grid-column: 1 / -1;
+            margin-top: 10px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            display: none;
+        }
+
+        .application-details.show {
+            display: block;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                max-height: 0;
+                padding-top: 0;
+                padding-bottom: 0;
+            }
+            to {
+                opacity: 1;
+                max-height: 500px;
+                padding-top: 20px;
+                padding-bottom: 20px;
+            }
+        }
+
+        .details-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 15px;
-            margin: 15px 0;
+            margin-bottom: 20px;
         }
 
-        .detail-item {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .detail-label {
-            font-size: 12px;
-            color: #7f8c8d;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 4px;
-        }
-
-        .detail-value {
-            font-weight: 600;
-            color: #2c3e50;
-        }
-
-        .app-actions {
+        .details-actions {
             display: flex;
             gap: 10px;
-            margin-top: 15px;
             flex-wrap: wrap;
+        }
+
+        .table-header {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto;
+            gap: 15px;
+            padding: 10px 20px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px 8px 0 0;
+            font-weight: 600;
+            font-size: 12px;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .expand-icon {
+            width: 16px;
+            height: 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: #e9ecef;
+            color: #6c757d;
+            font-size: 10px;
+            margin-right: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .expand-icon.expanded {
+            background: #667eea;
+            color: white;
+            transform: rotate(180deg);
+        }
+
+        @media (max-width: 1200px) {
+            .application-row {
+                grid-template-columns: 2fr 1fr 1fr 1fr auto;
+                font-size: 13px;
+            }
+
+            .table-header {
+                grid-template-columns: 2fr 1fr 1fr 1fr auto;
+            }
+
+            .metric-cell:nth-child(5),
+            .metric-cell:nth-child(6) {
+                display: none;
+            }
+
+            .table-header span:nth-child(5),
+            .table-header span:nth-child(6) {
+                display: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .application-row {
+                grid-template-columns: 1fr auto;
+                gap: 10px;
+            }
+
+            .table-header {
+                grid-template-columns: 1fr auto;
+            }
+
+            .metric-cell {
+                display: none;
+            }
+
+            .table-header span:not(:first-child):not(:last-child) {
+                display: none;
+            }
+
+            .app-name-cell {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+            }
         }
 
         .btn-small {
@@ -734,17 +871,33 @@
                 return;
             }
 
-            container.innerHTML = filteredApps.map(app => createApplicationCard(app)).join('');
+            // Create table header
+            let html = `
+                <div class="table-header">
+                    <span>Application Name</span>
+                    <span>Status</span>
+                    <span>Duration</span>
+                    <span>Memory</span>
+                    <span>CPU Cores</span>
+                    <span>User</span>
+                    <span>Actions</span>
+                </div>
+            `;
+
+            // Create application rows
+            html += filteredApps.map((app, index) => createApplicationRow(app, index)).join('');
+
+            container.innerHTML = html;
         }
 
-        function createApplicationCard(app) {
+        function createApplicationRow(app, index) {
             const attempt = app.attempts && app.attempts[0];
             const status = attempt ? (attempt.completed ? 'FINISHED' : 'RUNNING') : 'UNKNOWN';
             const statusClass = `status-${status.toLowerCase()}`;
 
             const duration = attempt ?
                 (attempt.duration ? formatDuration(attempt.duration) :
-                 (new Date() - new Date(attempt.startTime)).toString()) : 'N/A';
+                 formatDuration(new Date() - new Date(attempt.startTime))) : 'N/A';
 
             const memoryUsage = app.executors ?
                 app.executors.reduce((sum, exec) => sum + (exec.memoryUsed || 0), 0) : 0;
@@ -752,59 +905,180 @@
             const cores = app.executors ?
                 app.executors.reduce((sum, exec) => sum + (exec.totalCores || 0), 0) : 0;
 
+            const rowId = `app-row-${index}`;
+            const detailsId = `app-details-${index}`;
+
             return `
-                <div class="application-card" data-status="${status}">
-                    <div class="app-header">
-                        <div class="app-name">${app.name || app.id}</div>
-                        <div class="app-status ${statusClass}">${status}</div>
+                <div class="application-row" id="${rowId}" onclick="toggleApplicationDetails(${index})">
+                    <div class="app-name-cell">
+                        <div class="expand-icon" id="expand-${index}">▼</div>
+                        <span>${app.name || 'Untitled Application'}</span>
+                        <span class="app-id">${app.id}</span>
                     </div>
-
-                    <div class="app-details">
-                        <div class="detail-item">
-                            <div class="detail-label">Application ID</div>
-                            <div class="detail-value">${app.id}</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Duration</div>
-                            <div class="detail-value">${duration}</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Memory Used</div>
-                            <div class="detail-value">${formatBytes(memoryUsage)}</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">CPU Cores</div>
-                            <div class="detail-value">${cores}</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">Started</div>
-                            <div class="detail-value">${attempt ? new Date(attempt.startTime).toLocaleString() : 'N/A'}</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">User</div>
-                            <div class="detail-value">${app.sparkUser || 'N/A'}</div>
-                        </div>
+                    <div class="status-cell">
+                        <span class="app-status ${statusClass}">${status}</span>
                     </div>
-
-                    <div class="app-actions">
-                        <button class="btn-small btn-primary" onclick="viewApplicationDetails('${app.id}')">
-                            View Details
+                    <div class="metric-cell">${duration}</div>
+                    <div class="metric-cell">${formatBytes(memoryUsage)}</div>
+                    <div class="metric-cell">${cores}</div>
+                    <div class="metric-cell">${app.sparkUser || 'N/A'}</div>
+                    <div class="actions-cell" onclick="event.stopPropagation()">
+                        <button class="btn-icon primary" onclick="viewApplicationDetails('${app.id}')" title="View Details">
+                            <i>📊</i>
                         </button>
-                        <button class="btn-small btn-secondary" onclick="viewLogs('${app.id}')">
-                            View Logs
+                        <button class="btn-icon" onclick="viewLogs('${app.id}')" title="View Logs">
+                            <i>📋</i>
                         </button>
-                        <button class="btn-small btn-secondary" onclick="downloadLogs('${app.id}')">
-                            Download Logs
+                        <button class="btn-icon" onclick="downloadLogs('${app.id}')" title="Download Logs">
+                            <i>💾</i>
                         </button>
                         ${status === 'RUNNING' ?
-                            `<button class="btn-small btn-danger" onclick="killApplication('${app.id}')">
-                                Kill Application
+                            `<button class="btn-icon danger" onclick="killApplication('${app.id}')" title="Kill Application">
+                                <i>⏹</i>
                             </button>` : ''}
                     </div>
+                </div>
+                <div class="application-details" id="${detailsId}">
+                    ${createApplicationDetailsContent(app)}
                 </div>
             `;
         }
 
+        function createApplicationDetailsContent(app) {
+            const attempt = app.attempts && app.attempts[0];
+            const startTime = attempt ? new Date(attempt.startTime).toLocaleString() : 'N/A';
+            const endTime = attempt && attempt.endTime ? new Date(attempt.endTime).toLocaleString() : 'Still running';
+
+            const memoryUsage = app.executors ?
+                app.executors.reduce((sum, exec) => sum + (exec.memoryUsed || 0), 0) : 0;
+            const maxMemory = app.executors ?
+                app.executors.reduce((sum, exec) => sum + (exec.maxMemory || 0), 0) : 0;
+
+            const activeTasks = app.executors ?
+                app.executors.reduce((sum, exec) => sum + (exec.activeTasks || 0), 0) : 0;
+            const completedTasks = app.executors ?
+                app.executors.reduce((sum, exec) => sum + (exec.completedTasks || 0), 0) : 0;
+            const failedTasks = app.executors ?
+                app.executors.reduce((sum, exec) => sum + (exec.failedTasks || 0), 0) : 0;
+
+            let detailsHtml = `
+                <div class="details-grid">
+                    <div class="detail-item">
+                        <div class="detail-label">Application ID</div>
+                        <div class="detail-value">${app.id}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Spark Version</div>
+                        <div class="detail-value">${app.sparkVersion || 'N/A'}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Started At</div>
+                        <div class="detail-value">${startTime}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Ended At</div>
+                        <div class="detail-value">${endTime}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Memory Usage</div>
+                        <div class="detail-value">${formatBytes(memoryUsage)} / ${formatBytes(maxMemory)}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Tasks</div>
+                        <div class="detail-value">
+                            ${completedTasks} completed, ${activeTasks} active, ${failedTasks} failed
+                        </div>
+                    </div>
+                </div>`;
+
+            // Add executor information if available
+            if (app.executors && app.executors.length > 0) {
+                detailsHtml += `
+                    <h4 style="margin: 20px 0 15px; color: #2c3e50;">Executors (${app.executors.length})</h4>
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                            <thead>
+                                <tr style="background: #e9ecef; border-bottom: 1px solid #dee2e6;">
+                                    <th style="padding: 8px; text-align: left;">ID</th>
+                                    <th style="padding: 8px; text-align: left;">Host</th>
+                                    <th style="padding: 8px; text-align: left;">Cores</th>
+                                    <th style="padding: 8px; text-align: left;">Memory</th>
+                                    <th style="padding: 8px; text-align: left;">Tasks</th>
+                                    <th style="padding: 8px; text-align: left;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+
+                app.executors.slice(0, 10).forEach(executor => { // Show max 10 executors
+                    const memoryPercent = executor.maxMemory > 0 ?
+                        Math.round((executor.memoryUsed / executor.maxMemory) * 100) : 0;
+
+                    detailsHtml += `
+                        <tr style="border-bottom: 1px solid #f1f3f4;">
+                            <td style="padding: 6px;">${executor.id}</td>
+                            <td style="padding: 6px;">${executor.hostPort || 'N/A'}</td>
+                            <td style="padding: 6px;">${executor.totalCores || 0}</td>
+                            <td style="padding: 6px;">
+                                ${formatBytes(executor.memoryUsed || 0)}
+                                <small>(${memoryPercent}%)</small>
+                            </td>
+                            <td style="padding: 6px;">
+                                ${executor.completedTasks || 0}/${executor.totalTasks || 0}
+                            </td>
+                            <td style="padding: 6px;">
+                                <span style="padding: 2px 6px; border-radius: 8px; font-size: 11px; background: ${executor.isActive ? '#d4edda' : '#f8d7da'}; color: ${executor.isActive ? '#155724' : '#721c24'};">
+                                    ${executor.isActive ? 'Active' : 'Inactive'}
+                                </span>
+                            </td>
+                        </tr>`;
+                });
+
+                detailsHtml += `
+                            </tbody>
+                        </table>
+                    </div>`;
+
+                if (app.executors.length > 10) {
+                    detailsHtml += `<p style="margin-top: 10px; color: #6c757d; font-size: 12px;">Showing first 10 of ${app.executors.length} executors</p>`;
+                }
+            }
+
+            detailsHtml += `
+                <div class="details-actions">
+                    <button class="btn-small btn-primary" onclick="viewApplicationDetails('${app.id}')">
+                        Full Details Modal
+                    </button>
+                    <button class="btn-small btn-secondary" onclick="viewLogs('${app.id}')">
+                        View Logs
+                    </button>
+                    <button class="btn-small btn-secondary" onclick="downloadLogs('${app.id}')">
+                        Download Logs
+                    </button>
+                </div>
+            `;
+
+            return detailsHtml;
+        }
+
+        function toggleApplicationDetails(index) {
+            const row = document.getElementById(`app-row-${index}`);
+            const details = document.getElementById(`app-details-${index}`);
+            const expandIcon = document.getElementById(`expand-${index}`);
+
+            if (details.classList.contains('show')) {
+                // Collapse
+                details.classList.remove('show');
+                row.classList.remove('expanded');
+                expandIcon.classList.remove('expanded');
+            } else {
+                // Expand
+                details.classList.add('show');
+                row.classList.add('expanded');
+                expandIcon.classList.add('expanded');
+            }
+        }
+
+        // Close all expanded details when filtering
         function filterApplications(filter) {
             currentFilter = filter;
 
