@@ -1,410 +1,274 @@
-from flask import Flask, render_template, jsonify, request, session
-from flask_cors import CORS
-from flask_session import Session
-import requests
 import json
 import yaml
-import os
+import requests
+from flask import Flask, render_template, jsonify, request, send_file
 from datetime import datetime, timedelta
+import logging
+from io import BytesIO
+import zipfile
+import os
+from urllib.parse import urljoin
+import time
 
-# Create Flask app
 app = Flask(__name__)
-app.secret_key = 'emr-monitor-secret-key'
-CORS(app)
+logging.basicConfig(level=logging.INFO)
 
 
 class EMRMonitor:
-    def __init__(self, config_path='config.yaml'):
-        self.config_path = config_path
-        self.clusters = {}
-        self.load_config()
+    def __init__(self, config_file='config.yaml'):
+        self.config = self.load_config(config_file)
+        self.session = requests.Session()
+        self.session.timeout = 30
 
-    def load_config(self):
-        """Load EMR cluster configurations from YAML or JSON file"""
+    def load_config(self, config_file):
+        """Load EMR cluster configuration"""
         try:
-            if os.path.exists(self.config_path):
-                with open(self.config_path, 'r') as f:
-                    if self.config_path.endswith('.yaml') or self.config_path.endswith('.yml'):
-                        self.clusters = yaml.safe_load(f)
-                    else:
-                        self.clusters = json.load(f)
+            if config_file.endswith('.json'):
+                with open(config_file, 'r') as f:
+                    return json.load(f)
             else:
-                # Default configuration if file doesn't exist
-                self.clusters = {
-                    "staging": {
-                        "name": "Staging EMR",
-                        "spark_url": "http://staging-master:18080",
-                        "yarn_url": "http://staging-master:8088",
-                        "description": "Staging EMR cluster"
-                    },
-                    "production": {
-                        "name": "Production EMR",
-                        "spark_url": "http://prod-master:18080",
-                        "yarn_url": "http://prod-master:8088",
-                        "description": "Production EMR cluster"
-                    }
+                with open(config_file, 'r') as f:
+                    return yaml.safe_load(f)
+        except FileNotFoundError:
+            # Default configuration
+            return {
+                "staging": {
+                    "name": "Staging EMR",
+                    "spark_url": "http://staging-master:18080",
+                    "yarn_url": "http://staging-master:8088",
+                    "description": "Staging EMR cluster"
+                },
+                "production": {
+                    "name": "Production EMR",
+                    "spark_url": "http://prod-master:18080",
+                    "yarn_url": "http://prod-master:8088",
+                    "description": "Production EMR cluster"
                 }
-                print("⚠️  Using default cluster configuration. Create config.yaml for custom clusters.")
-        except Exception as e:
-            print(f"Error loading config: {e}")
-            self.clusters = {}
+            }
 
-    def get_spark_applications(self, cluster_id):
-        """Get Spark applications from Spark History Server"""
+    def get_spark_applications(self, cluster_key):
+        """Get all Spark applications from the cluster"""
+        cluster = self.config.get(cluster_key)
+        if not cluster:
+            return []
+
         try:
-            cluster = self.clusters.get(cluster_id)
-            if not cluster:
-                return {"error": "Cluster not found"}
-
-            spark_url = cluster['spark_url']
+            # Get completed applications
+            completed_url = f"{cluster['spark_url']}/api/v1/applications"
+            completed_response = self.session.get(completed_url)
+            completed_apps = completed_response.json() if completed_response.status_code == 200 else []
 
             # Get running applications
-            running_url = f"{spark_url}/api/v1/applications"
-            response = requests.get(running_url, timeout=10)
-            applications = response.json() if response.status_code == 200 else []
+            running_url = f"{cluster['spark_url']}/api/v1/applications?status=running"
+            running_response = self.session.get(running_url)
+            running_apps = running_response.json() if running_response.status_code == 200 else []
 
-            # Enhance with additional details
-            enhanced_apps = []
-            for app in applications:
+            all_apps = completed_apps + running_apps
+
+            # Enrich with additional details
+            for app in all_apps:
                 try:
                     app_id = app['id']
-                    # Get detailed application info
-                    detail_url = f"{spark_url}/api/v1/applications/{app_id}"
-                    detail_response = requests.get(detail_url, timeout=5)
-
+                    detail_url = f"{cluster['spark_url']}/api/v1/applications/{app_id}"
+                    detail_response = self.session.get(detail_url)
                     if detail_response.status_code == 200:
                         detail_data = detail_response.json()
                         app.update(detail_data)
 
-                    # Get executors info
-                    exec_url = f"{spark_url}/api/v1/applications/{app_id}/executors"
-                    exec_response = requests.get(exec_url, timeout=5)
-
-                    if exec_response.status_code == 200:
-                        executors = exec_response.json()
-                        app['executors'] = executors
-                        app['total_cores'] = sum(exec.get('totalCores', 0) for exec in executors)
-                        app['total_memory'] = sum(exec.get('maxMemory', 0) for exec in executors)
-
-                    enhanced_apps.append(app)
+                    # Get executor information
+                    executor_url = f"{cluster['spark_url']}/api/v1/applications/{app_id}/executors"
+                    executor_response = self.session.get(executor_url)
+                    if executor_response.status_code == 200:
+                        app['executors'] = executor_response.json()
 
                 except Exception as e:
-                    print(f"Error getting details for app {app.get('id', 'unknown')}: {e}")
-                    enhanced_apps.append(app)
+                    logging.warning(f"Failed to get details for app {app.get('id', 'unknown')}: {e}")
 
-            return enhanced_apps
+            return all_apps
 
         except Exception as e:
-            return {"error": str(e)}
+            logging.error(f"Failed to get Spark applications: {e}")
+            return []
 
-    def get_yarn_applications(self, cluster_id):
+    def get_yarn_applications(self, cluster_key):
         """Get YARN applications"""
+        cluster = self.config.get(cluster_key)
+        if not cluster:
+            return []
+
         try:
-            cluster = self.clusters.get(cluster_id)
-            if not cluster:
-                return {"error": "Cluster not found"}
-
-            yarn_url = cluster['yarn_url']
-
-            # Get YARN applications
-            apps_url = f"{yarn_url}/ws/v1/cluster/apps"
-            response = requests.get(apps_url, timeout=10)
-
+            url = f"{cluster['yarn_url']}/ws/v1/cluster/apps"
+            response = self.session.get(url)
             if response.status_code == 200:
                 data = response.json()
                 return data.get('apps', {}).get('app', [])
-
+            return []
+        except Exception as e:
+            logging.error(f"Failed to get YARN applications: {e}")
             return []
 
-        except Exception as e:
-            return {"error": str(e)}
-
-    def get_cluster_metrics(self, cluster_id):
-        """Get cluster resource metrics from YARN"""
-        try:
-            cluster = self.clusters.get(cluster_id)
-            if not cluster:
-                return {"error": "Cluster not found"}
-
-            yarn_url = cluster['yarn_url']
-
-            # Get cluster metrics
-            metrics_url = f"{yarn_url}/ws/v1/cluster/metrics"
-            response = requests.get(metrics_url, timeout=10)
-
-            if response.status_code == 200:
-                return response.json().get('clusterMetrics', {})
-
+    def get_cluster_info(self, cluster_key):
+        """Get cluster resource information"""
+        cluster = self.config.get(cluster_key)
+        if not cluster:
             return {}
 
-        except Exception as e:
-            return {"error": str(e)}
-
-    def identify_problematic_jobs(self, cluster_id):
-        """Identify jobs that might be hogging resources"""
         try:
-            spark_apps = self.get_spark_applications(cluster_id)
-            yarn_apps = self.get_yarn_applications(cluster_id)
-
-            if isinstance(spark_apps, dict) and "error" in spark_apps:
-                return spark_apps
-
-            problematic_jobs = []
-
-            for app in spark_apps:
-                issues = []
-
-                # Check for long-running jobs
-                if app.get('attempts'):
-                    start_time = app['attempts'][0].get('startTime')
-                    if start_time:
-                        start_dt = datetime.fromtimestamp(start_time / 1000)
-                        duration = datetime.now() - start_dt
-                        if duration.total_seconds() > 3600:  # More than 1 hour
-                            issues.append(f"Long running: {duration}")
-
-                # Check for high resource usage with low utilization
-                if app.get('executors'):
-                    total_cores = app.get('total_cores', 0)
-                    active_tasks = sum(exec.get('activeTasks', 0) for exec in app['executors'])
-
-                    if total_cores > 10 and active_tasks == 0:
-                        issues.append("High resource allocation with no active tasks")
-
-                    # Check for zombie executors
-                    failed_executors = sum(1 for exec in app['executors'] if exec.get('isBlacklisted', False))
-                    if failed_executors > 0:
-                        issues.append(f"Failed/blacklisted executors: {failed_executors}")
-
-                if issues:
-                    problematic_jobs.append({
-                        'app': app,
-                        'issues': issues
-                    })
-
-            return problematic_jobs
-
+            url = f"{cluster['yarn_url']}/ws/v1/cluster/info"
+            response = self.session.get(url)
+            if response.status_code == 200:
+                return response.json()
+            return {}
         except Exception as e:
-            return {"error": str(e)}
+            logging.error(f"Failed to get cluster info: {e}")
+            return {}
 
+    def get_cluster_metrics(self, cluster_key):
+        """Get cluster resource metrics"""
+        cluster = self.config.get(cluster_key)
+        if not cluster:
+            return {}
 
-# Persistent storage for pinned clusters
-class PersistentPins:
-    def __init__(self, filename='pinned_clusters.json'):
-        self.filename = filename
-        self.pins_data = self.load_pins()
-
-    def load_pins(self):
-        """Load pinned clusters from JSON file"""
         try:
-            if os.path.exists(self.filename):
-                with open(self.filename, 'r') as f:
-                    return json.load(f)
+            url = f"{cluster['yarn_url']}/ws/v1/cluster/metrics"
+            response = self.session.get(url)
+            if response.status_code == 200:
+                return response.json()
+            return {}
         except Exception as e:
-            print(f"⚠️  Error loading pinned clusters: {e}")
-        return {}
+            logging.error(f"Failed to get cluster metrics: {e}")
+            return {}
 
-    def save_pins(self):
-        """Save pinned clusters to JSON file"""
+    def get_application_logs(self, cluster_key, app_id):
+        """Get application logs"""
+        cluster = self.config.get(cluster_key)
+        if not cluster:
+            return None
+
         try:
-            with open(self.filename, 'w') as f:
-                json.dump(self.pins_data, f, indent=2)
+            # Try to get Spark application logs
+            logs_url = f"{cluster['spark_url']}/api/v1/applications/{app_id}/logs"
+            response = self.session.get(logs_url)
+            if response.status_code == 200:
+                return response.text
+
+            # Fallback to YARN logs
+            yarn_logs_url = f"{cluster['yarn_url']}/ws/v1/cluster/apps/{app_id}/logs"
+            yarn_response = self.session.get(yarn_logs_url)
+            if yarn_response.status_code == 200:
+                return yarn_response.text
+
+            return None
         except Exception as e:
-            print(f"❌ Error saving pinned clusters: {e}")
-
-    def get_user_pins(self, session_id):
-        """Get pinned clusters for a specific session/user"""
-        return self.pins_data.get(session_id, [])
-
-    def set_user_pins(self, session_id, pinned_clusters):
-        """Set pinned clusters for a specific session/user"""
-        if pinned_clusters:
-            self.pins_data[session_id] = pinned_clusters
-        elif session_id in self.pins_data:
-            del self.pins_data[session_id]
-        self.save_pins()
-
-    def cleanup_old_sessions(self, max_age_days=30):
-        """Remove old session data to prevent file bloat"""
-        # This would need session timestamp tracking for full implementation
-        pass
+            logging.error(f"Failed to get application logs: {e}")
+            return None
 
 
-# Initialize EMR Monitor and persistent pins at module level (global scope)
+# Initialize monitor
 monitor = EMRMonitor()
-persistent_pins = PersistentPins()
-
-
-def get_session_id():
-    """Get or create a unique session ID"""
-    if 'session_id' not in session:
-        import uuid
-        session['session_id'] = str(uuid.uuid4())
-        session.permanent = True
-    return session['session_id']
-
-
-def add_session_persistence(app):
-    """Add persistent session storage to EMR monitor"""
-    sessions_dir = os.path.join(os.path.dirname(__file__), 'flask_sessions')
-    os.makedirs(sessions_dir, exist_ok=True)
-
-    app.config.update(
-        SESSION_TYPE='filesystem',
-        SESSION_FILE_DIR=sessions_dir,
-        SESSION_PERMANENT=True,
-        SESSION_USE_SIGNER=True,
-        SESSION_KEY_PREFIX='emr_monitor:',
-        PERMANENT_SESSION_LIFETIME=86400 * 30  # 30 days
-    )
-
-    Session(app)
-    print(f"✅ Session persistence enabled: {sessions_dir}")
-    print(f"✅ Pinned clusters stored in: {persistent_pins.filename}")
-    return app
 
 
 @app.route('/')
 def index():
-    """Main dashboard page"""
-    return render_template('index.html', clusters=monitor.clusters)
+    """Main dashboard"""
+    return render_template('index.html', clusters=monitor.config)
 
 
 @app.route('/api/clusters')
 def get_clusters():
-    """Get list of available clusters"""
-    return jsonify(monitor.clusters)
+    """Get available clusters"""
+    return jsonify(monitor.config)
 
 
-@app.route('/api/cluster/<cluster_id>/spark-apps')
-def get_spark_apps(cluster_id):
-    """Get Spark applications for a cluster"""
-    apps = monitor.get_spark_applications(cluster_id)
-    return jsonify(apps)
+@app.route('/api/cluster/<cluster_key>/applications')
+def get_applications(cluster_key):
+    """Get applications for a specific cluster"""
+    spark_apps = monitor.get_spark_applications(cluster_key)
+    yarn_apps = monitor.get_yarn_applications(cluster_key)
+
+    # Combine and enrich data
+    apps_data = {
+        'spark_applications': spark_apps,
+        'yarn_applications': yarn_apps,
+        'cluster_info': monitor.get_cluster_info(cluster_key),
+        'cluster_metrics': monitor.get_cluster_metrics(cluster_key)
+    }
+
+    return jsonify(apps_data)
 
 
-@app.route('/api/cluster/<cluster_id>/yarn-apps')
-def get_yarn_apps(cluster_id):
-    """Get YARN applications for a cluster"""
-    apps = monitor.get_yarn_applications(cluster_id)
-    return jsonify(apps)
-
-
-@app.route('/api/cluster/<cluster_id>/metrics')
-def get_cluster_metrics(cluster_id):
+@app.route('/api/cluster/<cluster_key>/metrics')
+def get_cluster_metrics_endpoint(cluster_key):
     """Get cluster metrics"""
-    metrics = monitor.get_cluster_metrics(cluster_id)
-    return jsonify(metrics)
-
-
-@app.route('/api/cluster/<cluster_id>/problematic-jobs')
-def get_problematic_jobs(cluster_id):
-    """Get jobs that might be causing issues"""
-    jobs = monitor.identify_problematic_jobs(cluster_id)
-    return jsonify(jobs)
-
-
-@app.route('/api/pin-cluster', methods=['POST'])
-def pin_cluster():
-    """Pin a cluster as favorite"""
-    data = request.get_json()
-    cluster_id = data.get('cluster_id')
-    session_id = get_session_id()
-
-    # Load existing pins from persistent storage
-    pinned_clusters = persistent_pins.get_user_pins(session_id)
-
-    if cluster_id not in pinned_clusters:
-        pinned_clusters.append(cluster_id)
-
-    # Save to both session and persistent storage
-    session['pinned_clusters'] = pinned_clusters
-    persistent_pins.set_user_pins(session_id, pinned_clusters)
+    metrics = monitor.get_cluster_metrics(cluster_key)
+    info = monitor.get_cluster_info(cluster_key)
 
     return jsonify({
-        "status": "success",
-        "pinned_clusters": pinned_clusters,
-        "message": f"Pinned {cluster_id}"
+        'metrics': metrics,
+        'info': info,
+        'timestamp': datetime.now().isoformat()
     })
 
 
-@app.route('/api/unpin-cluster', methods=['POST'])
-def unpin_cluster():
-    """Unpin a cluster"""
-    data = request.get_json()
-    cluster_id = data.get('cluster_id')
-    session_id = get_session_id()
+@app.route('/api/cluster/<cluster_key>/application/<app_id>/logs')
+def get_application_logs_endpoint(cluster_key, app_id):
+    """Get logs for a specific application"""
+    logs = monitor.get_application_logs(cluster_key, app_id)
 
-    # Load existing pins from persistent storage
-    pinned_clusters = persistent_pins.get_user_pins(session_id)
-
-    if cluster_id in pinned_clusters:
-        pinned_clusters.remove(cluster_id)
-
-    # Save to both session and persistent storage
-    session['pinned_clusters'] = pinned_clusters
-    persistent_pins.set_user_pins(session_id, pinned_clusters)
-
-    return jsonify({
-        "status": "success",
-        "pinned_clusters": pinned_clusters,
-        "message": f"Unpinned {cluster_id}"
-    })
-
-
-@app.route('/api/pinned-clusters')
-def get_pinned_clusters():
-    """Get user's pinned clusters"""
-    session_id = get_session_id()
-
-    # Load from persistent storage first, then fallback to session
-    pinned_clusters = persistent_pins.get_user_pins(session_id)
-
-    if not pinned_clusters:
-        pinned_clusters = session.get('pinned_clusters', [])
-        if pinned_clusters:
-            # Sync session data to persistent storage
-            persistent_pins.set_user_pins(session_id, pinned_clusters)
+    if logs:
+        return jsonify({
+            'logs': logs,
+            'app_id': app_id,
+            'timestamp': datetime.now().isoformat()
+        })
     else:
-        # Sync persistent data back to session
-        session['pinned_clusters'] = pinned_clusters
-
-    return jsonify(pinned_clusters)
+        return jsonify({'error': 'Logs not found'}), 404
 
 
-@app.route('/api/reload-config')
-def reload_config():
-    """Reload cluster configuration from file"""
-    monitor.load_config()
-    return jsonify({
-        "status": "success",
-        "message": "Configuration reloaded",
-        "clusters": monitor.clusters
-    })
+@app.route('/api/cluster/<cluster_key>/application/<app_id>/download_logs')
+def download_application_logs(cluster_key, app_id):
+    """Download logs for a specific application"""
+    logs = monitor.get_application_logs(cluster_key, app_id)
 
-"""
-# pip install flask flask-cors flask-session requests pyyaml
-"""
+    if logs:
+        # Create a zip file with logs
+        memory_file = BytesIO()
+        with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(f'{app_id}_logs.txt', logs)
+
+        memory_file.seek(0)
+
+        return send_file(
+            memory_file,
+            as_attachment=True,
+            download_name=f'{app_id}_logs.zip',
+            mimetype='application/zip'
+        )
+    else:
+        return jsonify({'error': 'Logs not found'}), 404
+
+
+@app.route('/api/cluster/<cluster_key>/kill_application/<app_id>', methods=['POST'])
+def kill_application(cluster_key, app_id):
+    """Kill a running application (if supported)"""
+    cluster = monitor.config.get(cluster_key)
+    if not cluster:
+        return jsonify({'error': 'Cluster not found'}), 404
+
+    try:
+        # Try to kill via YARN
+        url = f"{cluster['yarn_url']}/ws/v1/cluster/apps/{app_id}/state"
+        data = {"state": "KILLED"}
+        response = monitor.session.put(url, json=data)
+
+        if response.status_code == 200:
+            return jsonify({'message': 'Application killed successfully'})
+        else:
+            return jsonify({'error': 'Failed to kill application'}), 400
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
-    print("🚀 EMR Monitor Starting...")
-    print(f"📡 Monitoring {len(monitor.clusters)} EMR clusters:")
-
-    for cluster_id, cluster_info in monitor.clusters.items():
-        print(f"  • {cluster_info['name']} ({cluster_id})")
-
-    # Add session persistence
-    app = add_session_persistence(app)
-
-    # Show pinned clusters from file on startup
-    total_users = len(persistent_pins.pins_data)
-    if total_users > 0:
-        print(f"📌 Loaded pinned clusters for {total_users} users")
-        for session_id, pins in list(persistent_pins.pins_data.items())[:3]:  # Show first 3
-            print(f"   Session {session_id[:8]}...: {pins}")
-        if total_users > 3:
-            print(f"   ... and {total_users - 3} more users")
-
-    print("✅ EMR Monitor ready with persistent pinned clusters")
-    print("🌐 Visit: http://localhost:5000")
-
     app.run(debug=True, host='0.0.0.0', port=5001)
