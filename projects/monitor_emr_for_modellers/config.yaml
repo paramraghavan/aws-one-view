@@ -1,6 +1,12 @@
 # EMR Cluster Configuration
 # This file defines the EMR clusters available for monitoring
 
+mock_cluster:
+  name: "Mock EMR Cluster"
+  spark_url: "http://localhost:18080"
+  yarn_url: "http://localhost:8088"
+  description: "Local mock cluster for testing"
+
 staging:
   name: "Staging EMR"
   spark_url: "http://staging-master:18080"

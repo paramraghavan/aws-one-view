@@ -1,140 +1,4 @@
-async function viewLogs(appId) {
-            try {
-                updateRefreshStatus('Loading logs...');
-                const response = await fetch(`/api/cluster/${currentCluster}/application/${appId}/logs`);
-
-                if (response.ok) {
-                    const data = await response.json();
-                    displayLogsModal(appId, data.logs_data);
-                    updateRefreshStatus('Logs loaded successfully');
-                } else {
-                    throw new Error('Failed to load logs');
-                }
-            } catch (error) {
-                console.error('Failed to view logs:', error);
-                showError('Failed to load logs: ' + error.message);
-            }
-        }
-
-        function displayLogsModal(appId, logsData) {
-            let logsHtml = `
-                <div style="max-width: 90vw; max-height: 85vh; overflow: hidden; padding: 20px; display: flex; flex-direction: column;">
-                    <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 20px; flex-shrink: 0;">
-                        <h3 style="color: #2c3e50; margin: 0;">Application Logs: ${appId}</h3>
-                        <button onclick="closeModal()" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; margin-left: auto;">Close</button>
-                    </div>
-
-                    <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">`;
-
-            // Create tabs for different log types
-            const logTypes = [];
-            if (logsData.driver_logs) logTypes.push({key: 'driver', name: 'Driver Logs', content: logsData.driver_logs});
-            if (logsData.executor_logs) {
-                Object.entries(logsData.executor_logs).forEach(([key, content]) => {
-                    if (content) logTypes.push({key: key, name: key.replace('_', ' ').toUpperCase(), content: content});
-                });
-            }
-            if (logsData.container_logs) {
-                Object.entries(logsData.container_logs).forEach(([key, content]) => {
-                    if (content) logTypes.push({key: key, name: `Container ${key.slice(-12)}`, content: content});
-                });
-            }
-            if (logsData.yarn_info) logTypes.push({key: 'yarn_info', name: 'YARN Info', content: JSON.stringify(logsData.yarn_info, null, 2), isJson: true});
-            if (logsData.spark_jobs) logTypes.push({key: 'spark_jobs', name: 'Spark Jobs', content: JSON.stringify(logsData.spark_jobs, null, 2), isJson: true});
-            if (logsData.environment) logTypes.push({key: 'environment', name: 'Environment', content: JSON.stringify(logsData.environment, null, 2), isJson: true});
-
-            if (logTypes.length === 0) {
-                logsHtml += `<p style="text-align: center; color: #7f8c8d; padding: 40px;">No logs available for this application</p>`;
-            } else {
-                // Tabs
-                logsHtml += `<div style="display: flex; gap: 5px; margin-bottom: 15px; flex-wrap: wrap; flex-shrink: 0;">`;
-                logTypes.forEach((logType, index) => {
-                    logsHtml += `<button onclick="showLogTab('${logType.key}')" id="tab-${logType.key}" style="padding: 8px 12px; border: 2px solid #e0e6ed; background: white; border-radius: 5px; cursor: pointer; font-size: 12px; ${index === 0 ? 'background: #667eea; color: white; border-color: #667eea;' : ''}">${logType.name}</button>`;
-                });
-                logsHtml += `</div>`;
-
-                // Log content areas
-                logTypes.forEach((logType, index) => {
-                    const displayStyle = index === 0 ? 'block' : 'none';
-                    const backgroundColor = logType.isJson ? '#f8f9fa' : '#000';
-                    const textColor = logType.isJson ? '#333' : '#0f0';
-                    const fontFamily = logType.isJson ? 'Consolas, Monaco, monospace' : 'Courier New, monospace';
-
-                    logsHtml += `
-                        <div id="log-${logType.key}" style="display: ${displayStyle}; flex: 1; overflow: hidden; display: flex; flex-direction: column;">
-                            <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 10px;">
-                                <h4 style="margin: 0; color: #2c3e50; font-size: 14px;">${logType.name}</h4>
-                                <button onclick="downloadSingleLog('${appId}', '${logType.key}', '${logType.name}')" style="background: #28a745; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;">Download</button>
-                            </div>
-                            <div style="flex: 1; overflow: auto; background: ${backgroundColor}; color: ${textColor}; padding: 15px; border-radius: 5px; font-family: ${fontFamily}; font-size: 12px; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word;">
-                                ${logType.content || 'No content available'}
-                            </div>
-                        </div>`;
-                });
-            }
-
-            logsHtml += `
-                    </div>
-                    <div style="display: flex; justify-content: center; gap: 10px; margin-top: 15px; flex-shrink: 0;">
-                        <button onclick="downloadLogs('${appId}')" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Download All Logs</button>
-                    </div>
-                </div>`;
-
-            showModal(logsHtml);
-
-            // Store log data for single downloads
-            window.currentLogsData = {};
-            logTypes.forEach(logType => {
-                window.currentLogsData[logType.key] = {name: logType.name, content: logType.content};
-            });
-        }
-
-        function showLogTab(tabKey) {
-            // Hide all log content areas
-            document.querySelectorAll('[id^="log-"]').forEach(el => {
-                el.style.display = 'none';
-            });
-
-            // Remove active style from all tabs
-            document.querySelectorAll('[id^="tab-"]').forEach(el => {
-                el.style.background = 'white';
-                el.style.color = '#333';
-                el.style.borderColor = '#e0e6ed';
-            });
-
-            // Show selected log content
-            document.getElementById(`log-${tabKey}`).style.display = 'flex';
-
-            // Style active tab
-            const activeTab = document.getElementById(`tab-${tabKey}`);
-            activeTab.style.background = '#667eea';
-            activeTab.style.color = 'white';
-            activeTab.style.borderColor = '#667eea';
-        }
-
-        function downloadSingleLog(appId, logKey, logName) {
-            if (!window.currentLogsData || !window.currentLogsData[logKey]) {
-                showError('Log data not available');
-                return;
-            }
-
-            const logData = window.currentLogsData[logKey];
-            const content = logData.content;
-            const filename = `${appId}_${logKey}.${logKey.includes('info') || logKey.includes('jobs') || logKey.includes('environment') ? 'json' : 'log'}`;
-
-            // Create and trigger download
-            const blob = new Blob([content], { type: 'text/plain' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-
-            updateRefreshStatus(`Downloaded ${filename}`);
-        }<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -344,7 +208,7 @@ async function viewLogs(appId) {
 
         .app-header {
             display: flex;
-            justify-content: between;
+            justify-content: space-between;
             align-items: flex-start;
             margin-bottom: 15px;
             flex-wrap: wrap;
@@ -633,48 +497,229 @@ async function viewLogs(appId) {
             }
 
             const clusterMetrics = metrics.clusterMetrics;
+            const clusterInfo = info?.clusterInfo || {};
+            const nodes = metrics.nodes || [];
+            const scheduler = metrics.scheduler || {};
 
+            // Calculate resource utilization
             const totalMem = clusterMetrics.totalMB || 0;
             const availableMem = clusterMetrics.availableMB || 0;
+            const allocatedMem = clusterMetrics.allocatedMB || 0;
+            const reservedMem = clusterMetrics.reservedMB || 0;
             const usedMem = totalMem - availableMem;
+            const memUtilization = totalMem > 0 ? Math.round((usedMem / totalMem) * 100) : 0;
 
             const totalCores = clusterMetrics.totalVirtualCores || 0;
             const availableCores = clusterMetrics.availableVirtualCores || 0;
+            const allocatedCores = clusterMetrics.allocatedVirtualCores || 0;
+            const reservedCores = clusterMetrics.reservedVirtualCores || 0;
             const usedCores = totalCores - availableCores;
+            const coreUtilization = totalCores > 0 ? Math.round((usedCores / totalCores) * 100) : 0;
 
+            // Node statistics
+            const totalNodes = clusterMetrics.totalNodes || 0;
+            const activeNodes = clusterMetrics.activeNodes || 0;
+            const unhealthyNodes = clusterMetrics.unhealthyNodes || 0;
+            const lostNodes = clusterMetrics.lostNodes || 0;
+            const decommissionedNodes = clusterMetrics.decommissionedNodes || 0;
+
+            // Application statistics
             const runningApps = clusterMetrics.appsRunning || 0;
-            const totalApps = (clusterMetrics.appsCompleted || 0) + runningApps + (clusterMetrics.appsFailed || 0);
+            const pendingApps = clusterMetrics.appsPending || 0;
+            const completedApps = clusterMetrics.appsCompleted || 0;
+            const failedApps = clusterMetrics.appsFailed || 0;
+            const killedApps = clusterMetrics.appsKilled || 0;
+            const totalApps = runningApps + completedApps + failedApps + killedApps;
 
-            metricsContainer.innerHTML = `
+            // Container statistics
+            const allocatedContainers = clusterMetrics.containersAllocated || 0;
+            const pendingContainers = clusterMetrics.containersPending || 0;
+            const reservedContainers = clusterMetrics.containersReserved || 0;
+
+            let metricsHtml = `
+                <!-- Resource Utilization Cards -->
                 <div class="metric-card">
-                    <div class="metric-title">Memory Usage</div>
-                    <div class="metric-value">${Math.round((usedMem / totalMem) * 100)}%</div>
-                    <div class="metric-subtitle">${formatBytes(usedMem * 1024 * 1024)} / ${formatBytes(totalMem * 1024 * 1024)}</div>
+                    <div class="metric-title">Memory Utilization</div>
+                    <div class="metric-value">${memUtilization}%</div>
+                    <div class="metric-subtitle">${formatBytes(usedMem * 1024 * 1024)} used of ${formatBytes(totalMem * 1024 * 1024)}</div>
                     <div class="resource-bar">
-                        <div class="resource-fill" style="width: ${(usedMem / totalMem) * 100}%"></div>
+                        <div class="resource-fill" style="width: ${memUtilization}%"></div>
+                    </div>
+                    <div style="font-size: 11px; margin-top: 8px; color: #6c757d;">
+                        Allocated: ${formatBytes(allocatedMem * 1024 * 1024)} |
+                        Available: ${formatBytes(availableMem * 1024 * 1024)}
+                        ${reservedMem > 0 ? ` | Reserved: ${formatBytes(reservedMem * 1024 * 1024)}` : ''}
                     </div>
                 </div>
+
                 <div class="metric-card">
-                    <div class="metric-title">CPU Cores</div>
-                    <div class="metric-value">${usedCores}</div>
-                    <div class="metric-subtitle">${usedCores} used / ${totalCores} total</div>
+                    <div class="metric-title">CPU Utilization</div>
+                    <div class="metric-value">${coreUtilization}%</div>
+                    <div class="metric-subtitle">${usedCores} used of ${totalCores} cores</div>
                     <div class="resource-bar">
-                        <div class="resource-fill" style="width: ${(usedCores / totalCores) * 100}%"></div>
+                        <div class="resource-fill" style="width: ${coreUtilization}%"></div>
+                    </div>
+                    <div style="font-size: 11px; margin-top: 8px; color: #6c757d;">
+                        Allocated: ${allocatedCores} | Available: ${availableCores}
+                        ${reservedCores > 0 ? ` | Reserved: ${reservedCores}` : ''}
                     </div>
                 </div>
+
                 <div class="metric-card">
-                    <div class="metric-title">Running Apps</div>
+                    <div class="metric-title">Cluster Nodes</div>
+                    <div class="metric-value">${activeNodes}</div>
+                    <div class="metric-subtitle">${activeNodes} active of ${totalNodes} total</div>
+                    <div style="margin-top: 10px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                            <span style="color: #28a745;">●&nbsp;Active: ${activeNodes}</span>
+                            <span style="color: #dc3545;">●&nbsp;Unhealthy: ${unhealthyNodes}</span>
+                        </div>
+                        ${lostNodes > 0 || decommissionedNodes > 0 ? `
+                        <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 4px;">
+                            <span style="color: #6c757d;">●&nbsp;Lost: ${lostNodes}</span>
+                            <span style="color: #ffc107;">●&nbsp;Decom: ${decommissionedNodes}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-title">Applications</div>
                     <div class="metric-value">${runningApps}</div>
-                    <div class="metric-subtitle">Active applications</div>
+                    <div class="metric-subtitle">Running (${totalApps} total)</div>
+                    <div style="margin-top: 10px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                            <span style="color: #28a745;">●&nbsp;Running: ${runningApps}</span>
+                            <span style="color: #ffc107;">●&nbsp;Pending: ${pendingApps}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 4px;">
+                            <span style="color: #17a2b8;">●&nbsp;Completed: ${completedApps}</span>
+                            <span style="color: #dc3545;">●&nbsp;Failed: ${failedApps}</span>
+                        </div>
+                        ${killedApps > 0 ? `
+                        <div style="font-size: 12px; margin-top: 4px; color: #6c757d;">
+                            ●&nbsp;Killed: ${killedApps}
+                        </div>
+                        ` : ''}
+                    </div>
                 </div>
-                <div class="metric-card">
-                    <div class="metric-title">Total Apps</div>
-                    <div class="metric-value">${totalApps}</div>
-                    <div class="metric-subtitle">All time applications</div>
-                </div>
-            `;
 
+                <div class="metric-card">
+                    <div class="metric-title">Containers</div>
+                    <div class="metric-value">${allocatedContainers}</div>
+                    <div class="metric-subtitle">Allocated containers</div>
+                    <div style="margin-top: 10px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                            <span style="color: #28a745;">●&nbsp;Allocated: ${allocatedContainers}</span>
+                            <span style="color: #ffc107;">●&nbsp;Pending: ${pendingContainers}</span>
+                        </div>
+                        ${reservedContainers > 0 ? `
+                        <div style="font-size: 12px; margin-top: 4px;">
+                            <span style="color: #17a2b8;">●&nbsp;Reserved: ${reservedContainers}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div class="metric-title">Cluster Health</div>
+                    <div class="metric-value" style="font-size: 1.5em; color: ${getHealthColor(unhealthyNodes, lostNodes, totalNodes)};">
+                        ${getHealthStatus(unhealthyNodes, lostNodes, totalNodes)}
+                    </div>
+                    <div class="metric-subtitle">Overall cluster status</div>
+                    <div style="margin-top: 10px; font-size: 12px; color: #6c757d;">
+                        ${clusterInfo.resourceManagerVersion ? `RM: ${clusterInfo.resourceManagerVersion}` : ''}
+                        ${clusterInfo.hadoopVersion ? `<br>Hadoop: ${clusterInfo.hadoopVersion}` : ''}
+                        ${clusterInfo.startedOn ? `<br>Started: ${new Date(clusterInfo.startedOn).toLocaleDateString()}` : ''}
+                    </div>
+                </div>`;
+
+            // Add detailed node information if available
+            if (nodes && nodes.length > 0) {
+                const healthyNodes = nodes.filter(n => n.state === 'RUNNING');
+                const nodesByType = {};
+
+                // Group nodes by instance type if available
+                nodes.forEach(node => {
+                    const nodeId = node.id || node.nodeId || 'unknown';
+                    const hostName = node.nodeHostName || nodeId.split(':')[0] || 'unknown';
+                    const instanceType = extractInstanceType(hostName) || 'unknown';
+
+                    if (!nodesByType[instanceType]) {
+                        nodesByType[instanceType] = [];
+                    }
+                    nodesByType[instanceType].push(node);
+                });
+
+                metricsHtml += `
+                <div class="metric-card" style="grid-column: span 2;">
+                    <div class="metric-title">Node Details (${nodes.length} nodes)</div>
+                    <div style="max-height: 200px; overflow-y: auto; margin-top: 10px;">
+                        ${Object.entries(nodesByType).map(([instanceType, typeNodes]) => {
+                            const healthyCount = typeNodes.filter(n => n.state === 'RUNNING').length;
+                            const totalMB = typeNodes.reduce((sum, n) => sum + (n.availMemoryMB || 0) + (n.usedMemoryMB || 0), 0);
+                            const totalCores = typeNodes.reduce((sum, n) => sum + (n.availVirtualCores || 0) + (n.usedVirtualCores || 0), 0);
+
+                            return `
+                            <div style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 8px;">
+                                <div style="font-weight: 600; margin-bottom: 5px;">
+                                    ${instanceType} (${typeNodes.length} nodes)
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px;">
+                                    <div>Status: ${healthyCount}/${typeNodes.length} healthy</div>
+                                    <div>Memory: ${formatBytes(totalMB * 1024 * 1024)}</div>
+                                    <div>CPU Cores: ${totalCores}</div>
+                                    <div>Avg Load: ${calculateAvgLoad(typeNodes)}%</div>
+                                </div>
+                            </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>`;
+            }
+
+            metricsContainer.innerHTML = metricsHtml;
             metricsContainer.style.display = 'grid';
+        }
+
+        function getHealthStatus(unhealthy, lost, total) {
+            if (lost > 0 || unhealthy > total * 0.2) return 'Critical';
+            if (unhealthy > 0) return 'Warning';
+            return 'Healthy';
+        }
+
+        function getHealthColor(unhealthy, lost, total) {
+            if (lost > 0 || unhealthy > total * 0.2) return '#dc3545';
+            if (unhealthy > 0) return '#ffc107';
+            return '#28a745';
+        }
+
+        function extractInstanceType(hostname) {
+            // Try to extract AWS instance type from hostname
+            // Common patterns: ip-172-31-xx-xx, master, core-1, etc.
+            if (hostname.includes('master')) return 'Master Node';
+            if (hostname.includes('core')) return 'Core Node';
+            if (hostname.includes('task')) return 'Task Node';
+            if (hostname.match(/ip-\d+-\d+-\d+-\d+/)) return 'EC2 Instance';
+            return hostname.split('.')[0]; // Use first part of hostname
+        }
+
+        function calculateAvgLoad(nodes) {
+            if (!nodes || nodes.length === 0) return 0;
+
+            const totalLoad = nodes.reduce((sum, node) => {
+                const totalMem = (node.availMemoryMB || 0) + (node.usedMemoryMB || 0);
+                const usedMem = node.usedMemoryMB || 0;
+                const memLoad = totalMem > 0 ? (usedMem / totalMem) * 100 : 0;
+
+                const totalCores = (node.availVirtualCores || 0) + (node.usedVirtualCores || 0);
+                const usedCores = node.usedVirtualCores || 0;
+                const coreLoad = totalCores > 0 ? (usedCores / totalCores) * 100 : 0;
+
+                return sum + Math.max(memLoad, coreLoad); // Use the higher utilization
+            }, 0);
+
+            return Math.round(totalLoad / nodes.length);
         }
 
         function displayApplications() {
@@ -840,6 +885,159 @@ async function viewLogs(appId) {
             }
         }
 
+        async function viewLogs(appId) {
+            try {
+                updateRefreshStatus('Loading logs...');
+                const response = await fetch(`/api/cluster/${currentCluster}/application/${appId}/logs`);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    displayLogsModal(appId, data.logs_data);
+                    updateRefreshStatus('Logs loaded successfully');
+                } else {
+                    throw new Error('Failed to load logs');
+                }
+            } catch (error) {
+                console.error('Failed to view logs:', error);
+                showError('Failed to load logs: ' + error.message);
+            }
+        }
+
+        function displayLogsModal(appId, logsData) {
+            let logsHtml = `
+                <div style="max-width: 90vw; max-height: 85vh; overflow: hidden; padding: 20px; display: flex; flex-direction: column;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-shrink: 0;">
+                        <h3 style="color: #2c3e50; margin: 0;">Application Logs: ${appId}</h3>
+                        <button onclick="closeModal()" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer;">Close</button>
+                    </div>
+
+                    <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">`;
+
+            // Create tabs for different log types
+            const logTypes = [];
+            if (logsData && logsData.driver_logs) logTypes.push({key: 'driver', name: 'Driver Logs', content: logsData.driver_logs});
+            if (logsData && logsData.executor_logs) {
+                Object.entries(logsData.executor_logs).forEach(([key, content]) => {
+                    if (content) logTypes.push({key: key, name: key.replace('_', ' ').toUpperCase(), content: content});
+                });
+            }
+            if (logsData && logsData.container_logs) {
+                Object.entries(logsData.container_logs).forEach(([key, content]) => {
+                    if (content) logTypes.push({key: key, name: `Container ${key.slice(-12)}`, content: content});
+                });
+            }
+            if (logsData && logsData.yarn_info) logTypes.push({key: 'yarn_info', name: 'YARN Info', content: JSON.stringify(logsData.yarn_info, null, 2), isJson: true});
+            if (logsData && logsData.spark_jobs) logTypes.push({key: 'spark_jobs', name: 'Spark Jobs', content: JSON.stringify(logsData.spark_jobs, null, 2), isJson: true});
+            if (logsData && logsData.environment) logTypes.push({key: 'environment', name: 'Environment', content: JSON.stringify(logsData.environment, null, 2), isJson: true});
+            if (logsData && logsData.log_info) logTypes.push({key: 'log_info', name: 'Log Access Info', content: logsData.log_info});
+
+            if (logTypes.length === 0) {
+                logsHtml += `<p style="text-align: center; color: #7f8c8d; padding: 40px;">No logs available for this application</p>`;
+            } else {
+                // Tabs
+                logsHtml += `<div style="display: flex; gap: 5px; margin-bottom: 15px; flex-wrap: wrap; flex-shrink: 0;">`;
+                logTypes.forEach((logType, index) => {
+                    const activeStyle = index === 0 ? 'background: #667eea; color: white; border-color: #667eea;' : '';
+                    logsHtml += `<button onclick="showLogTab('${logType.key}')" id="tab-${logType.key}" style="padding: 8px 12px; border: 2px solid #e0e6ed; background: white; border-radius: 5px; cursor: pointer; font-size: 12px; ${activeStyle}">${logType.name}</button>`;
+                });
+                logsHtml += `</div>`;
+
+                // Log content areas
+                logTypes.forEach((logType, index) => {
+                    const displayStyle = index === 0 ? 'flex' : 'none';
+                    const backgroundColor = logType.isJson ? '#f8f9fa' : '#000';
+                    const textColor = logType.isJson ? '#333' : '#0f0';
+                    const fontFamily = logType.isJson ? 'Consolas, Monaco, monospace' : 'Courier New, monospace';
+
+                    // Properly escape HTML content
+                    const escapedContent = (logType.content || 'No content available')
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#x27;');
+
+                    logsHtml += `
+                        <div id="log-${logType.key}" style="display: ${displayStyle}; flex: 1; overflow: hidden; flex-direction: column;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <h4 style="margin: 0; color: #2c3e50; font-size: 14px;">${logType.name}</h4>
+                                <button onclick="downloadSingleLog('${appId}', '${logType.key}', '${logType.name}')" style="background: #28a745; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;">Download</button>
+                            </div>
+                            <div style="flex: 1; overflow: auto; background: ${backgroundColor}; color: ${textColor}; padding: 15px; border-radius: 5px; font-family: ${fontFamily}; font-size: 12px; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word;">
+                                ${escapedContent}
+                            </div>
+                        </div>`;
+                });
+            }
+
+            logsHtml += `
+                    </div>
+                    <div style="display: flex; justify-content: center; gap: 10px; margin-top: 15px; flex-shrink: 0;">
+                        <button onclick="downloadLogs('${appId}')" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Download All Logs</button>
+                    </div>
+                </div>`;
+
+            showModal(logsHtml);
+
+            // Store log data for single downloads
+            window.currentLogsData = {};
+            logTypes.forEach(logType => {
+                window.currentLogsData[logType.key] = {name: logType.name, content: logType.content};
+            });
+        }
+
+        function showLogTab(tabKey) {
+            // Hide all log content areas
+            document.querySelectorAll('[id^="log-"]').forEach(el => {
+                el.style.display = 'none';
+            });
+
+            // Remove active style from all tabs
+            document.querySelectorAll('[id^="tab-"]').forEach(el => {
+                el.style.background = 'white';
+                el.style.color = '#333';
+                el.style.borderColor = '#e0e6ed';
+            });
+
+            // Show selected log content
+            const logElement = document.getElementById(`log-${tabKey}`);
+            if (logElement) {
+                logElement.style.display = 'flex';
+            }
+
+            // Style active tab
+            const activeTab = document.getElementById(`tab-${tabKey}`);
+            if (activeTab) {
+                activeTab.style.background = '#667eea';
+                activeTab.style.color = 'white';
+                activeTab.style.borderColor = '#667eea';
+            }
+        }
+
+        function downloadSingleLog(appId, logKey, logName) {
+            if (!window.currentLogsData || !window.currentLogsData[logKey]) {
+                showError('Log data not available');
+                return;
+            }
+
+            const logData = window.currentLogsData[logKey];
+            const content = logData.content;
+            const filename = `${appId}_${logKey}.${logKey.includes('info') || logKey.includes('jobs') || logKey.includes('environment') ? 'json' : 'log'}`;
+
+            // Create and trigger download
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            updateRefreshStatus(`Downloaded ${filename}`);
+        }
+
         async function downloadLogs(appId) {
             try {
                 updateRefreshStatus('Downloading logs...');
@@ -931,6 +1129,7 @@ async function viewLogs(appId) {
             if (window.currentModal) {
                 document.body.removeChild(window.currentModal);
                 window.currentModal = null;
+                window.currentLogsData = null;
             }
         }
 
