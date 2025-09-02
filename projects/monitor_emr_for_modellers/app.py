@@ -333,19 +333,32 @@ def get_clusters():
 
 @app.route('/api/cluster/<cluster_key>/applications')
 def get_applications(cluster_key):
-    """Get applications for a specific cluster"""
+    """Get applications for a specific cluster with spot instance info"""
     spark_apps = monitor.get_spark_applications(cluster_key)
     yarn_apps = monitor.get_yarn_applications(cluster_key)
+    spot_info = {} #monitor.get_spot_instance_info(cluster_key)
 
     # Combine and enrich data
     apps_data = {
         'spark_applications': spark_apps,
         'yarn_applications': yarn_apps,
         'cluster_info': monitor.get_cluster_info(cluster_key),
-        'cluster_metrics': monitor.get_cluster_metrics(cluster_key)
+        'cluster_metrics': monitor.get_cluster_metrics(cluster_key),
+        'spot_instance_info': spot_info
     }
 
     return jsonify(apps_data)
+
+
+@app.route('/api/cluster/<cluster_key>/spot_status')
+def get_spot_status(cluster_key):
+    """Get detailed spot instance status"""
+    spot_info = {} #monitor.get_spot_instance_info(cluster_key)
+    return jsonify({
+        'spot_info': spot_info,
+        'cluster_key': cluster_key,
+        'timestamp': datetime.now().isoformat()
+    })
 
 
 @app.route('/api/cluster/<cluster_key>/metrics')
