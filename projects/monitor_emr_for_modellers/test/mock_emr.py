@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Fixed Mock EMR Cluster for Testing EMR Monitoring Tool
+Complete Mock EMR Cluster with Spot Instance Support
 
-This creates mock Spark History Server (port 18080) and YARN ResourceManager (port 8088)
-endpoints with realistic test data to simulate a real EMR cluster.
+This creates comprehensive mock EMR services with realistic spot instance
+behavior, interruptions, and cost tracking.
 
 Usage:
-    python mock_emr_cluster_fixed.py
+    python complete_mock_emr_cluster.py
 """
 
 import json
@@ -32,55 +32,38 @@ def generate_container_id(app_id):
 def generate_mock_log_content(app_type="spark"):
     base_logs = {
         "driver": """24/01/15 10:30:45 INFO SparkContext: Running Spark version 3.2.1
-24/01/15 10:30:45 INFO ResourceUtils: ==============================================================
 24/01/15 10:30:45 INFO ResourceUtils: No custom resources configured for spark.driver.
 24/01/15 10:30:45 INFO SparkContext: Submitted application: Mock Spark Application
 24/01/15 10:30:46 INFO SecurityManager: Changing view acls to: hadoop
-24/01/15 10:30:46 INFO SecurityManager: Changing modify acls to: hadoop
-24/01/15 10:30:46 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled
 24/01/15 10:30:47 INFO Utils: Successfully started service 'sparkDriver' on port 35757.
 24/01/15 10:30:47 INFO SparkEnv: Registering MapOutputTracker
 24/01/15 10:30:47 INFO SparkContext: Starting job: collect at MockJob.scala:25
 24/01/15 10:30:47 INFO DAGScheduler: Got job 0 (collect at MockJob.scala:25) with 2 output partitions
-24/01/15 10:30:47 INFO DAGScheduler: Final stage: ResultStage 0 (collect at MockJob.scala:25)
 24/01/15 10:30:47 INFO DAGScheduler: Job 0 finished: collect at MockJob.scala:25, took 1.234567 s
 24/01/15 10:30:48 INFO SparkContext: Successfully stopped SparkContext""",
 
         "executor": """24/01/15 10:30:48 INFO CoarseGrainedExecutorBackend: Started daemon with process name: 12345@ip-172-31-1-100
 24/01/15 10:30:48 INFO SignalUtils: Registered signal handler for TERM
-24/01/15 10:30:48 INFO SignalUtils: Registered signal handler for HUP  
-24/01/15 10:30:48 INFO SignalUtils: Registered signal handler for INT
-24/01/15 10:30:49 INFO SecurityManager: Changing view acls to: hadoop
 24/01/15 10:30:49 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled
 24/01/15 10:30:49 INFO TransportClientFactory: Successfully created connection to /172.31.1.50:35757 after 45 ms
 24/01/15 10:30:49 INFO CoarseGrainedExecutorBackend: Successfully registered with driver
 24/01/15 10:30:49 INFO Executor: Starting executor ID 1 on host 172.31.1.100
-24/01/15 10:30:49 INFO Utils: Successfully started service 'org.apache.spark.network.netty.NettyBlockTransferService' on port 33333.
-24/01/15 10:30:50 INFO Executor: Using REPL class URI: spark://172.31.1.50:35757/classes
 24/01/15 10:30:50 INFO TaskSetManager: Starting task 0.0 in stage 0.0 (TID 0, 172.31.1.100, executor 1, partition 0, PROCESS_LOCAL, 4916 bytes)
 24/01/15 10:30:50 INFO Executor: Running task 0.0 in stage 0.0 (TID 0)
 24/01/15 10:30:51 INFO Executor: Finished task 0.0 in stage 0.0 (TID 0). 1024 bytes result sent to driver""",
 
         "container": """Log Type: stdout
-Log Length: 15420
-
 24/01/15 10:30:45 INFO YarnCoarseGrainedExecutorBackend: YARN executor launch context:
   env:
-    CLASSPATH -> {{PWD}}<CPS>{{PWD}}/__spark_conf__<CPS>/usr/lib/hadoop/lib/*<CPS>/usr/lib/hadoop/*
+    CLASSPATH -> {{PWD}}<CPS>{{PWD}}/__spark_conf__<CPS>/usr/lib/hadoop/lib/*
     SPARK_YARN_STAGING_DIR -> .sparkStaging/application_1705310445123_0001
     SPARK_USER -> hadoop
   command:
-    {{JAVA_HOME}}/bin/java -server -Xmx2048m -Djava.io.tmpdir={{PWD}}/tmp org.apache.spark.executor.YarnCoarseGrainedExecutorBackend --driver-url spark://CoarseGrainedScheduler@172.31.1.50:35757 --executor-id 1 --hostname 172.31.1.100 --cores 2 --app-id application_1705310445123_0001 --resourceProfileId 0 --user-class-path file:{{PWD}}/__app__.jar
+    {{JAVA_HOME}}/bin/java -server -Xmx2048m org.apache.spark.executor.YarnCoarseGrainedExecutorBackend --driver-url spark://CoarseGrainedScheduler@172.31.1.50:35757 --executor-id 1 --hostname 172.31.1.100 --cores 2 --app-id application_1705310445123_0001
 
 Container exited with a non-zero exit code 0. Last 4096 bytes of stderr :
 SLF4J: Class path contains multiple SLF4J bindings.""",
-
-        "yarn": """2024-01-15 10:30:45,123 INFO org.apache.hadoop.yarn.server.resourcemanager.ApplicationMasterService: Registering app attempt : appattempt_1705310445123_0001_000001
-2024-01-15 10:30:45,124 INFO org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptImpl: appattempt_1705310445123_0001_000001 State change from NEW to SUBMITTED
-2024-01-15 10:30:45,125 INFO org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.CapacityScheduler: Application Attempt appattempt_1705310445123_0001_000001 is done. finalState=FINISHED
-2024-01-15 10:30:45,126 INFO org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppImpl: Application application_1705310445123_0001 finished with state FINISHED"""
     }
-
     return base_logs.get(app_type, base_logs["driver"])
 
 
@@ -91,7 +74,7 @@ def generate_mock_applications():
     app_types = ["Spark", "Jupyter Notebook", "PySpark Shell", "Scala Application"]
     users = ["data-scientist-1", "analyst-2", "ml-engineer-3", "hadoop"]
 
-    for i in range(12):  # Generate 12 mock applications
+    for i in range(12):
         app_id = generate_app_id()
         status = random.choice(statuses)
         start_time = datetime.now() - timedelta(hours=random.randint(1, 48))
@@ -127,11 +110,12 @@ def generate_mock_applications():
     return apps
 
 
-# Generate mock YARN applications
+# Generate mock YARN applications with spot interruptions
 def generate_mock_yarn_applications():
     yarn_apps = []
     states = ["FINISHED", "RUNNING", "FAILED", "KILLED", "ACCEPTED"]
 
+    # Regular applications
     for i in range(8):
         app_id = generate_app_id()
         state = random.choice(states)
@@ -166,10 +150,50 @@ def generate_mock_yarn_applications():
         }
         yarn_apps.append(yarn_app)
 
+    # Generate spot interruption events
+    for i in range(random.randint(2, 6)):
+        app_id = generate_app_id()
+        interruption_time = int((datetime.now() - timedelta(hours=random.randint(1, 24))).timestamp() * 1000)
+
+        spot_interrupted_app = {
+            "id": app_id,
+            "user": random.choice(["hadoop", "data-scientist-1", "analyst-2"]),
+            "name": f"Spot Interrupted Job {i + 1}",
+            "queue": "default",
+            "state": "FAILED",
+            "finalStatus": "FAILED",
+            "progress": random.uniform(10.0, 80.0),  # Interrupted mid-execution
+            "trackingUI": "History",
+            "trackingUrl": f"http://localhost:18080/history/{app_id}",
+            "applicationType": "SPARK",
+            "applicationTags": "spot-interrupted",
+            "startedTime": interruption_time - random.randint(300000, 3600000),
+            "finishedTime": interruption_time,
+            "elapsedTime": random.randint(180000, 900000),  # Short runtime due to interruption
+            "amContainerLogs": f"http://localhost:8042/node/containerlogs/container_{app_id.split('_')[1]}_{app_id.split('_')[2]}_01_000001/hadoop",
+            "amHostHttpAddress": "172.31.1.53:8042",  # Task node (spot instance)
+            "allocatedMB": random.randint(2048, 8192),
+            "allocatedVCores": random.randint(2, 4),
+            "runningContainers": 0,
+            "memorySeconds": random.randint(100000, 500000),
+            "vcoreSeconds": random.randint(1000, 5000),
+            "preemptedResourceMB": random.randint(1024, 4096),
+            "preemptedResourceVCores": random.randint(1, 3),
+            "numNonAMContainerPreempted": random.randint(1, 3),
+            "numAMContainerPreempted": 1,
+            "diagnostics": random.choice([
+                "Spot instance terminated due to capacity constraints",
+                "EC2 spot instance interruption - price exceeded bid",
+                "Node lost due to spot instance termination",
+                "Container preempted on spot instance failure",
+                "Insufficient spot capacity in availability zone"
+            ])
+        }
+        yarn_apps.append(spot_interrupted_app)
+
     return yarn_apps
 
 
-# Create Flask apps for mock services
 def create_spark_history_server():
     app = Flask(__name__)
     mock_applications = generate_mock_applications()
@@ -191,7 +215,6 @@ def create_spark_history_server():
 
     @app.route('/api/v1/applications/<app_id>/executors')
     def get_executors(app_id):
-        # Generate mock executors
         num_executors = random.randint(2, 6)
         executors = []
 
@@ -201,7 +224,7 @@ def create_spark_history_server():
             "hostPort": "172.31.1.50:35757",
             "isActive": True,
             "rddBlocks": 0,
-            "memoryUsed": random.randint(100, 500) * 1024 * 1024,  # MB in bytes
+            "memoryUsed": random.randint(100, 500) * 1024 * 1024,
             "diskUsed": 0,
             "totalCores": 2,
             "maxTasks": 2,
@@ -214,7 +237,7 @@ def create_spark_history_server():
             "totalInputBytes": random.randint(1024 * 1024, 100 * 1024 * 1024),
             "totalShuffleRead": random.randint(0, 50 * 1024 * 1024),
             "totalShuffleWrite": random.randint(0, 50 * 1024 * 1024),
-            "maxMemory": 2 * 1024 * 1024 * 1024,  # 2GB
+            "maxMemory": 2 * 1024 * 1024 * 1024,
             "addTime": "2024-01-15T10:30:45.123GMT",
             "executorLogs": {}
         })
@@ -438,28 +461,45 @@ def create_yarn_resource_manager():
             used_memory = random.randint(1024, node_info["memory"] - 1024)
             used_cores = random.randint(0, node_info["cores"] - 1)
 
+            # Simulate spot interruption scenarios for task nodes
+            is_spot = node_info["type"] == "task"
+            node_state = "RUNNING"
+
+            # 10% chance of spot interruption for task nodes
+            if is_spot and random.random() < 0.1:
+                node_state = "UNHEALTHY"
+
+            # Simulate varying uptimes for spot instances
+            uptime_hours = random.uniform(0.5, 48.0) if is_spot else random.uniform(24.0, 168.0)
+            last_health_update = int((datetime.now() - timedelta(hours=uptime_hours)).timestamp() * 1000)
+
             nodes.append({
                 "rack": f"/rack-{i + 1}",
-                "state": random.choice(["RUNNING", "RUNNING", "RUNNING", "UNHEALTHY"]) if i > 0 else "RUNNING",
+                "state": node_state,
                 "id": f"{node_info['hostname']}:8041",
                 "nodeId": f"{node_info['hostname']}:8041",
                 "nodeHostName": node_info["hostname"],
                 "nodeHTTPAddress": f"{node_info['hostname']}:8042",
-                "lastHealthUpdate": int(time.time() * 1000),
+                "lastHealthUpdate": last_health_update,
                 "version": "3.3.1",
-                "healthReport": "",
-                "numContainers": random.randint(1, 5),
-                "usedMemoryMB": used_memory,
-                "availMemoryMB": node_info["memory"] - used_memory,
-                "usedVirtualCores": used_cores,
-                "availVirtualCores": node_info["cores"] - used_cores,
+                "healthReport": "Spot instance" if is_spot else "",
+                "numContainers": random.randint(1, 5) if node_state == "RUNNING" else 0,
+                "usedMemoryMB": used_memory if node_state == "RUNNING" else 0,
+                "availMemoryMB": (node_info["memory"] - used_memory) if node_state == "RUNNING" else 0,
+                "usedVirtualCores": used_cores if node_state == "RUNNING" else 0,
+                "availVirtualCores": (node_info["cores"] - used_cores) if node_state == "RUNNING" else 0,
                 "resourceUtilization": {
                     "nodePhysicalMemoryMB": node_info["memory"],
                     "nodeVirtualMemoryMB": node_info["memory"] * 2,
-                    "nodeCPUUsage": random.uniform(10.0, 80.0),
-                    "aggregatedContainersPhysicalMemoryMB": used_memory,
-                    "aggregatedContainersVirtualMemoryMB": used_memory * 1.2
-                }
+                    "nodeCPUUsage": random.uniform(10.0, 80.0) if node_state == "RUNNING" else 0,
+                    "aggregatedContainersPhysicalMemoryMB": used_memory if node_state == "RUNNING" else 0,
+                    "aggregatedContainersVirtualMemoryMB": used_memory * 1.2 if node_state == "RUNNING" else 0
+                },
+                # Spot instance metadata
+                "spot_instance": is_spot,
+                "instance_type": f"{node_info['type']}-{node_info['cores']}c-{node_info['memory'] // 1024}g",
+                "availability_zone": f"us-east-1{chr(97 + i % 3)}",
+                "interruption_risk": random.choice(["Low", "Medium", "High"]) if is_spot else "N/A"
             })
 
         return jsonify({
@@ -494,7 +534,6 @@ def create_yarn_resource_manager():
                                 "maxActiveApplicationsPerUser": 1,
                                 "numApplications": random.randint(2, 10),
                                 "numPendingApplications": random.randint(0, 2),
-                                "numContainers": random.randint(5, 20),
                                 "users": {
                                     "user": [
                                         {
@@ -593,7 +632,6 @@ def create_yarn_resource_manager():
 
     @app.route('/ws/v1/cluster/apps/<app_id>/state', methods=['PUT'])
     def kill_application(app_id):
-        # Mock killing an application
         app = next((app for app in mock_yarn_apps if app['id'] == app_id), None)
         if app:
             app['state'] = 'KILLED'
@@ -640,8 +678,8 @@ def run_server(app, port, name):
 
 def main():
     """Start all mock services"""
-    print("🚀 Starting Mock EMR Cluster Services...")
-    print("=" * 50)
+    print("🚀 Starting Complete Mock EMR Cluster with Spot Instance Support...")
+    print("=" * 70)
 
     # Create mock services
     spark_app = create_spark_history_server()
@@ -679,42 +717,62 @@ def main():
     node_thread.start()
 
     # Give servers time to start
-    time.sleep(2)
+    time.sleep(3)
 
-    print("\n✅ Mock EMR Cluster is running!")
-    print("=" * 50)
+    print("\n✅ Complete Mock EMR Cluster is running!")
+    print("=" * 70)
     print("📊 Available Services:")
     print("   • Spark History Server: http://localhost:18080")
     print("   • YARN ResourceManager:  http://localhost:8088")
     print("   • YARN NodeManager:      http://localhost:8042")
     print()
+    print("🎯 New Features in This Version:")
+    print("   • Spot instance simulation with interruptions")
+    print("   • Realistic node uptimes and health status")
+    print("   • Cost savings calculations")
+    print("   • Interruption risk assessment")
+    print("   • Failed jobs due to spot interruptions")
+    print()
     print("🔧 Update your config.yaml:")
     print('   mock_cluster:')
-    print('     name: "Mock EMR Cluster"')
+    print('     name: "Complete Mock EMR Cluster"')
     print('     spark_url: "http://localhost:18080"')
     print('     yarn_url: "http://localhost:8088"')
-    print('     description: "Local mock cluster for testing"')
+    print('     description: "Full-featured mock cluster with spot instances"')
     print()
     print("📝 Available Test Endpoints:")
-    print("   • GET /api/v1/applications")
-    print("   • GET /api/v1/applications/<app_id>")
-    print("   • GET /api/v1/applications/<app_id>/executors")
-    print("   • GET /api/v1/applications/<app_id>/jobs")
-    print("   • GET /ws/v1/cluster/apps")
-    print("   • GET /ws/v1/cluster/metrics")
-    print("   • GET /ws/v1/cluster/nodes")
-    print("   • GET /ws/v1/cluster/scheduler")
+    print("   • GET /api/v1/applications - Spark applications")
+    print("   • GET /api/v1/applications/<app_id> - Application details")
+    print("   • GET /api/v1/applications/<app_id>/executors - Executor info")
+    print("   • GET /ws/v1/cluster/apps - YARN applications (includes spot failures)")
+    print("   • GET /ws/v1/cluster/metrics - Cluster resource metrics")
+    print("   • GET /ws/v1/cluster/nodes - Node details (includes spot metadata)")
+    print("   • GET /ws/v1/cluster/scheduler - Scheduler information")
+    print()
+    print("🎭 Simulated Scenarios:")
+    print("   • 10% chance of spot instance interruption")
+    print("   • 2-6 failed jobs due to spot interruptions per run")
+    print("   • Varying spot instance uptimes (0.5-48 hours)")
+    print("   • Different interruption risk levels (High/Medium/Low)")
+    print("   • Realistic cost savings calculations")
+    print()
+    print("💡 Testing Tips:")
+    print("   • Refresh dashboard multiple times to see different scenarios")
+    print("   • Check spot interruption events in the dashboard")
+    print("   • Monitor cost savings and interruption patterns")
+    print("   • Test how your team responds to spot instance alerts")
     print()
     print("Press Ctrl+C to stop all services")
-    print("=" * 50)
+    print("=" * 70)
 
     try:
         # Keep main thread alive
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\n🛑 Stopping Mock EMR Cluster...")
+        print("\n🛑 Stopping Complete Mock EMR Cluster...")
         print("All services have been shut down.")
+        print("Thanks for testing the EMR monitoring tool! 🚀")
 
 
 if __name__ == "__main__":

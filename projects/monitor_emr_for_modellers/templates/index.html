@@ -517,745 +517,1089 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>EMR Monitoring Dashboard</h1>
-            <p>Monitor your EMR clusters, track resource usage, and manage Spark applications</p>
+<div class="container">
+    <div class="header">
+        <h1>EMR Monitoring Dashboard</h1>
+        <p>Monitor your EMR clusters, track resource usage, and manage Spark applications</p>
+    </div>
+
+    <div class="cluster-selector">
+        <div class="form-group">
+            <label for="clusterSelect">Select EMR Cluster:</label>
+            <select id="clusterSelect">
+                <option value="">Choose a cluster...</option>
+            </select>
         </div>
+        <button onclick="loadClusterData()" id="loadButton" disabled>Load Cluster Data</button>
 
-        <div class="cluster-selector">
-            <div class="form-group">
-                <label for="clusterSelect">Select EMR Cluster:</label>
-                <select id="clusterSelect">
-                    <option value="">Choose a cluster...</option>
-                </select>
-            </div>
-            <button onclick="loadClusterData()" id="loadButton" disabled>Load Cluster Data</button>
-
-            <div class="auto-refresh" style="margin-top: 15px;">
-                <label>
-                    <input type="checkbox" id="autoRefresh"> Auto-refresh (30s)
-                </label>
-                <span class="refresh-status" id="refreshStatus"></span>
-            </div>
-        </div>
-
-        <div id="clusterMetrics" class="metrics-grid" style="display: none;"></div>
-
-        <div id="applicationsSection" class="applications-section" style="display: none;">
-            <div class="section-header">
-                <h2 class="section-title">Applications</h2>
-                <div class="filter-tabs">
-                    <div class="tab active" onclick="filterApplications('all')" data-filter="all">All</div>
-                    <div class="tab" onclick="filterApplications('RUNNING')" data-filter="RUNNING">Running</div>
-                    <div class="tab" onclick="filterApplications('FINISHED')" data-filter="FINISHED">Completed</div>
-                    <div class="tab" onclick="filterApplications('FAILED')" data-filter="FAILED">Failed</div>
-                    <div class="tab" onclick="filterApplications('ACCEPTED')" data-filter="ACCEPTED">Accepted</div>
-                </div>
-            </div>
-            <div id="applicationsGrid" class="applications-grid"></div>
-        </div>
-
-        <div id="loadingState" class="loading" style="display: none;">
-            <div class="spinner"></div>
-            <p>Loading cluster data...</p>
+        <div class="auto-refresh" style="margin-top: 15px;">
+            <label>
+                <input type="checkbox" id="autoRefresh"> Auto-refresh (30s)
+            </label>
+            <span class="refresh-status" id="refreshStatus"></span>
         </div>
     </div>
 
-    <script>
-        let currentCluster = null;
-        let applicationsData = [];
-        let currentFilter = 'all';
-        let refreshInterval = null;
+    <div id="clusterMetrics" class="metrics-grid" style="display: none;"></div>
 
-        // Load available clusters on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            loadClusters();
-        });
+    <div id="applicationsSection" class="applications-section" style="display: none;">
+        <div class="section-header">
+            <h2 class="section-title">Applications</h2>
+            <div class="filter-tabs">
+                <div class="tab active" onclick="filterApplications('all')" data-filter="all">All</div>
+                <div class="tab" onclick="filterApplications('RUNNING')" data-filter="RUNNING">Running</div>
+                <div class="tab" onclick="filterApplications('FINISHED')" data-filter="FINISHED">Completed</div>
+                <div class="tab" onclick="filterApplications('FAILED')" data-filter="FAILED">Failed</div>
+                <div class="tab" onclick="filterApplications('ACCEPTED')" data-filter="ACCEPTED">Accepted</div>
+            </div>
+        </div>
+        <div id="applicationsGrid" class="applications-grid"></div>
+    </div>
 
-        async function loadClusters() {
-            try {
-                const response = await fetch('/api/clusters');
-                const clusters = await response.json();
+    <div id="loadingState" class="loading" style="display: none;">
+        <div class="spinner"></div>
+        <p>Loading cluster data...</p>
+    </div>
+</div>
 
-                const select = document.getElementById('clusterSelect');
-                select.innerHTML = '<option value="">Choose a cluster...</option>';
+<script>
+    let currentCluster = null;
+    let applicationsData = [];
+    let currentFilter = 'all';
+    let refreshInterval = null;
 
-                for (const [key, cluster] of Object.entries(clusters)) {
-                    const option = document.createElement('option');
-                    option.value = key;
-                    option.textContent = `${cluster.name} - ${cluster.description}`;
-                    select.appendChild(option);
-                }
+    // Load available clusters on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        loadClusters();
+    });
 
-                select.addEventListener('change', function() {
-                    const loadButton = document.getElementById('loadButton');
-                    loadButton.disabled = !this.value;
-                    currentCluster = this.value;
-                });
+    async function loadClusters() {
+        try {
+            const response = await fetch('/api/clusters');
+            const clusters = await response.json();
 
-            } catch (error) {
-                console.error('Failed to load clusters:', error);
-                showError('Failed to load cluster configuration');
-            }
-        }
+            const select = document.getElementById('clusterSelect');
+            select.innerHTML = '<option value="">Choose a cluster...</option>';
 
-        async function loadClusterData() {
-            if (!currentCluster) return;
-
-            showLoading(true);
-
-            try {
-                const response = await fetch(`/api/cluster/${currentCluster}/applications`);
-                const data = await response.json();
-
-                applicationsData = data.spark_applications || [];
-
-                displayClusterMetrics(data.cluster_metrics, data.cluster_info);
-                displaySpotInstanceInfo(data.spot_instance_info);
-                displayApplications();
-
-                document.getElementById('applicationsSection').style.display = 'block';
-                updateRefreshStatus('Data loaded successfully');
-
-            } catch (error) {
-                console.error('Failed to load cluster data:', error);
-                showError('Failed to load cluster data');
-            } finally {
-                showLoading(false);
-            }
-        }
-
-        function displaySpotInstanceInfo(spotInfo) {
-            if (!spotInfo || !spotInfo.spot_nodes || spotInfo.spot_nodes.length === 0) {
-                return; // No spot instances to display
+            for (const [key, cluster] of Object.entries(clusters)) {
+                const option = document.createElement('option');
+                option.value = key;
+                option.textContent = `${cluster.name} - ${cluster.description}`;
+                select.appendChild(option);
             }
 
-            // Find or create spot instance metrics container
-            let spotContainer = document.getElementById('spotMetrics');
-            if (!spotContainer) {
-                spotContainer = document.createElement('div');
-                spotContainer.id = 'spotMetrics';
-                spotContainer.className = 'metrics-grid';
-                spotContainer.style.marginBottom = '30px';
-
-                // Insert after cluster metrics
-                const clusterMetrics = document.getElementById('clusterMetrics');
-                clusterMetrics.parentNode.insertBefore(spotContainer, clusterMetrics.nextSibling);
-            }
-
-            const totalSpotNodes = spotInfo.spot_nodes.length;
-            const healthySpotNodes = spotInfo.spot_nodes.filter(n => n.state === 'RUNNING').length;
-            const spotCapacity = spotInfo.current_spot_capacity || 0;
-            const totalSavings = spotInfo.spot_savings || 0;
-            const interruptions24h = spotInfo.total_interruptions_24h || 0;
-
-            // Calculate average uptime and interruption risk
-            const avgUptime = spotInfo.spot_nodes.length > 0 ?
-                Math.round(spotInfo.spot_nodes.reduce((sum, n) => sum + (n.uptime_hours || 0), 0) / spotInfo.spot_nodes.length) : 0;
-
-            const highRiskNodes = spotInfo.spot_nodes.filter(n => n.interruption_risk === 'High').length;
-            const mediumRiskNodes = spotInfo.spot_nodes.filter(n => n.interruption_risk === 'Medium').length;
-            const lowRiskNodes = spotInfo.spot_nodes.filter(n => n.interruption_risk === 'Low').length;
-
-            let spotHtml = `
-                <!-- Spot Instance Overview -->
-                <div class="metric-card" style="border-left: 4px solid #ff9800;">
-                    <div class="metric-title">Spot Instances</div>
-                    <div class="metric-value">${healthySpotNodes}/${totalSpotNodes}</div>
-                    <div class="metric-subtitle">Active Spot Nodes</div>
-                    <div style="margin-top: 10px; font-size: 12px;">
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: #28a745;">●&nbsp;Running: ${healthySpotNodes}</span>
-                            <span style="color: #6c757d;">●&nbsp;Total: ${totalSpotNodes}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Spot Capacity -->
-                <div class="metric-card" style="border-left: 4px solid #17a2b8;">
-                    <div class="metric-title">Spot Capacity</div>
-                    <div class="metric-value">${spotCapacity}</div>
-                    <div class="metric-subtitle">CPU Cores Available</div>
-                    <div style="margin-top: 10px; font-size: 12px; color: #6c757d;">
-                        Task nodes providing compute capacity
-                    </div>
-                </div>
-
-                <!-- Cost Savings -->
-                <div class="metric-card" style="border-left: 4px solid #28a745;">
-                    <div class="metric-title">Cost Savings</div>
-                    <div class="metric-value">${totalSavings.toFixed(2)}/hr</div>
-                    <div class="metric-subtitle">Estimated Hourly Savings</div>
-                    <div style="margin-top: 10px; font-size: 12px; color: #6c757d;">
-                        ~70% savings vs On-Demand
-                    </div>
-                </div>
-
-                <!-- Interruptions -->
-                <div class="metric-card" style="border-left: 4px solid ${interruptions24h > 5 ? '#dc3545' : interruptions24h > 2 ? '#ffc107' : '#28a745'};">
-                    <div class="metric-title">Interruptions (24h)</div>
-                    <div class="metric-value" style="color: ${interruptions24h > 5 ? '#dc3545' : interruptions24h > 2 ? '#ffc107' : '#28a745'};">${interruptions24h}</div>
-                    <div class="metric-subtitle">Spot Interruptions</div>
-                    <div style="margin-top: 10px; font-size: 12px; color: #6c757d;">
-                        Jobs affected by spot termination
-                    </div>
-                </div>
-
-                <!-- Interruption Risk -->
-                <div class="metric-card" style="border-left: 4px solid ${highRiskNodes > 0 ? '#dc3545' : mediumRiskNodes > 0 ? '#ffc107' : '#28a745'};">
-                    <div class="metric-title">Interruption Risk</div>
-                    <div class="metric-value" style="font-size: 1.2em; color: ${highRiskNodes > 0 ? '#dc3545' : mediumRiskNodes > 0 ? '#ffc107' : '#28a745'};">
-                        ${highRiskNodes > 0 ? 'High' : mediumRiskNodes > 0 ? 'Medium' : 'Low'}
-                    </div>
-                    <div class="metric-subtitle">Current Risk Level</div>
-                    <div style="margin-top: 8px; font-size: 11px;">
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: #dc3545;">●&nbsp;High: ${highRiskNodes}</span>
-                            <span style="color: #ffc107;">●&nbsp;Med: ${mediumRiskNodes}</span>
-                            <span style="color: #28a745;">●&nbsp;Low: ${lowRiskNodes}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Average Uptime -->
-                <div class="metric-card" style="border-left: 4px solid #6f42c1;">
-                    <div class="metric-title">Average Uptime</div>
-                    <div class="metric-value">${avgUptime}h</div>
-                    <div class="metric-subtitle">Spot Node Uptime</div>
-                    <div style="margin-top: 10px; font-size: 12px; color: #6c757d;">
-                        Time since last restart/interruption
-                    </div>
-                </div>`;
-
-            // Add detailed spot node information
-            if (spotInfo.spot_nodes.length > 0) {
-                spotHtml += `
-                <div class="metric-card" style="grid-column: span 3; border-left: 4px solid #fd7e14;">
-                    <div class="metric-title">Spot Node Details</div>
-                    <div style="max-height: 200px; overflow-y: auto; margin-top: 15px;">`;
-
-                spotInfo.spot_nodes.forEach(node => {
-                    const riskColor = node.interruption_risk === 'High' ? '#dc3545' :
-                                    node.interruption_risk === 'Medium' ? '#ffc107' : '#28a745';
-                    const statusColor = node.state === 'RUNNING' ? '#28a745' : '#dc3545';
-
-                    spotHtml += `
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; margin-bottom: 6px; background: #f8f9fa; border-radius: 6px; border-left: 3px solid ${statusColor};">
-                            <div style="flex: 2;">
-                                <div style="font-weight: 600; font-size: 13px;">${node.hostname}</div>
-                                <div style="font-size: 11px; color: #6c757d;">${node.cores} cores, ${formatBytes(node.memory_mb * 1024 * 1024)}</div>
-                            </div>
-                            <div style="flex: 1; text-align: center;">
-                                <div style="font-size: 12px; font-weight: 500;">${Math.round(node.uptime_hours || 0)}h</div>
-                                <div style="font-size: 10px; color: #6c757d;">Uptime</div>
-                            </div>
-                            <div style="flex: 1; text-align: center;">
-                                <div style="font-size: 12px; font-weight: 500; color: ${riskColor};">${node.interruption_risk}</div>
-                                <div style="font-size: 10px; color: #6c757d;">Risk</div>
-                            </div>
-                            <div style="flex: 1; text-align: right;">
-                                <div style="font-size: 12px; font-weight: 500;">${(node.estimated_savings || 0).toFixed(2)}/h</div>
-                                <div style="font-size: 10px; color: #6c757d;">Savings</div>
-                            </div>
-                        </div>`;
-                });
-
-                spotHtml += `
-                    </div>
-                </div>`;
-            }
-
-            // Add recent interruptions if any
-            if (spotInfo.interruption_events && spotInfo.interruption_events.length > 0) {
-                spotHtml += `
-                <div class="metric-card" style="grid-column: span 4; border-left: 4px solid #dc3545;">
-                    <div class="metric-title">Recent Spot Interruptions</div>
-                    <div style="max-height: 150px; overflow-y: auto; margin-top: 15px;">`;
-
-                spotInfo.interruption_events.slice(0, 5).forEach(event => {
-                    const finishedTime = event.finished_time ? new Date(event.finished_time).toLocaleString() : 'Unknown';
-                    const duration = event.elapsed_time ? formatDuration(event.elapsed_time) : 'N/A';
-
-                    spotHtml += `
-                        <div style="padding: 8px 12px; margin-bottom: 6px; background: #fff5f5; border-radius: 6px; border-left: 3px solid #dc3545;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                    <div style="font-weight: 600; font-size: 13px; color: #2c3e50;">${event.app_name || event.app_id}</div>
-                                    <div style="font-size: 11px; color: #6c757d;">${event.interruption_reason}</div>
-                                </div>
-                                <div style="text-align: right;">
-                                    <div style="font-size: 12px; color: #dc3545;">${duration} runtime</div>
-                                    <div style="font-size: 10px; color: #6c757d;">${finishedTime}</div>
-                                </div>
-                            </div>
-                        </div>`;
-                });
-
-                spotHtml += `
-                    </div>
-                </div>`;
-            }
-
-            spotContainer.innerHTML = spotHtml;
-            spotContainer.style.display = 'grid';
-        }
-
-        function displayClusterMetrics(metrics, info) {
-            const metricsContainer = document.getElementById('clusterMetrics');
-
-            if (!metrics || !metrics.clusterMetrics) {
-                metricsContainer.style.display = 'none';
-                return;
-            }
-
-            const clusterMetrics = metrics.clusterMetrics;
-            const clusterInfo = info?.clusterInfo || {};
-            const nodes = metrics.nodes || [];
-            const scheduler = metrics.scheduler || {};
-
-            // Calculate resource utilization
-            const totalMem = clusterMetrics.totalMB || 0;
-            const availableMem = clusterMetrics.availableMB || 0;
-            const allocatedMem = clusterMetrics.allocatedMB || 0;
-            const reservedMem = clusterMetrics.reservedMB || 0;
-            const usedMem = totalMem - availableMem;
-            const memUtilization = totalMem > 0 ? Math.round((usedMem / totalMem) * 100) : 0;
-
-            const totalCores = clusterMetrics.totalVirtualCores || 0;
-            const availableCores = clusterMetrics.availableVirtualCores || 0;
-            const allocatedCores = clusterMetrics.allocatedVirtualCores || 0;
-            const reservedCores = clusterMetrics.reservedVirtualCores || 0;
-            const usedCores = totalCores - availableCores;
-            const coreUtilization = totalCores > 0 ? Math.round((usedCores / totalCores) * 100) : 0;
-
-            // Node statistics
-            const totalNodes = clusterMetrics.totalNodes || 0;
-            const activeNodes = clusterMetrics.activeNodes || 0;
-            const unhealthyNodes = clusterMetrics.unhealthyNodes || 0;
-            const lostNodes = clusterMetrics.lostNodes || 0;
-            const decommissionedNodes = clusterMetrics.decommissionedNodes || 0;
-
-            // Application statistics
-            const runningApps = clusterMetrics.appsRunning || 0;
-            const pendingApps = clusterMetrics.appsPending || 0;
-            const completedApps = clusterMetrics.appsCompleted || 0;
-            const failedApps = clusterMetrics.appsFailed || 0;
-            const killedApps = clusterMetrics.appsKilled || 0;
-            const totalApps = runningApps + completedApps + failedApps + killedApps;
-
-            // Container statistics
-            const allocatedContainers = clusterMetrics.containersAllocated || 0;
-            const pendingContainers = clusterMetrics.containersPending || 0;
-            const reservedContainers = clusterMetrics.containersReserved || 0;
-
-            // Calculate node type summaries
-            const nodeTypeSummary = calculateNodeTypeSummary(nodes);
-
-            let metricsHtml = `
-                <!-- Cluster Overview Summary -->
-                <div class="metric-card" style="grid-column: span 2;">
-                    <div class="metric-title">Cluster Overview</div>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-top: 15px;">
-                        <div style="text-align: center;">
-                            <div style="font-size: 2em; font-weight: 300; color: #2c3e50;">${totalNodes}</div>
-                            <div style="font-size: 12px; color: #7f8c8d;">Total Nodes</div>
-                        </div>
-                        <div style="text-align: center;">
-                            <div style="font-size: 2em; font-weight: 300; color: #2c3e50;">${formatBytes(totalMem * 1024 * 1024)}</div>
-                            <div style="font-size: 12px; color: #7f8c8d;">Total Memory</div>
-                        </div>
-                        <div style="text-align: center;">
-                            <div style="font-size: 2em; font-weight: 300; color: #2c3e50;">${totalCores}</div>
-                            <div style="font-size: 12px; color: #7f8c8d;">Total CPU Cores</div>
-                        </div>
-                        <div style="text-align: center;">
-                            <div style="font-size: 2em; font-weight: 300; color: #2c3e50;">${runningApps}</div>
-                            <div style="font-size: 12px; color: #7f8c8d;">Running Jobs</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Node Type Breakdown -->
-                <div class="metric-card" style="grid-column: span 3;">
-                    <div class="metric-title">EMR Node Breakdown</div>
-                    <div style="margin-top: 15px;">
-                        ${Object.entries(nodeTypeSummary).map(([nodeType, summary]) => `
-                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; margin-bottom: 8px; background: ${getNodeTypeColor(nodeType)}; border-radius: 8px;">
-                                <div style="flex: 1;">
-                                    <div style="font-weight: 600; color: #2c3e50;">${nodeType}</div>
-                                    <div style="font-size: 12px; color: #6c757d;">${summary.count} node${summary.count !== 1 ? 's' : ''}</div>
-                                </div>
-                                <div style="flex: 1; text-align: center;">
-                                    <div style="font-weight: 600; color: #2c3e50;">${formatBytes(summary.totalMemory * 1024 * 1024)}</div>
-                                    <div style="font-size: 12px; color: #6c757d;">Memory</div>
-                                </div>
-                                <div style="flex: 1; text-align: center;">
-                                    <div style="font-weight: 600; color: #2c3e50;">${summary.totalCores}</div>
-                                    <div style="font-size: 12px; color: #6c757d;">CPU Cores</div>
-                                </div>
-                                <div style="flex: 1; text-align: right;">
-                                    <div style="font-weight: 600; color: ${getHealthColor(summary.unhealthy, 0, summary.count)};">${summary.healthy}/${summary.count}</div>
-                                    <div style="font-size: 12px; color: #6c757d;">Healthy</div>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-
-                <!-- Resource Utilization Cards -->
-                <div class="metric-card">
-                    <div class="metric-title">Memory Utilization</div>
-                    <div class="metric-value">${memUtilization}%</div>
-                    <div class="metric-subtitle">${formatBytes(usedMem * 1024 * 1024)} used of ${formatBytes(totalMem * 1024 * 1024)}</div>
-                    <div class="resource-bar">
-                        <div class="resource-fill" style="width: ${memUtilization}%"></div>
-                    </div>
-                    <div style="font-size: 11px; margin-top: 8px; color: #6c757d;">
-                        Allocated: ${formatBytes(allocatedMem * 1024 * 1024)} |
-                        Available: ${formatBytes(availableMem * 1024 * 1024)}
-                        ${reservedMem > 0 ? ` | Reserved: ${formatBytes(reservedMem * 1024 * 1024)}` : ''}
-                    </div>
-                </div>
-
-                <div class="metric-card">
-                    <div class="metric-title">CPU Utilization</div>
-                    <div class="metric-value">${coreUtilization}%</div>
-                    <div class="metric-subtitle">${usedCores} used of ${totalCores} cores</div>
-                    <div class="resource-bar">
-                        <div class="resource-fill" style="width: ${coreUtilization}%"></div>
-                    </div>
-                    <div style="font-size: 11px; margin-top: 8px; color: #6c757d;">
-                        Allocated: ${allocatedCores} | Available: ${availableCores}
-                        ${reservedCores > 0 ? ` | Reserved: ${reservedCores}` : ''}
-                    </div>
-                </div>
-
-                <div class="metric-card">
-                    <div class="metric-title">Applications</div>
-                    <div class="metric-value">${runningApps}</div>
-                    <div class="metric-subtitle">Running (${totalApps} total)</div>
-                    <div style="margin-top: 10px;">
-                        <div style="display: flex; justify-content: space-between; font-size: 12px;">
-                            <span style="color: #28a745;">●&nbsp;Running: ${runningApps}</span>
-                            <span style="color: #ffc107;">●&nbsp;Pending: ${pendingApps}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 4px;">
-                            <span style="color: #17a2b8;">●&nbsp;Completed: ${completedApps}</span>
-                            <span style="color: #dc3545;">●&nbsp;Failed: ${failedApps}</span>
-                        </div>
-                        ${killedApps > 0 ? `
-                        <div style="font-size: 12px; margin-top: 4px; color: #6c757d;">
-                            ●&nbsp;Killed: ${killedApps}
-                        </div>
-                        ` : ''}
-                    </div>
-                </div>
-
-                <div class="metric-card">
-                    <div class="metric-title">Containers</div>
-                    <div class="metric-value">${allocatedContainers}</div>
-                    <div class="metric-subtitle">Allocated containers</div>
-                    <div style="margin-top: 10px;">
-                        <div style="display: flex; justify-content: space-between; font-size: 12px;">
-                            <span style="color: #28a745;">●&nbsp;Allocated: ${allocatedContainers}</span>
-                            <span style="color: #ffc107;">●&nbsp;Pending: ${pendingContainers}</span>
-                        </div>
-                        ${reservedContainers > 0 ? `
-                        <div style="font-size: 12px; margin-top: 4px;">
-                            <span style="color: #17a2b8;">●&nbsp;Reserved: ${reservedContainers}</span>
-                        </div>
-                        ` : ''}
-                    </div>
-                </div>
-
-                <div class="metric-card">
-                    <div class="metric-title">Cluster Health</div>
-                    <div class="metric-value" style="font-size: 1.5em; color: ${getHealthColor(unhealthyNodes, lostNodes, totalNodes)};">
-                        ${getHealthStatus(unhealthyNodes, lostNodes, totalNodes)}
-                    </div>
-                    <div class="metric-subtitle">Overall cluster status</div>
-                    <div style="margin-top: 10px; font-size: 12px; color: #6c757d;">
-                        ${clusterInfo.resourceManagerVersion ? `RM: ${clusterInfo.resourceManagerVersion}` : ''}
-                        ${clusterInfo.hadoopVersion ? `<br>Hadoop: ${clusterInfo.hadoopVersion}` : ''}
-                        ${clusterInfo.startedOn ? `<br>Started: ${new Date(clusterInfo.startedOn).toLocaleDateString()}` : ''}
-                    </div>
-                </div>`;
-
-            metricsContainer.innerHTML = metricsHtml;
-            metricsContainer.style.display = 'grid';
-        }
-
-        function calculateNodeTypeSummary(nodes) {
-            const summary = {};
-
-            nodes.forEach(node => {
-                const nodeType = classifyNodeType(node.nodeHostName || node.id || 'unknown');
-
-                if (!summary[nodeType]) {
-                    summary[nodeType] = {
-                        count: 0,
-                        healthy: 0,
-                        unhealthy: 0,
-                        totalMemory: 0,
-                        totalCores: 0,
-                        usedMemory: 0,
-                        usedCores: 0
-                    };
-                }
-
-                const s = summary[nodeType];
-                s.count++;
-
-                if (node.state === 'RUNNING') {
-                    s.healthy++;
-                } else {
-                    s.unhealthy++;
-                }
-
-                s.totalMemory += (node.availMemoryMB || 0) + (node.usedMemoryMB || 0);
-                s.totalCores += (node.availVirtualCores || 0) + (node.usedVirtualCores || 0);
-                s.usedMemory += (node.usedMemoryMB || 0);
-                s.usedCores += (node.usedVirtualCores || 0);
+            select.addEventListener('change', function() {
+                const loadButton = document.getElementById('loadButton');
+                loadButton.disabled = !this.value;
+                currentCluster = this.value;
             });
 
-            return summary;
+        } catch (error) {
+            console.error('Failed to load clusters:', error);
+            showError('Failed to load cluster configuration');
+        }
+    }
+
+    async function loadClusterData() {
+        if (!currentCluster) return;
+
+        showLoading(true);
+
+        try {
+            const response = await fetch(`/api/cluster/${currentCluster}/applications`);
+            const data = await response.json();
+
+            applicationsData = data.spark_applications || [];
+
+            // Store YARN data globally for cross-referencing
+            window.yarnApplicationsData = data.yarn_applications || [];
+
+            displayClusterMetrics(data.cluster_metrics, data.cluster_info);
+            displaySpotInstanceInfo(data.spot_instance_info);
+            displayApplications();
+
+            document.getElementById('applicationsSection').style.display = 'block';
+            updateRefreshStatus('Data loaded successfully');
+
+        } catch (error) {
+            console.error('Failed to load cluster data:', error);
+            showError('Failed to load cluster data');
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    function displaySpotInstanceInfo(spotInfo) {
+        if (!spotInfo) {
+            return; // No spot instance data available
         }
 
-        function classifyNodeType(hostname) {
-            // Classify nodes based on hostname patterns
-            if (hostname.includes('master') || hostname.includes('ip-172-31-1-50')) {
-                return 'Master Node';
-            }
-            if (hostname.includes('core') || hostname.match(/ip-172-31-1-5[1-3]/)) {
-                return 'Core Node';
-            }
-            if (hostname.includes('task') || hostname.match(/ip-172-31-1-5[4-9]/)) {
-                return 'Task Node';
-            }
-            // Default classification based on hostname patterns
-            if (hostname.match(/ip-172-31-1-50/)) return 'Master Node';
-            if (hostname.match(/ip-172-31-1-5[1-3]/)) return 'Core Node';
-            return 'Task Node'; // Assume remaining are task nodes
+        const totalSpotNodes = spotInfo.spot_nodes ? spotInfo.spot_nodes.length : 0;
+        const totalOnDemandNodes = spotInfo.ondemand_nodes ? spotInfo.ondemand_nodes.length : 0;
+        const spotVsOnDemand = spotInfo.spot_vs_ondemand || {};
+
+        // Only show spot metrics if there are spot instances or relevant data
+        if (totalSpotNodes === 0 && totalOnDemandNodes === 0 && !spotInfo.interruption_events?.length) {
+            return;
         }
 
-        function getNodeTypeColor(nodeType) {
-            const colors = {
-                'Master Node': '#e3f2fd',   // Light blue
-                'Core Node': '#e8f5e8',     // Light green
-                'Task Node': '#fff3e0'      // Light orange
-            };
-            return colors[nodeType] || '#f8f9fa';
+        // Find or create spot instance metrics container
+        let spotContainer = document.getElementById('spotMetrics');
+        if (!spotContainer) {
+            spotContainer = document.createElement('div');
+            spotContainer.id = 'spotMetrics';
+            spotContainer.className = 'metrics-grid';
+            spotContainer.style.marginBottom = '30px';
+
+            // Insert after cluster metrics
+            const clusterMetrics = document.getElementById('clusterMetrics');
+            clusterMetrics.parentNode.insertBefore(spotContainer, clusterMetrics.nextSibling);
         }
 
-        function getHealthStatus(unhealthy, lost, total) {
-            if (lost > 0 || unhealthy > total * 0.2) return 'Critical';
-            if (unhealthy > 0) return 'Warning';
-            return 'Healthy';
-        }
+        const healthySpotNodes = spotInfo.spot_nodes ? spotInfo.spot_nodes.filter(n => n.state === 'RUNNING').length : 0;
+        const healthyOnDemandNodes = spotInfo.ondemand_nodes ? spotInfo.ondemand_nodes.filter(n => n.state === 'RUNNING').length : 0;
+        const spotCapacity = spotInfo.current_spot_capacity || 0;
+        const onDemandCapacity = spotInfo.current_ondemand_capacity || 0;
+        const totalSavings = spotInfo.spot_savings || 0;
+        const interruptions24h = spotInfo.total_interruptions_24h || 0;
 
-        function getHealthColor(unhealthy, lost, total) {
-            if (lost > 0 || unhealthy > total * 0.2) return '#dc3545';
-            if (unhealthy > 0) return '#ffc107';
-            return '#28a745';
-        }
+        // Calculate risk levels
+        const highRiskNodes = spotInfo.spot_nodes ? spotInfo.spot_nodes.filter(n => n.interruption_risk === 'High').length : 0;
+        const mediumRiskNodes = spotInfo.spot_nodes ? spotInfo.spot_nodes.filter(n => n.interruption_risk === 'Medium').length : 0;
+        const lowRiskNodes = spotInfo.spot_nodes ? spotInfo.spot_nodes.filter(n => n.interruption_risk === 'Low').length : 0;
 
-        function extractInstanceType(hostname) {
-            // Try to extract AWS instance type from hostname
-            // Common patterns: ip-172-31-xx-xx, master, core-1, etc.
-            if (hostname.includes('master')) return 'Master Node';
-            if (hostname.includes('core')) return 'Core Node';
-            if (hostname.includes('task')) return 'Task Node';
-            if (hostname.match(/ip-\d+-\d+-\d+-\d+/)) return 'EC2 Instance';
-            return hostname.split('.')[0]; // Use first part of hostname
-        }
-
-        function calculateAvgLoad(nodes) {
-            if (!nodes || nodes.length === 0) return 0;
-
-            const totalLoad = nodes.reduce((sum, node) => {
-                const totalMem = (node.availMemoryMB || 0) + (node.usedMemoryMB || 0);
-                const usedMem = node.usedMemoryMB || 0;
-                const memLoad = totalMem > 0 ? (usedMem / totalMem) * 100 : 0;
-
-                const totalCores = (node.availVirtualCores || 0) + (node.usedVirtualCores || 0);
-                const usedCores = node.usedVirtualCores || 0;
-                const coreLoad = totalCores > 0 ? (usedCores / totalCores) * 100 : 0;
-
-                return sum + Math.max(memLoad, coreLoad); // Use the higher utilization
-            }, 0);
-
-            return Math.round(totalLoad / nodes.length);
-        }
-
-        function displayApplications() {
-            const filteredApps = currentFilter === 'all' ?
-                applicationsData :
-                applicationsData.filter(app => app.attempts && app.attempts[0] && app.attempts[0].completed === (currentFilter === 'FINISHED'));
-
-            const container = document.getElementById('applicationsGrid');
-
-            if (filteredApps.length === 0) {
-                container.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 40px;">No applications found</p>';
-                return;
-            }
-
-            // Create table header
-            let html = `
-                <div class="table-header">
-                    <span>Application Name</span>
-                    <span>Status</span>
-                    <span>Duration</span>
-                    <span>Memory</span>
-                    <span>CPU Cores</span>
-                    <span>User</span>
-                    <span>Actions</span>
-                </div>
-            `;
-
-            // Create application rows
-            html += filteredApps.map((app, index) => createApplicationRow(app, index)).join('');
-
-            container.innerHTML = html;
-        }
-
-        function createApplicationRow(app, index) {
-            const attempt = app.attempts && app.attempts[0];
-            const status = attempt ? (attempt.completed ? 'FINISHED' : 'RUNNING') : 'UNKNOWN';
-            const statusClass = `status-${status.toLowerCase()}`;
-
-            const duration = attempt ?
-                (attempt.duration ? formatDuration(attempt.duration) :
-                 formatDuration(new Date() - new Date(attempt.startTime))) : 'N/A';
-
-            const memoryUsage = app.executors ?
-                app.executors.reduce((sum, exec) => sum + (exec.memoryUsed || 0), 0) : 0;
-
-            const cores = app.executors ?
-                app.executors.reduce((sum, exec) => sum + (exec.totalCores || 0), 0) : 0;
-
-            const rowId = `app-row-${index}`;
-            const detailsId = `app-details-${index}`;
-
-            return `
-                <div class="application-row" id="${rowId}" onclick="toggleApplicationDetails(${index})">
-                    <div class="app-name-cell">
-                        <div class="expand-icon" id="expand-${index}">▼</div>
-                        <span>${app.name || 'Untitled Application'}</span>
-                        <span class="app-id">${app.id}</span>
-                    </div>
-                    <div class="status-cell">
-                        <span class="app-status ${statusClass}">${status}</span>
-                    </div>
-                    <div class="metric-cell">${duration}</div>
-                    <div class="metric-cell">${formatBytes(memoryUsage)}</div>
-                    <div class="metric-cell">${cores}</div>
-                    <div class="metric-cell">${app.sparkUser || 'N/A'}</div>
-                    <div class="actions-cell" onclick="event.stopPropagation()">
-                        <button class="btn-icon primary" onclick="viewApplicationDetails('${app.id}')" title="View Details">
-                            <i>📊</i>
-                        </button>
-                        <button class="btn-icon" onclick="viewLogs('${app.id}')" title="View Logs">
-                            <i>📋</i>
-                        </button>
-                        <button class="btn-icon" onclick="downloadLogs('${app.id}')" title="Download Logs">
-                            <i>💾</i>
-                        </button>
-                        ${status === 'RUNNING' ?
-                            `<button class="btn-icon danger" onclick="killApplication('${app.id}')" title="Kill Application">
-                                <i>⏹</i>
-                            </button>` : ''}
+let spotHtml = `
+            <!-- Spot Instance Overview -->
+            <div class="metric-card" style="border-left: 4px solid #ff9800;">
+                <div class="metric-title">Spot Instances</div>
+                <div class="metric-value">${healthySpotNodes}/${totalSpotNodes}</div>
+                <div class="metric-subtitle">Active Spot Nodes</div>
+                <div style="margin-top: 10px; font-size: 12px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #28a745;">●&nbsp;Running: ${healthySpotNodes}</span>
+                        <span style="color: #6c757d;">●&nbsp;Total: ${totalSpotNodes}</span>
                     </div>
                 </div>
-                <div class="application-details" id="${detailsId}">
-                    ${createApplicationDetailsContent(app)}
+            </div>
+
+            <!-- Spot Capacity -->
+            <div class="metric-card" style="border-left: 4px solid #17a2b8;">
+                <div class="metric-title">Spot Capacity</div>
+                <div class="metric-value">${spotCapacity}</div>
+                <div class="metric-subtitle">CPU Cores Available</div>
+                <div style="margin-top: 10px; font-size: 12px; color: #6c757d;">
+                    Task nodes providing compute capacity
                 </div>
-            `;
+            </div>
+
+            <!-- Cost Savings -->
+            <div class="metric-card" style="border-left: 4px solid #28a745;">
+                <div class="metric-title">Cost Savings</div>
+                <div class="metric-value">${totalSavings.toFixed(2)}/hr</div>
+                <div class="metric-subtitle">Estimated Hourly Savings</div>
+                <div style="margin-top: 10px; font-size: 12px; color: #6c757d;">
+                    ~70% savings vs On-Demand
+                </div>
+            </div>
+
+            <!-- Interruptions -->
+            <div class="metric-card" style="border-left: 4px solid ${interruptions24h > 5 ? '#dc3545' : interruptions24h > 2 ? '#ffc107' : '#28a745'};">
+                <div class="metric-title">Interruptions (24h)</div>
+                <div class="metric-value" style="color: ${interruptions24h > 5 ? '#dc3545' : interruptions24h > 2 ? '#ffc107' : '#28a745'};">${interruptions24h}</div>
+                <div class="metric-subtitle">Spot Interruptions</div>
+                <div style="margin-top: 10px; font-size: 12px; color: #6c757d;">
+                    Jobs affected by spot termination
+                </div>
+            </div>
+
+            <!-- Interruption Risk -->
+            <div class="metric-card" style="border-left: 4px solid ${highRiskNodes > 0 ? '#dc3545' : mediumRiskNodes > 0 ? '#ffc107' : '#28a745'};">
+                <div class="metric-title">Interruption Risk</div>
+                <div class="metric-value" style="font-size: 1.2em; color: ${highRiskNodes > 0 ? '#dc3545' : mediumRiskNodes > 0 ? '#ffc107' : '#28a745'};">
+                    ${highRiskNodes > 0 ? 'High' : mediumRiskNodes > 0 ? 'Medium' : 'Low'}
+                </div>
+                <div class="metric-subtitle">Current Risk Level</div>
+                <div style="margin-top: 8px; font-size: 11px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #dc3545;">●&nbsp;High: ${highRiskNodes}</span>
+                        <span style="color: #ffc107;">●&nbsp;Med: ${mediumRiskNodes}</span>
+                        <span style="color: #28a745;">●&nbsp;Low: ${lowRiskNodes}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Average Uptime -->
+            <div class="metric-card" style="border-left: 4px solid #6f42c1;">
+                <div class="metric-title">Average Uptime</div>
+                <div class="metric-value">${avgUptime}h</div>
+                <div class="metric-subtitle">Spot Node Uptime</div>
+                <div style="margin-top: 10px; font-size: 12px; color: #6c757d;">
+                    Time since last restart/interruption
+                </div>
+            </div>`;
+
+
+        // Only show cost savings if there are spot instances
+        if (totalSpotNodes > 0) {
+            spotHtml += `
+            <!-- Cost Savings -->
+            <div class="metric-card" style="border-left: 4px solid #28a745;">
+                <div class="metric-title">Cost Savings</div>
+                <div class="metric-value">${totalSavings.toFixed(2)}/hr</div>
+                <div class="metric-subtitle">Estimated Hourly Savings</div>
+                <div style="margin-top: 10px; font-size: 12px; color: #6c757d;">
+                    ~70% savings vs On-Demand
+                </div>
+            </div>`;
         }
 
-        function createApplicationDetailsContent(app) {
-            const attempt = app.attempts && app.attempts[0];
-            const startTime = attempt ? new Date(attempt.startTime).toLocaleString() : 'N/A';
-            const endTime = attempt && attempt.endTime ? new Date(attempt.endTime).toLocaleString() : 'Still running';
+        // Show interruptions if there are any or if there are spot instances
+        if (interruptions24h > 0 || totalSpotNodes > 0) {
+            spotHtml += `
+            <!-- Interruptions -->
+            <div class="metric-card" style="border-left: 4px solid ${interruptions24h > 5 ? '#dc3545' : interruptions24h > 2 ? '#ffc107' : '#28a745'};">
+                <div class="metric-title">Interruptions (24h)</div>
+                <div class="metric-value" style="color: ${interruptions24h > 5 ? '#dc3545' : interruptions24h > 2 ? '#ffc107' : '#28a745'};">${interruptions24h}</div>
+                <div class="metric-subtitle">Spot Interruptions</div>
+                <div style="margin-top: 10px; font-size: 12px; color: #6c757d;">
+                    ${interruptions24h === 0 ? 'No recent interruptions' : 'Jobs affected by spot termination'}
+                </div>
+            </div>`;
+        }
 
-            const memoryUsage = app.executors ?
-                app.executors.reduce((sum, exec) => sum + (exec.memoryUsed || 0), 0) : 0;
-            const maxMemory = app.executors ?
-                app.executors.reduce((sum, exec) => sum + (exec.maxMemory || 0), 0) : 0;
+        // Show risk assessment if there are spot instances
+        if (totalSpotNodes > 0) {
+            spotHtml += `
+            <!-- Interruption Risk -->
+            <div class="metric-card" style="border-left: 4px solid ${highRiskNodes > 0 ? '#dc3545' : mediumRiskNodes > 0 ? '#ffc107' : '#28a745'};">
+                <div class="metric-title">Interruption Risk</div>
+                <div class="metric-value" style="font-size: 1.2em; color: ${highRiskNodes > 0 ? '#dc3545' : mediumRiskNodes > 0 ? '#ffc107' : '#28a745'};">
+                    ${highRiskNodes > 0 ? 'High' : mediumRiskNodes > 0 ? 'Medium' : totalSpotNodes > 0 ? 'Low' : 'None'}
+                </div>
+                <div class="metric-subtitle">Current Risk Level</div>
+                ${totalSpotNodes > 0 ? `
+                <div style="margin-top: 8px; font-size: 11px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: #dc3545;">●&nbsp;High: ${highRiskNodes}</span>
+                        <span style="color: #ffc107;">●&nbsp;Med: ${mediumRiskNodes}</span>
+                        <span style="color: #28a745;">●&nbsp;Low: ${lowRiskNodes}</span>
+                    </div>
+                </div>
+                ` : ''}
+            </div>`;
+        }
 
-            const activeTasks = app.executors ?
-                app.executors.reduce((sum, exec) => sum + (exec.activeTasks || 0), 0) : 0;
-            const completedTasks = app.executors ?
-                app.executors.reduce((sum, exec) => sum + (exec.completedTasks || 0), 0) : 0;
-            const failedTasks = app.executors ?
-                app.executors.reduce((sum, exec) => sum + (exec.failedTasks || 0), 0) : 0;
+        // Show detailed breakdown if there are any instances
+        if (totalSpotNodes > 0 || totalOnDemandNodes > 0) {
+            spotHtml += `
+            <div class="metric-card" style="grid-column: span 4; border-left: 4px solid #6f42c1;">
+                <div class="metric-title">Instance Details by Node Type & Lifecycle</div>
+                <div style="max-height: 250px; overflow-y: auto; margin-top: 15px;">`;
 
-            let detailsHtml = `
-                <div class="details-grid">
-                    <div class="detail-item">
-                        <div class="detail-label">Application ID</div>
-                        <div class="detail-value">${app.id}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Spark Version</div>
-                        <div class="detail-value">${app.sparkVersion || 'N/A'}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Started At</div>
-                        <div class="detail-value">${startTime}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Ended At</div>
-                        <div class="detail-value">${endTime}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Memory Usage</div>
-                        <div class="detail-value">${formatBytes(memoryUsage)} / ${formatBytes(maxMemory)}</div>
-                    </div>
-                    <div class="detail-item">
-                        <div class="detail-label">Tasks</div>
-                        <div class="detail-value">
-                            ${completedTasks} completed, ${activeTasks} active, ${failedTasks} failed
+            // Combine and group nodes by type and lifecycle
+            const allNodes = [...(spotInfo.spot_nodes || []), ...(spotInfo.ondemand_nodes || [])];
+            const nodesByTypeAndLifecycle = {};
+
+            allNodes.forEach(node => {
+                const key = `${node.node_type} (${node.instance_lifecycle})`;
+                if (!nodesByTypeAndLifecycle[key]) {
+                    nodesByTypeAndLifecycle[key] = [];
+                }
+                nodesByTypeAndLifecycle[key].push(node);
+            });
+
+            Object.entries(nodesByTypeAndLifecycle).forEach(([typeLifecycle, nodes]) => {
+                const isSpot = typeLifecycle.includes('spot');
+                const borderColor = isSpot ? '#ff9800' : '#28a745';
+                const totalCores = nodes.reduce((sum, n) => sum + (n.cores || 0), 0);
+                const totalMemory = nodes.reduce((sum, n) => sum + (n.memory_mb || 0), 0);
+                const healthyCount = nodes.filter(n => n.state === 'RUNNING').length;
+                const avgUptime = nodes.length > 0 ? Math.round(nodes.reduce((sum, n) => sum + (n.uptime_hours || 0), 0) / nodes.length) : 0;
+                const totalSavingsForType = nodes.reduce((sum, n) => sum + (n.estimated_savings || 0), 0);
+
+                spotHtml += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; margin-bottom: 8px; background: #f8f9fa; border-radius: 6px; border-left: 3px solid ${borderColor};">
+                        <div style="flex: 2;">
+                            <div style="font-weight: 600; font-size: 14px; color: #2c3e50;">${typeLifecycle}</div>
+                            <div style="font-size: 11px; color: #6c757d;">${nodes.length} node${nodes.length !== 1 ? 's' : ''} | ${healthyCount} healthy</div>
                         </div>
+                        <div style="flex: 1; text-align: center;">
+                            <div style="font-size: 12px; font-weight: 500;">${totalCores}</div>
+                            <div style="font-size: 10px; color: #6c757d;">Cores</div>
+                        </div>
+                        <div style="flex: 1; text-align: center;">
+                            <div style="font-size: 12px; font-weight: 500;">${formatBytes(totalMemory * 1024 * 1024)}</div>
+                            <div style="font-size: 10px; color: #6c757d;">Memory</div>
+                        </div>
+                        <div style="flex: 1; text-align: center;">
+                            <div style="font-size: 12px; font-weight: 500;">${avgUptime}h</div>
+                            <div style="font-size: 10px; color: #6c757d;">Avg Uptime</div>
+                        </div>
+                        ${isSpot ? `
+                        <div style="flex: 1; text-align: right;">
+                            <div style="font-size: 12px; font-weight: 500; color: #28a745;">${totalSavingsForType.toFixed(2)}/h</div>
+                            <div style="font-size: 10px; color: #6c757d;">Savings</div>
+                        </div>
+                        ` : `
+                        <div style="flex: 1; text-align: right;">
+                            <div style="font-size: 12px; font-weight: 500; color: #6c757d;">On-Demand</div>
+                            <div style="font-size: 10px; color: #6c757d;">Standard Rate</div>
+                        </div>
+                        `}
+                    </div>`;
+            });
+
+            spotHtml += `
+                </div>
+            </div>`;
+        }
+
+        // Add recent interruptions if any
+        if (spotInfo.interruption_events && spotInfo.interruption_events.length > 0) {
+            spotHtml += `
+            <div class="metric-card" style="grid-column: span 4; border-left: 4px solid #dc3545;">
+                <div class="metric-title">Recent Spot Interruptions</div>
+                <div style="max-height: 150px; overflow-y: auto; margin-top: 15px;">`;
+
+            spotInfo.interruption_events.slice(0, 5).forEach(event => {
+                const finishedTime = event.finished_time ? new Date(event.finished_time).toLocaleString() : 'Unknown';
+                const duration = event.elapsed_time ? formatDuration(event.elapsed_time) : 'N/A';
+
+                spotHtml += `
+                    <div style="padding: 8px 12px; margin-bottom: 6px; background: #fff5f5; border-radius: 6px; border-left: 3px solid #dc3545;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div style="font-weight: 600; font-size: 13px; color: #2c3e50;">${event.app_name || event.app_id}</div>
+                                <div style="font-size: 11px; color: #6c757d;">${event.interruption_reason}</div>
+                                <div style="font-size: 10px; color: #6c757d;">Node: ${event.affected_node}</div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-size: 12px; color: #dc3545;">${duration} runtime</div>
+                                <div style="font-size: 10px; color: #6c757d;">${finishedTime}</div>
+                            </div>
+                        </div>
+                    </div>`;
+            });
+
+            spotHtml += `
+                </div>
+            </div>`;
+        }
+
+        spotContainer.innerHTML = spotHtml;
+        spotContainer.style.display = 'grid';
+
+
+
+        // Add detailed spot node information
+        if (spotInfo.spot_nodes.length > 0) {
+            spotHtml += `
+            <div class="metric-card" style="grid-column: span 3; border-left: 4px solid #fd7e14;">
+                <div class="metric-title">Spot Node Details</div>
+                <div style="max-height: 200px; overflow-y: auto; margin-top: 15px;">`;
+
+            spotInfo.spot_nodes.forEach(node => {
+                const riskColor = node.interruption_risk === 'High' ? '#dc3545' :
+                                node.interruption_risk === 'Medium' ? '#ffc107' : '#28a745';
+                const statusColor = node.state === 'RUNNING' ? '#28a745' : '#dc3545';
+
+                spotHtml += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; margin-bottom: 6px; background: #f8f9fa; border-radius: 6px; border-left: 3px solid ${statusColor};">
+                        <div style="flex: 2;">
+                            <div style="font-weight: 600; font-size: 13px;">${node.hostname}</div>
+                            <div style="font-size: 11px; color: #6c757d;">${node.cores} cores, ${formatBytes(node.memory_mb * 1024 * 1024)}</div>
+                        </div>
+                        <div style="flex: 1; text-align: center;">
+                            <div style="font-size: 12px; font-weight: 500;">${Math.round(node.uptime_hours || 0)}h</div>
+                            <div style="font-size: 10px; color: #6c757d;">Uptime</div>
+                        </div>
+                        <div style="flex: 1; text-align: center;">
+                            <div style="font-size: 12px; font-weight: 500; color: ${riskColor};">${node.interruption_risk}</div>
+                            <div style="font-size: 10px; color: #6c757d;">Risk</div>
+                        </div>
+                        <div style="flex: 1; text-align: right;">
+                            <div style="font-size: 12px; font-weight: 500;">${(node.estimated_savings || 0).toFixed(2)}/h</div>
+                            <div style="font-size: 10px; color: #6c757d;">Savings</div>
+                        </div>
+                    </div>`;
+            });
+
+            spotHtml += `
+                </div>
+            </div>`;
+        }
+
+        // Add recent interruptions if any
+        if (spotInfo.interruption_events && spotInfo.interruption_events.length > 0) {
+            spotHtml += `
+            <div class="metric-card" style="grid-column: span 4; border-left: 4px solid #dc3545;">
+                <div class="metric-title">Recent Spot Interruptions</div>
+                <div style="max-height: 150px; overflow-y: auto; margin-top: 15px;">`;
+
+            spotInfo.interruption_events.slice(0, 5).forEach(event => {
+                const finishedTime = event.finished_time ? new Date(event.finished_time).toLocaleString() : 'Unknown';
+                const duration = event.elapsed_time ? formatDuration(event.elapsed_time) : 'N/A';
+
+                spotHtml += `
+                    <div style="padding: 8px 12px; margin-bottom: 6px; background: #fff5f5; border-radius: 6px; border-left: 3px solid #dc3545;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div style="font-weight: 600; font-size: 13px; color: #2c3e50;">${event.app_name || event.app_id}</div>
+                                <div style="font-size: 11px; color: #6c757d;">${event.interruption_reason}</div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-size: 12px; color: #dc3545;">${duration} runtime</div>
+                                <div style="font-size: 10px; color: #6c757d;">${finishedTime}</div>
+                            </div>
+                        </div>
+                    </div>`;
+            });
+
+            spotHtml += `
+                </div>
+            </div>`;
+        }
+
+        spotContainer.innerHTML = spotHtml;
+        spotContainer.style.display = 'grid';
+    }
+
+    function displayClusterMetrics(metrics, info) {
+        const metricsContainer = document.getElementById('clusterMetrics');
+
+        if (!metrics || !metrics.clusterMetrics) {
+            metricsContainer.style.display = 'none';
+            return;
+        }
+
+        const clusterMetrics = metrics.clusterMetrics;
+        const clusterInfo = info?.clusterInfo || {};
+        const nodes = metrics.nodes || [];
+        const scheduler = metrics.scheduler || {};
+
+        // Calculate resource utilization
+        const totalMem = clusterMetrics.totalMB || 0;
+        const availableMem = clusterMetrics.availableMB || 0;
+        const allocatedMem = clusterMetrics.allocatedMB || 0;
+        const reservedMem = clusterMetrics.reservedMB || 0;
+        const usedMem = totalMem - availableMem;
+        const memUtilization = totalMem > 0 ? Math.round((usedMem / totalMem) * 100) : 0;
+
+        const totalCores = clusterMetrics.totalVirtualCores || 0;
+        const availableCores = clusterMetrics.availableVirtualCores || 0;
+        const allocatedCores = clusterMetrics.allocatedVirtualCores || 0;
+        const reservedCores = clusterMetrics.reservedVirtualCores || 0;
+        const usedCores = totalCores - availableCores;
+        const coreUtilization = totalCores > 0 ? Math.round((usedCores / totalCores) * 100) : 0;
+
+        // Node statistics
+        const totalNodes = clusterMetrics.totalNodes || 0;
+        const activeNodes = clusterMetrics.activeNodes || 0;
+        const unhealthyNodes = clusterMetrics.unhealthyNodes || 0;
+        const lostNodes = clusterMetrics.lostNodes || 0;
+        const decommissionedNodes = clusterMetrics.decommissionedNodes || 0;
+
+        // Application statistics
+        const runningApps = clusterMetrics.appsRunning || 0;
+        const pendingApps = clusterMetrics.appsPending || 0;
+        const completedApps = clusterMetrics.appsCompleted || 0;
+        const failedApps = clusterMetrics.appsFailed || 0;
+        const killedApps = clusterMetrics.appsKilled || 0;
+        const totalApps = runningApps + completedApps + failedApps + killedApps;
+
+        // Container statistics
+        const allocatedContainers = clusterMetrics.containersAllocated || 0;
+        const pendingContainers = clusterMetrics.containersPending || 0;
+        const reservedContainers = clusterMetrics.containersReserved || 0;
+
+        // Calculate node type summaries
+        const nodeTypeSummary = calculateNodeTypeSummary(nodes);
+
+        let metricsHtml = `
+            <!-- Cluster Overview Summary -->
+            <div class="metric-card" style="grid-column: span 2;">
+                <div class="metric-title">Cluster Overview</div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-top: 15px;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 2em; font-weight: 300; color: #2c3e50;">${totalNodes}</div>
+                        <div style="font-size: 12px; color: #7f8c8d;">Total Nodes</div>
                     </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 2em; font-weight: 300; color: #2c3e50;">${formatBytes(totalMem * 1024 * 1024)}</div>
+                        <div style="font-size: 12px; color: #7f8c8d;">Total Memory</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 2em; font-weight: 300; color: #2c3e50;">${totalCores}</div>
+                        <div style="font-size: 12px; color: #7f8c8d;">Total CPU Cores</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 2em; font-weight: 300; color: #2c3e50;">${runningApps}</div>
+                        <div style="font-size: 12px; color: #7f8c8d;">Running Jobs</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Node Type Breakdown -->
+            <div class="metric-card" style="grid-column: span 3;">
+                <div class="metric-title">EMR Node Breakdown</div>
+                <div style="margin-top: 15px;">
+                    ${Object.entries(nodeTypeSummary).map(([nodeType, summary]) => `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; margin-bottom: 8px; background: ${getNodeTypeColor(nodeType)}; border-radius: 8px;">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; color: #2c3e50;">${nodeType}</div>
+                                <div style="font-size: 12px; color: #6c757d;">${summary.count} node${summary.count !== 1 ? 's' : ''}</div>
+                            </div>
+                            <div style="flex: 1; text-align: center;">
+                                <div style="font-weight: 600; color: #2c3e50;">${formatBytes(summary.totalMemory * 1024 * 1024)}</div>
+                                <div style="font-size: 12px; color: #6c757d;">Memory</div>
+                            </div>
+                            <div style="flex: 1; text-align: center;">
+                                <div style="font-weight: 600; color: #2c3e50;">${summary.totalCores}</div>
+                                <div style="font-size: 12px; color: #6c757d;">CPU Cores</div>
+                            </div>
+                            <div style="flex: 1; text-align: right;">
+                                <div style="font-weight: 600; color: ${getHealthColor(summary.unhealthy, 0, summary.count)};">${summary.healthy}/${summary.count}</div>
+                                <div style="font-size: 12px; color: #6c757d;">Healthy</div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+
+            <!-- Resource Utilization Cards -->
+            <div class="metric-card">
+                <div class="metric-title">Memory Utilization</div>
+                <div class="metric-value">${memUtilization}%</div>
+                <div class="metric-subtitle">${formatBytes(usedMem * 1024 * 1024)} used of ${formatBytes(totalMem * 1024 * 1024)}</div>
+                <div class="resource-bar">
+                    <div class="resource-fill" style="width: ${memUtilization}%"></div>
+                </div>
+                <div style="font-size: 11px; margin-top: 8px; color: #6c757d;">
+                    Allocated: ${formatBytes(allocatedMem * 1024 * 1024)} |
+                    Available: ${formatBytes(availableMem * 1024 * 1024)}
+                    ${reservedMem > 0 ? ` | Reserved: ${formatBytes(reservedMem * 1024 * 1024)}` : ''}
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-title">CPU Utilization</div>
+                <div class="metric-value">${coreUtilization}%</div>
+                <div class="metric-subtitle">${usedCores} used of ${totalCores} cores</div>
+                <div class="resource-bar">
+                    <div class="resource-fill" style="width: ${coreUtilization}%"></div>
+                </div>
+                <div style="font-size: 11px; margin-top: 8px; color: #6c757d;">
+                    Allocated: ${allocatedCores} | Available: ${availableCores}
+                    ${reservedCores > 0 ? ` | Reserved: ${reservedCores}` : ''}
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-title">Applications</div>
+                <div class="metric-value">${runningApps}</div>
+                <div class="metric-subtitle">Running (${totalApps} total)</div>
+                <div style="margin-top: 10px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                        <span style="color: #28a745;">●&nbsp;Running: ${runningApps}</span>
+                        <span style="color: #ffc107;">●&nbsp;Pending: ${pendingApps}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 4px;">
+                        <span style="color: #17a2b8;">●&nbsp;Completed: ${completedApps}</span>
+                        <span style="color: #dc3545;">●&nbsp;Failed: ${failedApps}</span>
+                    </div>
+                    ${killedApps > 0 ? `
+                    <div style="font-size: 12px; margin-top: 4px; color: #6c757d;">
+                        ●&nbsp;Killed: ${killedApps}
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-title">Containers</div>
+                <div class="metric-value">${allocatedContainers}</div>
+                <div class="metric-subtitle">Allocated containers</div>
+                <div style="margin-top: 10px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                        <span style="color: #28a745;">●&nbsp;Allocated: ${allocatedContainers}</span>
+                        <span style="color: #ffc107;">●&nbsp;Pending: ${pendingContainers}</span>
+                    </div>
+                    ${reservedContainers > 0 ? `
+                    <div style="font-size: 12px; margin-top: 4px;">
+                        <span style="color: #17a2b8;">●&nbsp;Reserved: ${reservedContainers}</span>
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-title">Cluster Health</div>
+                <div class="metric-value" style="font-size: 1.5em; color: ${getHealthColor(unhealthyNodes, lostNodes, totalNodes)};">
+                    ${getHealthStatus(unhealthyNodes, lostNodes, totalNodes)}
+                </div>
+                <div class="metric-subtitle">Overall cluster status</div>
+                <div style="margin-top: 10px; font-size: 12px; color: #6c757d;">
+                    ${clusterInfo.resourceManagerVersion ? `RM: ${clusterInfo.resourceManagerVersion}` : ''}
+                    ${clusterInfo.hadoopVersion ? `<br>Hadoop: ${clusterInfo.hadoopVersion}` : ''}
+                    ${clusterInfo.startedOn ? `<br>Started: ${new Date(clusterInfo.startedOn).toLocaleDateString()}` : ''}
+                </div>
+            </div>`;
+
+        metricsContainer.innerHTML = metricsHtml;
+        metricsContainer.style.display = 'grid';
+    }
+
+    function calculateNodeTypeSummary(nodes) {
+        const summary = {};
+
+        if (!nodes || nodes.length === 0) {
+            return {
+                'Master Node': { count: 0, healthy: 0, unhealthy: 0, totalMemory: 0, totalCores: 0, usedMemory: 0, usedCores: 0 },
+                'Core Node': { count: 0, healthy: 0, unhealthy: 0, totalMemory: 0, totalCores: 0, usedMemory: 0, usedCores: 0 },
+                'Task Node': { count: 0, healthy: 0, unhealthy: 0, totalMemory: 0, totalCores: 0, usedMemory: 0, usedCores: 0 }
+            };
+        }
+
+        nodes.forEach(node => {
+            const nodeType = classifyNodeType(node.nodeHostName || node.id || 'unknown');
+
+            if (!summary[nodeType]) {
+                summary[nodeType] = {
+                    count: 0,
+                    healthy: 0,
+                    unhealthy: 0,
+                    totalMemory: 0,
+                    totalCores: 0,
+                    usedMemory: 0,
+                    usedCores: 0
+                };
+            }
+
+            const s = summary[nodeType];
+            s.count++;
+
+            if (node.state === 'RUNNING') {
+                s.healthy++;
+            } else {
+                s.unhealthy++;
+            }
+
+            // Handle memory calculation
+            const availMemory = node.availMemoryMB || 0;
+            const usedMemory = node.usedMemoryMB || 0;
+            s.totalMemory += (availMemory + usedMemory);
+            s.usedMemory += usedMemory;
+
+            // Handle cores calculation
+            const availCores = node.availVirtualCores || 0;
+            const usedCores = node.usedVirtualCores || 0;
+            s.totalCores += (availCores + usedCores);
+            s.usedCores += usedCores;
+        });
+
+        return summary;
+    }
+
+    function classifyNodeType(hostname) {
+        if (!hostname) return 'Unknown Node';
+
+        const lowerHostname = hostname.toLowerCase();
+
+        // Check for explicit node type indicators
+        if (lowerHostname.includes('master') || lowerHostname.includes('namenode')) {
+            return 'Master Node';
+        }
+        if (lowerHostname.includes('core') || lowerHostname.includes('datanode')) {
+            return 'Core Node';
+        }
+        if (lowerHostname.includes('task') || lowerHostname.includes('compute')) {
+            return 'Task Node';
+        }
+
+        // Check IP patterns for mock cluster
+        if (hostname.match(/ip-172-31-1-50/) || hostname.includes('172.31.1.50')) {
+            return 'Master Node';
+        }
+        if (hostname.match(/ip-172-31-1-5[1-3]/) || hostname.match(/172\.31\.1\.5[1-3]/)) {
+            return 'Core Node';
+        }
+        if (hostname.match(/ip-172-31-1-5[4-9]/) || hostname.match(/172\.31\.1\.5[4-9]/)) {
+            return 'Task Node';
+        }
+
+        // Default classification based on position in list (for mock data)
+        if (hostname.includes('51') || hostname.includes('52')) {
+            return 'Core Node';
+        }
+        if (hostname.includes('53') || hostname.includes('54')) {
+            return 'Task Node';
+        }
+
+        // Fallback: assume it's a task node
+        return 'Task Node';
+    }
+
+    function getNodeTypeColor(nodeType) {
+        const colors = {
+            'Master Node': '#e3f2fd',   // Light blue
+            'Core Node': '#e8f5e8',     // Light green
+            'Task Node': '#fff3e0'      // Light orange
+        };
+        return colors[nodeType] || '#f8f9fa';
+    }
+
+    function getHealthStatus(unhealthy, lost, total) {
+        if (lost > 0 || unhealthy > total * 0.2) return 'Critical';
+        if (unhealthy > 0) return 'Warning';
+        return 'Healthy';
+    }
+
+    function getHealthColor(unhealthy, lost, total) {
+        if (lost > 0 || unhealthy > total * 0.2) return '#dc3545';
+        if (unhealthy > 0) return '#ffc107';
+        return '#28a745';
+    }
+
+    function extractInstanceType(hostname) {
+        // Try to extract AWS instance type from hostname
+        // Common patterns: ip-172-31-xx-xx, master, core-1, etc.
+        if (hostname.includes('master')) return 'Master Node';
+        if (hostname.includes('core')) return 'Core Node';
+        if (hostname.includes('task')) return 'Task Node';
+        if (hostname.match(/ip-\d+-\d+-\d+-\d+/)) return 'EC2 Instance';
+        return hostname.split('.')[0]; // Use first part of hostname
+    }
+
+    function calculateAvgLoad(nodes) {
+        if (!nodes || nodes.length === 0) return 0;
+
+        const totalLoad = nodes.reduce((sum, node) => {
+            const totalMem = (node.availMemoryMB || 0) + (node.usedMemoryMB || 0);
+            const usedMem = node.usedMemoryMB || 0;
+            const memLoad = totalMem > 0 ? (usedMem / totalMem) * 100 : 0;
+
+            const totalCores = (node.availVirtualCores || 0) + (node.usedVirtualCores || 0);
+            const usedCores = node.usedVirtualCores || 0;
+            const coreLoad = totalCores > 0 ? (usedCores / totalCores) * 100 : 0;
+
+            return sum + Math.max(memLoad, coreLoad); // Use the higher utilization
+        }, 0);
+
+        return Math.round(totalLoad / nodes.length);
+    }
+
+    function displayApplications() {
+        const filteredApps = currentFilter === 'all' ?
+            applicationsData :
+            applicationsData.filter(app => app.attempts && app.attempts[0] && app.attempts[0].completed === (currentFilter === 'FINISHED'));
+
+        const container = document.getElementById('applicationsGrid');
+
+        if (filteredApps.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: #7f8c8d; padding: 40px;">No applications found</p>';
+            return;
+        }
+
+        // Create table header
+        let html = `
+            <div class="table-header">
+                <span>Application Name</span>
+                <span>Status</span>
+                <span>Duration</span>
+                <span>Memory</span>
+                <span>CPU Cores</span>
+                <span>User</span>
+                <span>Actions</span>
+            </div>
+        `;
+
+        // Create application rows
+        html += filteredApps.map((app, index) => createApplicationRow(app, index)).join('');
+
+        container.innerHTML = html;
+    }
+
+    function createApplicationRow(app, index) {
+        const attempt = app.attempts && app.attempts[0];
+        const status = attempt ? (attempt.completed ? 'FINISHED' : 'RUNNING') : 'UNKNOWN';
+        const statusClass = `status-${status.toLowerCase()}`;
+
+        const duration = attempt ?
+            (attempt.duration ? formatDuration(attempt.duration) :
+             formatDuration(new Date() - new Date(attempt.startTime))) : 'N/A';
+
+        // Get resource information from multiple sources
+        let memoryUsage = 0;
+        let cores = 0;
+
+        // Try to get from executors first (Spark data)
+        if (app.executors && app.executors.length > 0) {
+            memoryUsage = app.executors.reduce((sum, exec) => {
+                const execMemory = exec.memoryUsed || 0;
+                // Convert bytes to MB if needed
+                return sum + (execMemory > 1024*1024 ? execMemory / (1024*1024) : execMemory);
+            }, 0);
+            cores = app.executors.reduce((sum, exec) => sum + (exec.totalCores || 0), 0);
+        }
+
+        // Fallback to YARN data if Spark data not available
+        if (memoryUsage === 0 || cores === 0) {
+            // Look for corresponding YARN app data
+            const yarnApp = findCorrespondingYarnApp(app.id);
+            if (yarnApp) {
+                if (memoryUsage === 0) {
+                    memoryUsage = yarnApp.allocatedMB || 0;
+                }
+                if (cores === 0) {
+                    cores = yarnApp.allocatedVCores || 0;
+                }
+            }
+        }
+
+        // Convert memory to bytes for consistent formatting
+        const memoryBytes = memoryUsage * 1024 * 1024;
+
+        const rowId = `app-row-${index}`;
+        const detailsId = `app-details-${index}`;
+
+        return `
+            <div class="application-row" id="${rowId}" onclick="toggleApplicationDetails(${index})">
+                <div class="app-name-cell">
+                    <div class="expand-icon" id="expand-${index}">▼</div>
+                    <span>${app.name || 'Untitled Application'}</span>
+                    <span class="app-id">${app.id}</span>
+                </div>
+                <div class="status-cell">
+                    <span class="app-status ${statusClass}">${status}</span>
+                </div>
+                <div class="metric-cell">${duration}</div>
+                <div class="metric-cell">${formatBytes(memoryBytes)}</div>
+                <div class="metric-cell">${cores}</div>
+                <div class="metric-cell">${app.sparkUser || 'N/A'}</div>
+                <div class="actions-cell" onclick="event.stopPropagation()">
+                    <button class="btn-icon primary" onclick="viewApplicationDetails('${app.id}')" title="View Details">
+                        <i>📊</i>
+                    </button>
+                    <button class="btn-icon" onclick="viewLogs('${app.id}')" title="View Logs">
+                        <i>📋</i>
+                    </button>
+                    <button class="btn-icon" onclick="downloadLogs('${app.id}')" title="Download Logs">
+                        <i>💾</i>
+                    </button>
+                    ${status === 'RUNNING' ?
+                        `<button class="btn-icon danger" onclick="killApplication('${app.id}')" title="Kill Application">
+                            <i>⏹</i>
+                        </button>` : ''}
+                </div>
+            </div>
+            <div class="application-details" id="${detailsId}">
+                ${createApplicationDetailsContent(app)}
+            </div>
+        `;
+    }
+
+    function findCorrespondingYarnApp(sparkAppId) {
+        // Try to find matching YARN application data
+        // This would be populated from the YARN applications data
+        if (window.yarnApplicationsData) {
+            return window.yarnApplicationsData.find(yarnApp =>
+                yarnApp.id === sparkAppId ||
+                yarnApp.name.includes(sparkAppId.split('_').pop()) ||
+                sparkAppId.includes(yarnApp.id.split('_').pop())
+            );
+        }
+        return null;
+    }
+
+    function createApplicationDetailsContent(app) {
+        const attempt = app.attempts && app.attempts[0];
+        const startTime = attempt ? new Date(attempt.startTime).toLocaleString() : 'N/A';
+        const endTime = attempt && attempt.endTime ? new Date(attempt.endTime).toLocaleString() : 'Still running';
+
+        const memoryUsage = app.executors ?
+            app.executors.reduce((sum, exec) => sum + (exec.memoryUsed || 0), 0) : 0;
+        const maxMemory = app.executors ?
+            app.executors.reduce((sum, exec) => sum + (exec.maxMemory || 0), 0) : 0;
+
+        const activeTasks = app.executors ?
+            app.executors.reduce((sum, exec) => sum + (exec.activeTasks || 0), 0) : 0;
+        const completedTasks = app.executors ?
+            app.executors.reduce((sum, exec) => sum + (exec.completedTasks || 0), 0) : 0;
+        const failedTasks = app.executors ?
+            app.executors.reduce((sum, exec) => sum + (exec.failedTasks || 0), 0) : 0;
+
+        let detailsHtml = `
+            <div class="details-grid">
+                <div class="detail-item">
+                    <div class="detail-label">Application ID</div>
+                    <div class="detail-value">${app.id}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Spark Version</div>
+                    <div class="detail-value">${app.sparkVersion || 'N/A'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Started At</div>
+                    <div class="detail-value">${startTime}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Ended At</div>
+                    <div class="detail-value">${endTime}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Memory Usage</div>
+                    <div class="detail-value">${formatBytes(memoryUsage)} / ${formatBytes(maxMemory)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Tasks</div>
+                    <div class="detail-value">
+                        ${completedTasks} completed, ${activeTasks} active, ${failedTasks} failed
+                    </div>
+                </div>
+            </div>`;
+
+        // Add executor information if available
+        if (app.executors && app.executors.length > 0) {
+            detailsHtml += `
+                <h4 style="margin: 20px 0 15px; color: #2c3e50;">Executors (${app.executors.length})</h4>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                        <thead>
+                            <tr style="background: #e9ecef; border-bottom: 1px solid #dee2e6;">
+                                <th style="padding: 8px; text-align: left;">ID</th>
+                                <th style="padding: 8px; text-align: left;">Host</th>
+                                <th style="padding: 8px; text-align: left;">Cores</th>
+                                <th style="padding: 8px; text-align: left;">Memory</th>
+                                <th style="padding: 8px; text-align: left;">Tasks</th>
+                                <th style="padding: 8px; text-align: left;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+
+            app.executors.slice(0, 10).forEach(executor => { // Show max 10 executors
+                const memoryPercent = executor.maxMemory > 0 ?
+                    Math.round((executor.memoryUsed / executor.maxMemory) * 100) : 0;
+
+                detailsHtml += `
+                    <tr style="border-bottom: 1px solid #f1f3f4;">
+                        <td style="padding: 6px;">${executor.id}</td>
+                        <td style="padding: 6px;">${executor.hostPort || 'N/A'}</td>
+                        <td style="padding: 6px;">${executor.totalCores || 0}</td>
+                        <td style="padding: 6px;">
+                            ${formatBytes(executor.memoryUsed || 0)}
+                            <small>(${memoryPercent}%)</small>
+                        </td>
+                        <td style="padding: 6px;">
+                            ${executor.completedTasks || 0}/${executor.totalTasks || 0}
+                        </td>
+                        <td style="padding: 6px;">
+                            <span style="padding: 2px 6px; border-radius: 8px; font-size: 11px; background: ${executor.isActive ? '#d4edda' : '#f8d7da'}; color: ${executor.isActive ? '#155724' : '#721c24'};">
+                                ${executor.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                        </td>
+                    </tr>`;
+            });
+
+            detailsHtml += `
+                        </tbody>
+                    </table>
                 </div>`;
 
-            // Add executor information if available
+            if (app.executors.length > 10) {
+                detailsHtml += `<p style="margin-top: 10px; color: #6c757d; font-size: 12px;">Showing first 10 of ${app.executors.length} executors</p>`;
+            }
+        }
+
+        detailsHtml += `
+            <div class="details-actions">
+                <button class="btn-small btn-primary" onclick="viewApplicationDetails('${app.id}')">
+                    Full Details Modal
+                </button>
+                <button class="btn-small btn-secondary" onclick="viewLogs('${app.id}')">
+                    View Logs
+                </button>
+                <button class="btn-small btn-secondary" onclick="downloadLogs('${app.id}')">
+                    Download Logs
+                </button>
+            </div>
+        `;
+
+        return detailsHtml;
+    }
+
+    function toggleApplicationDetails(index) {
+        const row = document.getElementById(`app-row-${index}`);
+        const details = document.getElementById(`app-details-${index}`);
+        const expandIcon = document.getElementById(`expand-${index}`);
+
+        if (details.classList.contains('show')) {
+            // Collapse
+            details.classList.remove('show');
+            row.classList.remove('expanded');
+            expandIcon.classList.remove('expanded');
+        } else {
+            // Expand
+            details.classList.add('show');
+            row.classList.add('expanded');
+            expandIcon.classList.add('expanded');
+        }
+    }
+
+    // Close all expanded details when filtering
+    function filterApplications(filter) {
+        currentFilter = filter;
+
+        // Update active tab
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.filter === filter);
+        });
+
+        displayApplications();
+    }
+
+    async function viewApplicationDetails(appId) {
+        try {
+            const app = applicationsData.find(a => a.id === appId);
+            if (!app) return;
+
+            let detailsHtml = `
+                <div style="max-width: 800px; max-height: 80vh; overflow-y: auto; padding: 20px;">
+                    <h3 style="margin-bottom: 20px; color: #2c3e50;">Application Details: ${app.name || app.id}</h3>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                        <div><strong>ID:</strong> ${app.id}</div>
+                        <div><strong>Name:</strong> ${app.name || 'N/A'}</div>
+                        <div><strong>User:</strong> ${app.sparkUser || 'N/A'}</div>
+                        <div><strong>Spark Version:</strong> ${app.sparkVersion || 'N/A'}</div>
+                    </div>`;
+
             if (app.executors && app.executors.length > 0) {
                 detailsHtml += `
-                    <h4 style="margin: 20px 0 15px; color: #2c3e50;">Executors (${app.executors.length})</h4>
+                    <h4 style="margin: 20px 0 10px; color: #2c3e50;">Executors (${app.executors.length})</h4>
                     <div style="overflow-x: auto;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                             <thead>
-                                <tr style="background: #e9ecef; border-bottom: 1px solid #dee2e6;">
-                                    <th style="padding: 8px; text-align: left;">ID</th>
-                                    <th style="padding: 8px; text-align: left;">Host</th>
-                                    <th style="padding: 8px; text-align: left;">Cores</th>
-                                    <th style="padding: 8px; text-align: left;">Memory</th>
-                                    <th style="padding: 8px; text-align: left;">Tasks</th>
-                                    <th style="padding: 8px; text-align: left;">Status</th>
+                                <tr style="background: #f8f9fa; border-bottom: 2px solid #dee2e6;">
+                                    <th style="padding: 10px; text-align: left;">ID</th>
+                                    <th style="padding: 10px; text-align: left;">Host</th>
+                                    <th style="padding: 10px; text-align: left;">Cores</th>
+                                    <th style="padding: 10px; text-align: left;">Memory Used</th>
+                                    <th style="padding: 10px; text-align: left;">Tasks</th>
+                                    <th style="padding: 10px; text-align: left;">Status</th>
                                 </tr>
                             </thead>
                             <tbody>`;
 
-                app.executors.slice(0, 10).forEach(executor => { // Show max 10 executors
-                    const memoryPercent = executor.maxMemory > 0 ?
-                        Math.round((executor.memoryUsed / executor.maxMemory) * 100) : 0;
-
+                app.executors.forEach(executor => {
                     detailsHtml += `
-                        <tr style="border-bottom: 1px solid #f1f3f4;">
-                            <td style="padding: 6px;">${executor.id}</td>
-                            <td style="padding: 6px;">${executor.hostPort || 'N/A'}</td>
-                            <td style="padding: 6px;">${executor.totalCores || 0}</td>
-                            <td style="padding: 6px;">
-                                ${formatBytes(executor.memoryUsed || 0)}
-                                <small>(${memoryPercent}%)</small>
-                            </td>
-                            <td style="padding: 6px;">
-                                ${executor.completedTasks || 0}/${executor.totalTasks || 0}
-                            </td>
-                            <td style="padding: 6px;">
-                                <span style="padding: 2px 6px; border-radius: 8px; font-size: 11px; background: ${executor.isActive ? '#d4edda' : '#f8d7da'}; color: ${executor.isActive ? '#155724' : '#721c24'};">
+                        <tr style="border-bottom: 1px solid #dee2e6;">
+                            <td style="padding: 8px;">${executor.id}</td>
+                            <td style="padding: 8px;">${executor.hostPort || 'N/A'}</td>
+                            <td style="padding: 8px;">${executor.totalCores || 0}</td>
+                            <td style="padding: 8px;">${formatBytes((executor.memoryUsed || 0) * 1024 * 1024)}</td>
+                            <td style="padding: 8px;">${executor.activeTasks || 0} / ${executor.maxTasks || 0}</td>
+                            <td style="padding: 8px;">
+                                <span style="padding: 2px 8px; border-radius: 12px; font-size: 12px; background: ${executor.isActive ? '#e8f5e8' : '#ffebee'}; color: ${executor.isActive ? '#27ae60' : '#f44336'};">
                                     ${executor.isActive ? 'Active' : 'Inactive'}
                                 </span>
                             </td>
@@ -1266,461 +1610,355 @@
                             </tbody>
                         </table>
                     </div>`;
-
-                if (app.executors.length > 10) {
-                    detailsHtml += `<p style="margin-top: 10px; color: #6c757d; font-size: 12px;">Showing first 10 of ${app.executors.length} executors</p>`;
-                }
             }
 
             detailsHtml += `
-                <div class="details-actions">
-                    <button class="btn-small btn-primary" onclick="viewApplicationDetails('${app.id}')">
-                        Full Details Modal
-                    </button>
-                    <button class="btn-small btn-secondary" onclick="viewLogs('${app.id}')">
-                        View Logs
-                    </button>
-                    <button class="btn-small btn-secondary" onclick="downloadLogs('${app.id}')">
-                        Download Logs
-                    </button>
-                </div>
-            `;
-
-            return detailsHtml;
-        }
-
-        function toggleApplicationDetails(index) {
-            const row = document.getElementById(`app-row-${index}`);
-            const details = document.getElementById(`app-details-${index}`);
-            const expandIcon = document.getElementById(`expand-${index}`);
-
-            if (details.classList.contains('show')) {
-                // Collapse
-                details.classList.remove('show');
-                row.classList.remove('expanded');
-                expandIcon.classList.remove('expanded');
-            } else {
-                // Expand
-                details.classList.add('show');
-                row.classList.add('expanded');
-                expandIcon.classList.add('expanded');
-            }
-        }
-
-        // Close all expanded details when filtering
-        function filterApplications(filter) {
-            currentFilter = filter;
-
-            // Update active tab
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.classList.toggle('active', tab.dataset.filter === filter);
-            });
-
-            displayApplications();
-        }
-
-        async function viewApplicationDetails(appId) {
-            try {
-                const app = applicationsData.find(a => a.id === appId);
-                if (!app) return;
-
-                let detailsHtml = `
-                    <div style="max-width: 800px; max-height: 80vh; overflow-y: auto; padding: 20px;">
-                        <h3 style="margin-bottom: 20px; color: #2c3e50;">Application Details: ${app.name || app.id}</h3>
-
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
-                            <div><strong>ID:</strong> ${app.id}</div>
-                            <div><strong>Name:</strong> ${app.name || 'N/A'}</div>
-                            <div><strong>User:</strong> ${app.sparkUser || 'N/A'}</div>
-                            <div><strong>Spark Version:</strong> ${app.sparkVersion || 'N/A'}</div>
-                        </div>`;
-
-                if (app.executors && app.executors.length > 0) {
-                    detailsHtml += `
-                        <h4 style="margin: 20px 0 10px; color: #2c3e50;">Executors (${app.executors.length})</h4>
-                        <div style="overflow-x: auto;">
-                            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-                                <thead>
-                                    <tr style="background: #f8f9fa; border-bottom: 2px solid #dee2e6;">
-                                        <th style="padding: 10px; text-align: left;">ID</th>
-                                        <th style="padding: 10px; text-align: left;">Host</th>
-                                        <th style="padding: 10px; text-align: left;">Cores</th>
-                                        <th style="padding: 10px; text-align: left;">Memory Used</th>
-                                        <th style="padding: 10px; text-align: left;">Tasks</th>
-                                        <th style="padding: 10px; text-align: left;">Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>`;
-
-                    app.executors.forEach(executor => {
-                        detailsHtml += `
-                            <tr style="border-bottom: 1px solid #dee2e6;">
-                                <td style="padding: 8px;">${executor.id}</td>
-                                <td style="padding: 8px;">${executor.hostPort || 'N/A'}</td>
-                                <td style="padding: 8px;">${executor.totalCores || 0}</td>
-                                <td style="padding: 8px;">${formatBytes((executor.memoryUsed || 0) * 1024 * 1024)}</td>
-                                <td style="padding: 8px;">${executor.activeTasks || 0} / ${executor.maxTasks || 0}</td>
-                                <td style="padding: 8px;">
-                                    <span style="padding: 2px 8px; border-radius: 12px; font-size: 12px; background: ${executor.isActive ? '#e8f5e8' : '#ffebee'}; color: ${executor.isActive ? '#27ae60' : '#f44336'};">
-                                        ${executor.isActive ? 'Active' : 'Inactive'}
-                                    </span>
-                                </td>
-                            </tr>`;
-                    });
-
-                    detailsHtml += `
-                                </tbody>
-                            </table>
-                        </div>`;
-                }
-
-                detailsHtml += `
-                        <div style="text-align: right; margin-top: 20px;">
-                            <button onclick="closeModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">Close</button>
-                        </div>
-                    </div>`;
-
-                showModal(detailsHtml);
-
-            } catch (error) {
-                console.error('Failed to view application details:', error);
-                showError('Failed to load application details');
-            }
-        }
-
-        async function viewLogs(appId) {
-            try {
-                updateRefreshStatus('Loading logs...');
-                const response = await fetch(`/api/cluster/${currentCluster}/application/${appId}/logs`);
-
-                if (response.ok) {
-                    const data = await response.json();
-                    displayLogsModal(appId, data.logs_data);
-                    updateRefreshStatus('Logs loaded successfully');
-                } else {
-                    throw new Error('Failed to load logs');
-                }
-            } catch (error) {
-                console.error('Failed to view logs:', error);
-                showError('Failed to load logs: ' + error.message);
-            }
-        }
-
-        function displayLogsModal(appId, logsData) {
-            let logsHtml = `
-                <div style="max-width: 90vw; max-height: 85vh; overflow: hidden; padding: 20px; display: flex; flex-direction: column;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-shrink: 0;">
-                        <h3 style="color: #2c3e50; margin: 0;">Application Logs: ${appId}</h3>
-                        <button onclick="closeModal()" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer;">Close</button>
-                    </div>
-
-                    <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">`;
-
-            // Create tabs for different log types
-            const logTypes = [];
-            if (logsData && logsData.driver_logs) logTypes.push({key: 'driver', name: 'Driver Logs', content: logsData.driver_logs});
-            if (logsData && logsData.executor_logs) {
-                Object.entries(logsData.executor_logs).forEach(([key, content]) => {
-                    if (content) logTypes.push({key: key, name: key.replace('_', ' ').toUpperCase(), content: content});
-                });
-            }
-            if (logsData && logsData.container_logs) {
-                Object.entries(logsData.container_logs).forEach(([key, content]) => {
-                    if (content) logTypes.push({key: key, name: `Container ${key.slice(-12)}`, content: content});
-                });
-            }
-            if (logsData && logsData.yarn_info) logTypes.push({key: 'yarn_info', name: 'YARN Info', content: JSON.stringify(logsData.yarn_info, null, 2), isJson: true});
-            if (logsData && logsData.spark_jobs) logTypes.push({key: 'spark_jobs', name: 'Spark Jobs', content: JSON.stringify(logsData.spark_jobs, null, 2), isJson: true});
-            if (logsData && logsData.environment) logTypes.push({key: 'environment', name: 'Environment', content: JSON.stringify(logsData.environment, null, 2), isJson: true});
-            if (logsData && logsData.log_info) logTypes.push({key: 'log_info', name: 'Log Access Info', content: logsData.log_info});
-
-            if (logTypes.length === 0) {
-                logsHtml += `<p style="text-align: center; color: #7f8c8d; padding: 40px;">No logs available for this application</p>`;
-            } else {
-                // Tabs
-                logsHtml += `<div style="display: flex; gap: 5px; margin-bottom: 15px; flex-wrap: wrap; flex-shrink: 0;">`;
-                logTypes.forEach((logType, index) => {
-                    const activeStyle = index === 0 ? 'background: #667eea; color: white; border-color: #667eea;' : '';
-                    logsHtml += `<button onclick="showLogTab('${logType.key}')" id="tab-${logType.key}" style="padding: 8px 12px; border: 2px solid #e0e6ed; background: white; border-radius: 5px; cursor: pointer; font-size: 12px; ${activeStyle}">${logType.name}</button>`;
-                });
-                logsHtml += `</div>`;
-
-                // Log content areas
-                logTypes.forEach((logType, index) => {
-                    const displayStyle = index === 0 ? 'flex' : 'none';
-                    const backgroundColor = logType.isJson ? '#f8f9fa' : '#000';
-                    const textColor = logType.isJson ? '#333' : '#0f0';
-                    const fontFamily = logType.isJson ? 'Consolas, Monaco, monospace' : 'Courier New, monospace';
-
-                    // Properly escape HTML content
-                    const escapedContent = (logType.content || 'No content available')
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#x27;');
-
-                    logsHtml += `
-                        <div id="log-${logType.key}" style="display: ${displayStyle}; flex: 1; overflow: hidden; flex-direction: column;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                <h4 style="margin: 0; color: #2c3e50; font-size: 14px;">${logType.name}</h4>
-                                <button onclick="downloadSingleLog('${appId}', '${logType.key}', '${logType.name}')" style="background: #28a745; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;">Download</button>
-                            </div>
-                            <div style="flex: 1; overflow: auto; background: ${backgroundColor}; color: ${textColor}; padding: 15px; border-radius: 5px; font-family: ${fontFamily}; font-size: 12px; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word;">
-                                ${escapedContent}
-                            </div>
-                        </div>`;
-                });
-            }
-
-            logsHtml += `
-                    </div>
-                    <div style="display: flex; justify-content: center; gap: 10px; margin-top: 15px; flex-shrink: 0;">
-                        <button onclick="downloadLogs('${appId}')" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Download All Logs</button>
+                    <div style="text-align: right; margin-top: 20px;">
+                        <button onclick="closeModal()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">Close</button>
                     </div>
                 </div>`;
 
-            showModal(logsHtml);
+            showModal(detailsHtml);
 
-            // Store log data for single downloads
-            window.currentLogsData = {};
-            logTypes.forEach(logType => {
-                window.currentLogsData[logType.key] = {name: logType.name, content: logType.content};
-            });
+        } catch (error) {
+            console.error('Failed to view application details:', error);
+            showError('Failed to load application details');
         }
+    }
 
-        function showLogTab(tabKey) {
-            // Hide all log content areas
-            document.querySelectorAll('[id^="log-"]').forEach(el => {
-                el.style.display = 'none';
-            });
+    async function viewLogs(appId) {
+        try {
+            updateRefreshStatus('Loading logs...');
+            const response = await fetch(`/api/cluster/${currentCluster}/application/${appId}/logs`);
 
-            // Remove active style from all tabs
-            document.querySelectorAll('[id^="tab-"]').forEach(el => {
-                el.style.background = 'white';
-                el.style.color = '#333';
-                el.style.borderColor = '#e0e6ed';
-            });
-
-            // Show selected log content
-            const logElement = document.getElementById(`log-${tabKey}`);
-            if (logElement) {
-                logElement.style.display = 'flex';
-            }
-
-            // Style active tab
-            const activeTab = document.getElementById(`tab-${tabKey}`);
-            if (activeTab) {
-                activeTab.style.background = '#667eea';
-                activeTab.style.color = 'white';
-                activeTab.style.borderColor = '#667eea';
-            }
-        }
-
-        function downloadSingleLog(appId, logKey, logName) {
-            if (!window.currentLogsData || !window.currentLogsData[logKey]) {
-                showError('Log data not available');
-                return;
-            }
-
-            const logData = window.currentLogsData[logKey];
-            const content = logData.content;
-            const filename = `${appId}_${logKey}.${logKey.includes('info') || logKey.includes('jobs') || logKey.includes('environment') ? 'json' : 'log'}`;
-
-            // Create and trigger download
-            const blob = new Blob([content], { type: 'text/plain' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-
-            updateRefreshStatus(`Downloaded ${filename}`);
-        }
-
-        async function downloadLogs(appId) {
-            try {
-                updateRefreshStatus('Downloading logs...');
-                const response = await fetch(`/api/cluster/${currentCluster}/application/${appId}/download_logs`);
-
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `${appId}_logs.zip`;
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    document.body.removeChild(a);
-                    updateRefreshStatus('Logs downloaded successfully');
-                } else {
-                    throw new Error('Failed to download logs');
-                }
-            } catch (error) {
-                console.error('Failed to download logs:', error);
-                showError('Failed to download logs');
-            }
-        }
-
-        async function killApplication(appId) {
-            if (!confirm(`Are you sure you want to kill application ${appId}?`)) {
-                return;
-            }
-
-            try {
-                updateRefreshStatus('Killing application...');
-                const response = await fetch(`/api/cluster/${currentCluster}/kill_application/${appId}`, {
-                    method: 'POST'
-                });
-
-                if (response.ok) {
-                    updateRefreshStatus('Application killed successfully');
-                    // Refresh data after 2 seconds
-                    setTimeout(loadClusterData, 2000);
-                } else {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Failed to kill application');
-                }
-            } catch (error) {
-                console.error('Failed to kill application:', error);
-                showError('Failed to kill application: ' + error.message);
-            }
-        }
-
-        function showModal(content) {
-            const modal = document.createElement('div');
-            modal.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(0, 0, 0, 0.5);
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                z-index: 1000;
-            `;
-
-            const modalContent = document.createElement('div');
-            modalContent.style.cssText = `
-                background: white;
-                border-radius: 15px;
-                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-                margin: 20px;
-            `;
-            modalContent.innerHTML = content;
-
-            modal.appendChild(modalContent);
-            document.body.appendChild(modal);
-
-            window.currentModal = modal;
-
-            // Close on background click
-            modal.addEventListener('click', (e) => {
-                if (e.target === modal) {
-                    closeModal();
-                }
-            });
-        }
-
-        function closeModal() {
-            if (window.currentModal) {
-                document.body.removeChild(window.currentModal);
-                window.currentModal = null;
-                window.currentLogsData = null;
-            }
-        }
-
-        function showLoading(show) {
-            document.getElementById('loadingState').style.display = show ? 'block' : 'none';
-        }
-
-        function showError(message) {
-            const existing = document.querySelector('.error');
-            if (existing) existing.remove();
-
-            const error = document.createElement('div');
-            error.className = 'error';
-            error.textContent = message;
-
-            document.querySelector('.container').insertBefore(error, document.querySelector('.cluster-selector').nextSibling);
-
-            setTimeout(() => {
-                if (error.parentNode) {
-                    error.parentNode.removeChild(error);
-                }
-            }, 5000);
-        }
-
-        function formatBytes(bytes) {
-            if (bytes === 0) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-        }
-
-        function formatDuration(milliseconds) {
-            const seconds = Math.floor(milliseconds / 1000);
-            const minutes = Math.floor(seconds / 60);
-            const hours = Math.floor(minutes / 60);
-
-            if (hours > 0) {
-                return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
-            } else if (minutes > 0) {
-                return `${minutes}m ${seconds % 60}s`;
+            if (response.ok) {
+                const data = await response.json();
+                displayLogsModal(appId, data.logs_data);
+                updateRefreshStatus('Logs loaded successfully');
             } else {
-                return `${seconds}s`;
+                throw new Error('Failed to load logs');
             }
+        } catch (error) {
+            console.error('Failed to view logs:', error);
+            showError('Failed to load logs: ' + error.message);
+        }
+    }
+
+    function displayLogsModal(appId, logsData) {
+        let logsHtml = `
+            <div style="max-width: 90vw; max-height: 85vh; overflow: hidden; padding: 20px; display: flex; flex-direction: column;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-shrink: 0;">
+                    <h3 style="color: #2c3e50; margin: 0;">Application Logs: ${appId}</h3>
+                    <button onclick="closeModal()" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer;">Close</button>
+                </div>
+
+                <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">`;
+
+        // Create tabs for different log types
+        const logTypes = [];
+        if (logsData && logsData.driver_logs) logTypes.push({key: 'driver', name: 'Driver Logs', content: logsData.driver_logs});
+        if (logsData && logsData.executor_logs) {
+            Object.entries(logsData.executor_logs).forEach(([key, content]) => {
+                if (content) logTypes.push({key: key, name: key.replace('_', ' ').toUpperCase(), content: content});
+            });
+        }
+        if (logsData && logsData.container_logs) {
+            Object.entries(logsData.container_logs).forEach(([key, content]) => {
+                if (content) logTypes.push({key: key, name: `Container ${key.slice(-12)}`, content: content});
+            });
+        }
+        if (logsData && logsData.yarn_info) logTypes.push({key: 'yarn_info', name: 'YARN Info', content: JSON.stringify(logsData.yarn_info, null, 2), isJson: true});
+        if (logsData && logsData.spark_jobs) logTypes.push({key: 'spark_jobs', name: 'Spark Jobs', content: JSON.stringify(logsData.spark_jobs, null, 2), isJson: true});
+        if (logsData && logsData.environment) logTypes.push({key: 'environment', name: 'Environment', content: JSON.stringify(logsData.environment, null, 2), isJson: true});
+        if (logsData && logsData.log_info) logTypes.push({key: 'log_info', name: 'Log Access Info', content: logsData.log_info});
+
+        if (logTypes.length === 0) {
+            logsHtml += `<p style="text-align: center; color: #7f8c8d; padding: 40px;">No logs available for this application</p>`;
+        } else {
+            // Tabs
+            logsHtml += `<div style="display: flex; gap: 5px; margin-bottom: 15px; flex-wrap: wrap; flex-shrink: 0;">`;
+            logTypes.forEach((logType, index) => {
+                const activeStyle = index === 0 ? 'background: #667eea; color: white; border-color: #667eea;' : '';
+                logsHtml += `<button onclick="showLogTab('${logType.key}')" id="tab-${logType.key}" style="padding: 8px 12px; border: 2px solid #e0e6ed; background: white; border-radius: 5px; cursor: pointer; font-size: 12px; ${activeStyle}">${logType.name}</button>`;
+            });
+            logsHtml += `</div>`;
+
+            // Log content areas
+            logTypes.forEach((logType, index) => {
+                const displayStyle = index === 0 ? 'flex' : 'none';
+                const backgroundColor = logType.isJson ? '#f8f9fa' : '#000';
+                const textColor = logType.isJson ? '#333' : '#0f0';
+                const fontFamily = logType.isJson ? 'Consolas, Monaco, monospace' : 'Courier New, monospace';
+
+                // Properly escape HTML content
+                const escapedContent = (logType.content || 'No content available')
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#x27;');
+
+                logsHtml += `
+                    <div id="log-${logType.key}" style="display: ${displayStyle}; flex: 1; overflow: hidden; flex-direction: column;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h4 style="margin: 0; color: #2c3e50; font-size: 14px;">${logType.name}</h4>
+                            <button onclick="downloadSingleLog('${appId}', '${logType.key}', '${logType.name}')" style="background: #28a745; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;">Download</button>
+                        </div>
+                        <div style="flex: 1; overflow: auto; background: ${backgroundColor}; color: ${textColor}; padding: 15px; border-radius: 5px; font-family: ${fontFamily}; font-size: 12px; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word;">
+                            ${escapedContent}
+                        </div>
+                    </div>`;
+            });
         }
 
-        function updateRefreshStatus(message) {
-            const status = document.getElementById('refreshStatus');
-            status.textContent = message + ' - ' + new Date().toLocaleTimeString();
-        }
+        logsHtml += `
+                </div>
+                <div style="display: flex; justify-content: center; gap: 10px; margin-top: 15px; flex-shrink: 0;">
+                    <button onclick="downloadLogs('${appId}')" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Download All Logs</button>
+                </div>
+            </div>`;
 
-        // Auto-refresh functionality
-        document.getElementById('autoRefresh').addEventListener('change', function() {
-            if (this.checked) {
-                refreshInterval = setInterval(() => {
-                    if (currentCluster) {
-                        loadClusterData();
-                    }
-                }, 30000); // 30 seconds
-                updateRefreshStatus('Auto-refresh enabled');
-            } else {
-                if (refreshInterval) {
-                    clearInterval(refreshInterval);
-                    refreshInterval = null;
-                }
-                updateRefreshStatus('Auto-refresh disabled');
-            }
+        showModal(logsHtml);
+
+        // Store log data for single downloads
+        window.currentLogsData = {};
+        logTypes.forEach(logType => {
+            window.currentLogsData[logType.key] = {name: logType.name, content: logType.content};
+        });
+    }
+
+    function showLogTab(tabKey) {
+        // Hide all log content areas
+        document.querySelectorAll('[id^="log-"]').forEach(el => {
+            el.style.display = 'none';
         });
 
-        // Keyboard shortcuts
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape' && window.currentModal) {
+        // Remove active style from all tabs
+        document.querySelectorAll('[id^="tab-"]').forEach(el => {
+            el.style.background = 'white';
+            el.style.color = '#333';
+            el.style.borderColor = '#e0e6ed';
+        });
+
+        // Show selected log content
+        const logElement = document.getElementById(`log-${tabKey}`);
+        if (logElement) {
+            logElement.style.display = 'flex';
+        }
+
+        // Style active tab
+        const activeTab = document.getElementById(`tab-${tabKey}`);
+        if (activeTab) {
+            activeTab.style.background = '#667eea';
+            activeTab.style.color = 'white';
+            activeTab.style.borderColor = '#667eea';
+        }
+    }
+
+    function downloadSingleLog(appId, logKey, logName) {
+        if (!window.currentLogsData || !window.currentLogsData[logKey]) {
+            showError('Log data not available');
+            return;
+        }
+
+        const logData = window.currentLogsData[logKey];
+        const content = logData.content;
+        const filename = `${appId}_${logKey}.${logKey.includes('info') || logKey.includes('jobs') || logKey.includes('environment') ? 'json' : 'log'}`;
+
+        // Create and trigger download
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        updateRefreshStatus(`Downloaded ${filename}`);
+    }
+
+    async function downloadLogs(appId) {
+        try {
+            updateRefreshStatus('Downloading logs...');
+            const response = await fetch(`/api/cluster/${currentCluster}/application/${appId}/download_logs`);
+
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${appId}_logs.zip`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                updateRefreshStatus('Logs downloaded successfully');
+            } else {
+                throw new Error('Failed to download logs');
+            }
+        } catch (error) {
+            console.error('Failed to download logs:', error);
+            showError('Failed to download logs');
+        }
+    }
+
+    async function killApplication(appId) {
+        if (!confirm(`Are you sure you want to kill application ${appId}?`)) {
+            return;
+        }
+
+        try {
+            updateRefreshStatus('Killing application...');
+            const response = await fetch(`/api/cluster/${currentCluster}/kill_application/${appId}`, {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                updateRefreshStatus('Application killed successfully');
+                // Refresh data after 2 seconds
+                setTimeout(loadClusterData, 2000);
+            } else {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to kill application');
+            }
+        } catch (error) {
+            console.error('Failed to kill application:', error);
+            showError('Failed to kill application: ' + error.message);
+        }
+    }
+
+    function showModal(content) {
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        `;
+
+        const modalContent = document.createElement('div');
+        modalContent.style.cssText = `
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            margin: 20px;
+        `;
+        modalContent.innerHTML = content;
+
+        modal.appendChild(modalContent);
+        document.body.appendChild(modal);
+
+        window.currentModal = modal;
+
+        // Close on background click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
                 closeModal();
             }
-            if (e.key === 'F5' || (e.ctrlKey && e.key === 'r')) {
-                e.preventDefault();
+        });
+    }
+
+    function closeModal() {
+        if (window.currentModal) {
+            document.body.removeChild(window.currentModal);
+            window.currentModal = null;
+            window.currentLogsData = null;
+        }
+    }
+
+    function showLoading(show) {
+        document.getElementById('loadingState').style.display = show ? 'block' : 'none';
+    }
+
+    function showError(message) {
+        const existing = document.querySelector('.error');
+        if (existing) existing.remove();
+
+        const error = document.createElement('div');
+        error.className = 'error';
+        error.textContent = message;
+
+        document.querySelector('.container').insertBefore(error, document.querySelector('.cluster-selector').nextSibling);
+
+        setTimeout(() => {
+            if (error.parentNode) {
+                error.parentNode.removeChild(error);
+            }
+        }, 5000);
+    }
+
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function formatDuration(milliseconds) {
+        const seconds = Math.floor(milliseconds / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+
+        if (hours > 0) {
+            return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+        } else if (minutes > 0) {
+            return `${minutes}m ${seconds % 60}s`;
+        } else {
+            return `${seconds}s`;
+        }
+    }
+
+    function updateRefreshStatus(message) {
+        const status = document.getElementById('refreshStatus');
+        status.textContent = message + ' - ' + new Date().toLocaleTimeString();
+    }
+
+    // Auto-refresh functionality
+    document.getElementById('autoRefresh').addEventListener('change', function() {
+        if (this.checked) {
+            refreshInterval = setInterval(() => {
                 if (currentCluster) {
                     loadClusterData();
                 }
-            }
-        });
-
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', function() {
+            }, 30000); // 30 seconds
+            updateRefreshStatus('Auto-refresh enabled');
+        } else {
             if (refreshInterval) {
                 clearInterval(refreshInterval);
+                refreshInterval = null;
             }
-        });
-    </script>
+            updateRefreshStatus('Auto-refresh disabled');
+        }
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && window.currentModal) {
+            closeModal();
+        }
+        if (e.key === 'F5' || (e.ctrlKey && e.key === 'r')) {
+            e.preventDefault();
+            if (currentCluster) {
+                loadClusterData();
+            }
+        }
+    });
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', function() {
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
+        }
+    });
+</script>
 </body>
 </html>

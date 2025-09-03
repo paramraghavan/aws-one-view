@@ -47,7 +47,7 @@ class EMRMonitor:
             }
 
     def get_spark_applications(self, cluster_key):
-        """Get all Spark applications from the cluster"""
+        """Get all Spark applications from the cluster with enhanced resource data"""
         cluster = self.config.get(cluster_key)
         if not cluster:
             return []
@@ -65,24 +65,58 @@ class EMRMonitor:
 
             all_apps = completed_apps + running_apps
 
-            # Enrich with additional details
+            # Enrich with additional details and ensure we get executor info
             for app in all_apps:
                 try:
                     app_id = app['id']
+
+                    # Get detailed application info
                     detail_url = f"{cluster['spark_url']}/api/v1/applications/{app_id}"
                     detail_response = self.session.get(detail_url)
                     if detail_response.status_code == 200:
                         detail_data = detail_response.json()
                         app.update(detail_data)
 
-                    # Get executor information
+                    # Get executor information (crucial for resource data)
                     executor_url = f"{cluster['spark_url']}/api/v1/applications/{app_id}/executors"
                     executor_response = self.session.get(executor_url)
                     if executor_response.status_code == 200:
-                        app['executors'] = executor_response.json()
+                        executors = executor_response.json()
+                        app['executors'] = executors
+
+                        # Calculate summary resource info
+                        total_memory_used = sum(exec.get('memoryUsed', 0) for exec in executors)
+                        total_cores = sum(exec.get('totalCores', 0) for exec in executors)
+                        app['totalMemoryUsed'] = total_memory_used
+                        app['totalCores'] = total_cores
+                    else:
+                        # If no executor data, try to get from application summary
+                        app['executors'] = []
+                        app['totalMemoryUsed'] = 0
+                        app['totalCores'] = 0
+
+                        # Try to get resource info from other sources
+                        if 'resourcesPerTask' in app:
+                            app['totalCores'] = app.get('resourcesPerTask', {}).get('cores', 0)
+
+                    # Try to get job information for additional context
+                    try:
+                        jobs_url = f"{cluster['spark_url']}/api/v1/applications/{app_id}/jobs"
+                        jobs_response = self.session.get(jobs_url)
+                        if jobs_response.status_code == 200:
+                            app['jobs'] = jobs_response.json()
+                    except:
+                        pass
 
                 except Exception as e:
                     logging.warning(f"Failed to get details for app {app.get('id', 'unknown')}: {e}")
+                    # Ensure we have default values
+                    if 'executors' not in app:
+                        app['executors'] = []
+                    if 'totalMemoryUsed' not in app:
+                        app['totalMemoryUsed'] = 0
+                    if 'totalCores' not in app:
+                        app['totalCores'] = 0
 
             return all_apps
 
@@ -283,36 +317,300 @@ class EMRMonitor:
                 container_search = app_id.replace('application_', 'container_')
                 logs_data['log_info'] = f"""Application {app_id} Log Information:
 
-No direct logs were found through the Spark History Server or YARN REST APIs.
-This is common and can happen for several reasons:
-
-1. Application is still starting up
-2. Logs are aggregated to HDFS or S3 storage  
-3. Log retention policies have cleaned up old logs
-4. Application logs are only available on individual nodes
-
-To access logs manually, try these commands on the EMR master node:
-
-Get YARN logs (most reliable method):
-yarn logs -applicationId {app_id}
-
-Check local Spark application directories:
-find /mnt/var/log/spark/apps/{app_id}* -name "*.log" 2>/dev/null
-
-Check HDFS for aggregated logs:
-hdfs dfs -ls /tmp/logs/*/logs/{app_id}
-
-Check container logs on node managers:
-find /mnt/var/log/containers -name "*{container_search}*" 2>/dev/null
-
-If using S3 log aggregation, check your EMR cluster's S3 log location.
-"""
-
-            return logs_data if any(v for v in logs_data.values() if v) else None
+                No direct logs were found through the Spark History Server or YARN REST APIs.
+                This is common and can happen for several reasons:
+                
+                1. Application is still starting up
+                2. Logs are aggregated to HDFS or S3 storage  
+                3. Log retention policies have cleaned up old logs
+                4. Application logs are only available on individual nodes
+                
+                To access logs manually, try these commands on the EMR master node:
+                
+                Get YARN logs (most reliable method):
+                yarn logs -applicationId {app_id}
+                
+                Check local Spark application directories:
+                find /mnt/var/log/spark/apps/{app_id}* -name "*.log" 2>/dev/null
+                
+                Check HDFS for aggregated logs:
+                hdfs dfs -ls /tmp/logs/*/logs/{app_id}
+                
+                Check container logs on node managers:
+                find /mnt/var/log/containers -name "*{container_search}*" 2>/dev/null
+                
+                If using S3 log aggregation, check your EMR cluster's S3 log location.
+                """
 
         except Exception as e:
-            logging.error(f"Failed to get application logs: {e}")
-            return None
+            logging.warning(f"Failed to get Spark application logs: {e}")
+
+
+    def get_spot_instance_info(self, cluster_key):
+        """Get spot instance information and interruption details"""
+        cluster = self.config.get(cluster_key)
+        if not cluster:
+            return {}
+
+        try:
+            # Get nodes with detailed information
+            nodes_url = f"{cluster['yarn_url']}/ws/v1/cluster/nodes"
+            nodes_response = self.session.get(nodes_url)
+
+            # Get application history to detect spot interruptions
+            apps_url = f"{cluster['yarn_url']}/ws/v1/cluster/apps?states=FAILED,KILLED&limit=50"
+            apps_response = self.session.get(apps_url)
+
+            spot_info = {
+                'spot_nodes': [],
+                'ondemand_nodes': [],
+                'interruption_events': [],
+                'allocation_failures': [],
+                'spot_savings': 0,
+                'total_interruptions_24h': 0,
+                'current_spot_capacity': 0,
+                'current_ondemand_capacity': 0,
+                'failed_spot_requests': 0,
+                'spot_vs_ondemand': {
+                    'spot_count': 0,
+                    'ondemand_count': 0,
+                    'spot_cores': 0,
+                    'ondemand_cores': 0,
+                    'spot_memory': 0,
+                    'ondemand_memory': 0
+                }
+            }
+
+            if nodes_response.status_code == 200:
+                nodes_data = nodes_response.json()
+                nodes = nodes_data.get('nodes', {}).get('node', [])
+
+                current_time = datetime.now()
+
+                for node in nodes:
+                    node_hostname = node.get('nodeHostName', '')
+                    node_type = self.classify_node_type(node_hostname)
+
+                    # Determine if this is a spot instance
+                    is_spot = self.detect_spot_instance(node)
+
+                    memory_mb = (node.get('availMemoryMB', 0) + node.get('usedMemoryMB', 0))
+                    cores = (node.get('availVirtualCores', 0) + node.get('usedVirtualCores', 0))
+
+                    node_info = {
+                        'hostname': node_hostname,
+                        'node_id': node.get('id', ''),
+                        'node_type': node_type,
+                        'state': node.get('state', 'UNKNOWN'),
+                        'last_health_update': node.get('lastHealthUpdate', 0),
+                        'memory_mb': memory_mb,
+                        'cores': cores,
+                        'containers': node.get('numContainers', 0),
+                        'uptime_hours': self.calculate_node_uptime(node.get('lastHealthUpdate', 0)),
+                        'interruption_risk': self.assess_interruption_risk(node) if is_spot else 'N/A',
+                        'estimated_savings': self.estimate_spot_savings(node) if is_spot else 0,
+                        'instance_lifecycle': 'spot' if is_spot else 'on-demand'
+                    }
+
+                    # Update summary statistics
+                    if is_spot:
+                        spot_info['spot_nodes'].append(node_info)
+                        spot_info['current_spot_capacity'] += cores
+                        spot_info['spot_savings'] += node_info['estimated_savings']
+                        spot_info['spot_vs_ondemand']['spot_count'] += 1
+                        spot_info['spot_vs_ondemand']['spot_cores'] += cores
+                        spot_info['spot_vs_ondemand']['spot_memory'] += memory_mb
+                    else:
+                        spot_info['ondemand_nodes'].append(node_info)
+                        spot_info['current_ondemand_capacity'] += cores
+                        spot_info['spot_vs_ondemand']['ondemand_count'] += 1
+                        spot_info['spot_vs_ondemand']['ondemand_cores'] += cores
+                        spot_info['spot_vs_ondemand']['ondemand_memory'] += memory_mb
+
+            if apps_response.status_code == 200:
+                apps_data = apps_response.json()
+                apps = apps_data.get('apps', {}).get('app', [])
+
+                # Analyze failed/killed applications for spot interruptions
+                for app in apps:
+                    if self.is_spot_interruption(app):
+                        interruption_event = {
+                            'app_id': app.get('id', ''),
+                            'app_name': app.get('name', ''),
+                            'final_status': app.get('finalStatus', ''),
+                            'finished_time': app.get('finishedTime', 0),
+                            'elapsed_time': app.get('elapsedTime', 0),
+                            'allocated_mb': app.get('allocatedMB', 0),
+                            'allocated_cores': app.get('allocatedVCores', 0),
+                            'interruption_reason': self.get_interruption_reason(app),
+                            'affected_node': app.get('amHostHttpAddress', 'Unknown')
+                        }
+                        spot_info['interruption_events'].append(interruption_event)
+
+                        # Count interruptions in last 24 hours
+                        if app.get('finishedTime', 0) > 0:
+                            finished_time = datetime.fromtimestamp(app.get('finishedTime', 0) / 1000)
+                            if (current_time - finished_time).total_seconds() < 86400:  # 24 hours
+                                spot_info['total_interruptions_24h'] += 1
+
+            return spot_info
+
+        except Exception as e:
+            logging.error(f"Failed to get spot instance info: {e}")
+            return {}
+
+    def detect_spot_instance(self, node):
+        """Detect if a node is a spot instance using multiple methods"""
+
+        # Method 1: Check health report or node metadata
+        health_report = node.get('healthReport', '').lower()
+        if 'spot' in health_report:
+            return True
+
+        # Method 2: Check if it's marked in node attributes (custom field from mock server)
+        if node.get('spot_instance', False):
+            return True
+
+        # Method 3: Check node labels/tags if available
+        node_labels = node.get('nodeLabels', [])
+        if any('spot' in label.lower() for label in node_labels):
+            return True
+
+        # Method 4: Analyze uptime patterns (spot instances typically have shorter uptimes)
+        uptime_hours = self.calculate_node_uptime(node.get('lastHealthUpdate', 0))
+        if uptime_hours < 24:  # Less than 24 hours might indicate spot
+            # Additional checks needed to avoid false positives
+            node_hostname = node.get('nodeHostName', '').lower()
+            if 'task' in node_hostname or 'compute' in node_hostname:
+                return True
+
+        # Method 5: Check for specific hostname patterns that indicate spot
+        node_hostname = node.get('nodeHostName', '').lower()
+        spot_indicators = ['spot', 'preemptible', 'cheap', 'temp']
+        if any(indicator in node_hostname for indicator in spot_indicators):
+            return True
+
+        # Method 6: Check instance type patterns (if available)
+        instance_type = node.get('instance_type', '')
+        # In real AWS, you'd check EC2 instance metadata or tags
+
+        # Method 7: For real EMR clusters, you would use AWS API to check:
+        # - EC2 instance lifecycle (spot vs on-demand)
+        # - Instance tags
+        # - Auto Scaling Group configuration
+        # - EMR fleet configuration
+
+        # Default: assume on-demand unless proven otherwise
+        # In production, you should integrate with AWS APIs:
+        # boto3.client('ec2').describe_instances() to check instance lifecycle
+        return False
+
+    def get_instance_lifecycle_from_aws(self, instance_id):
+        """
+        Real implementation would use AWS APIs to determine instance lifecycle.
+        This is a placeholder for the actual implementation.
+        """
+        # Example implementation (requires boto3 and proper AWS credentials):
+        # try:
+        #     import boto3
+        #     ec2 = boto3.client('ec2')
+        #     response = ec2.describe_instances(InstanceIds=[instance_id])
+        #     for reservation in response['Reservations']:
+        #         for instance in reservation['Instances']:
+        #             return instance.get('InstanceLifecycle') == 'spot'
+        # except Exception as e:
+        #     logging.warning(f"Could not determine instance lifecycle: {e}")
+        #     return False
+        pass
+
+    def classify_node_type(self, hostname):
+        """Classify node type based on hostname"""
+        if not hostname:
+            return 'Unknown Node'
+
+        hostname_lower = hostname.lower()
+
+        if 'master' in hostname_lower or 'namenode' in hostname_lower:
+            return 'Master Node'
+        elif 'core' in hostname_lower or 'datanode' in hostname_lower:
+            return 'Core Node'
+        elif 'task' in hostname_lower or 'compute' in hostname_lower:
+            return 'Task Node'
+        elif 'ip-172-31-1-50' in hostname or '172.31.1.50' in hostname:
+            return 'Master Node'
+        elif any(f'ip-172-31-1-5{i}' in hostname for i in [1, 2, 3]) or any(
+                f'172.31.1.5{i}' in hostname for i in [1, 2, 3]):
+            return 'Core Node'
+        else:
+            return 'Task Node'  # Usually spot instances
+
+    def calculate_node_uptime(self, last_health_update):
+        """Calculate node uptime in hours"""
+        if not last_health_update:
+            return 0
+        current_time = datetime.now().timestamp() * 1000
+        uptime_ms = current_time - last_health_update
+        return max(0, uptime_ms / (1000 * 3600))  # Convert to hours
+
+    def assess_interruption_risk(self, node):
+        """Assess spot interruption risk based on various factors"""
+        # In real implementation, you'd use AWS EC2 Spot Instance Advisor API
+        # For simulation, use uptime and resource utilization
+        uptime_hours = self.calculate_node_uptime(node.get('lastHealthUpdate', 0))
+
+        if uptime_hours < 1:
+            return 'High'
+        elif uptime_hours < 6:
+            return 'Medium'
+        else:
+            return 'Low'
+
+    def estimate_spot_savings(self, node):
+        """Estimate cost savings from using spot instances"""
+        # Rough calculation: assume 70% savings vs on-demand
+        cores = node.get('availVirtualCores', 0) + node.get('usedVirtualCores', 0)
+        memory_gb = ((node.get('availMemoryMB', 0) + node.get('usedMemoryMB', 0)) / 1024)
+
+        # Estimated hourly cost savings (simplified calculation)
+        estimated_hourly_savings = (cores * 0.05) + (memory_gb * 0.01)  # USD per hour saved
+        return round(estimated_hourly_savings, 2)
+
+    def is_spot_interruption(self, app):
+        """Determine if application failure was due to spot interruption"""
+        final_status = app.get('finalStatus', '')
+        state = app.get('state', '')
+        diagnostics = app.get('diagnostics', '').lower()
+
+        # Common patterns indicating spot interruptions
+        spot_indicators = [
+            final_status == 'FAILED' and 'KILLED' in state,
+            app.get('elapsedTime', 0) < 300000,  # Less than 5 minutes (sudden termination)
+            'preempted' in diagnostics,
+            'spot' in diagnostics,
+            'capacity constraints' in diagnostics,
+            'price exceeded' in diagnostics,
+            app.get('numNonAMContainerPreempted', 0) > 0,
+            app.get('numAMContainerPreempted', 0) > 0
+        ]
+
+        return any(spot_indicators)
+
+    def get_interruption_reason(self, app):
+        """Extract interruption reason from application diagnostics"""
+        diagnostics = app.get('diagnostics', '').lower()
+
+        if 'spot' in diagnostics and 'price' in diagnostics:
+            return 'Spot price exceeded bid'
+        elif 'preempted' in diagnostics:
+            return 'Instance preempted'
+        elif 'capacity' in diagnostics:
+            return 'Insufficient capacity'
+        elif app.get('elapsedTime', 0) < 300000:
+            return 'Sudden termination (likely spot)'
+        elif app.get('numNonAMContainerPreempted', 0) > 0:
+            return 'Containers preempted'
+        else:
+            return 'Unknown interruption'
 
 
 # Initialize monitor
@@ -336,7 +634,7 @@ def get_applications(cluster_key):
     """Get applications for a specific cluster with spot instance info"""
     spark_apps = monitor.get_spark_applications(cluster_key)
     yarn_apps = monitor.get_yarn_applications(cluster_key)
-    spot_info = {} #monitor.get_spot_instance_info(cluster_key)
+    spot_info = monitor.get_spot_instance_info(cluster_key)
 
     # Combine and enrich data
     apps_data = {
@@ -353,7 +651,7 @@ def get_applications(cluster_key):
 @app.route('/api/cluster/<cluster_key>/spot_status')
 def get_spot_status(cluster_key):
     """Get detailed spot instance status"""
-    spot_info = {} #monitor.get_spot_instance_info(cluster_key)
+    spot_info = monitor.get_spot_instance_info(cluster_key)
     return jsonify({
         'spot_info': spot_info,
         'cluster_key': cluster_key,
