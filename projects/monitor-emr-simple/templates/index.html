@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMR Monitoring Tool</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="header">
+        <h1>EMR Monitoring Tool</h1>
+        <p>Monitor your EMR clusters, jobs, and resources</p>
+    </div>
+
+    <div class="cluster-selector">
+        <label for="clusterSelect">Select EMR Cluster:</label>
+        <select id="clusterSelect" onchange="selectCluster()">
+            <option value="">Choose a cluster...</option>
+        </select>
+        <button class="btn" onclick="refreshData()">Refresh</button>
+    </div>
+
+    <div class="dashboard" id="dashboard" style="display: none;">
+        <div class="card">
+            <div class="card-header">Cluster Overview</div>
+            <div class="card-content">
+                <div class="stats-grid" id="clusterStats">
+                    <!-- Cluster stats will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Resource Usage</div>
+            <div class="card-content">
+                <div id="resourceUsage">
+                    <!-- Resource usage will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <div class="card full-width">
+            <div class="card-header">
+                Applications
+                <button class="btn btn-small" onclick="toggleView()">Toggle View</button>
+            </div>
+            <div class="card-content">
+                <div class="loading" id="applicationsLoading">Loading applications...</div>
+                <div id="applicationsContent" style="display: none;">
+                    <table class="applications-table" id="applicationsTable">
+                        <thead>
+                            <tr>
+                                <th>Application ID</th>
+                                <th>Name</th>
+                                <th>Status</th>
+                                <th>Duration</th>
+                                <th>Resources</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="applicationsBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button class="refresh-btn" onclick="refreshData()" title="Refresh Data">
+        🔄
+    </button>
+
+    <!-- Modal for application details -->
+    <div id="detailsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Application Details</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div id="modalBody">
+                <!-- Details will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

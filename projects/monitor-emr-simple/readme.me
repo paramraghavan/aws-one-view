@@ -1,0 +1,21 @@
+```
+Build a EMR monitoring tool for our modellers - using pyFlask and html5, allowing them to view their completed,
+submitted, accepted , failed and runinng jobs . They shoudl be able view how much resource each job is consuming, how
+long it has been running, view possible errors, this is to help them manage their EMR server identify which jobs may be
+hogging resources and possibly why, those jobs which are not closing the spark context alothough thei job is complete.
+This is because the modeller use jupyter notebook to run their jobs and do not clean up resources, sometimes they
+allocate more resources that that they need, sometimes a job is allocated all the resources at the start, but they may
+not need it until the middle of the process or may not need all the resources at all. We can provide config.json or yaml
+like this to list out the available.
+
+We use EMR - so it has master node, AM node and task nodes.
+Task nodes coule be spot, on demand or reserved
+Monitor the task naodes for each job check if they are  failing beacuse of task node unavaiblility
+Get all the necessary info. from spark history and yarn url.
+
+emr's: `"staging": { "name": "Staging EMR", "spark_url": "http://staging-master:18080", "yarn_url": "http://staging-master:8088", "description": "Staging EMR cluster" } `
+User should be able to select his/her EMR cluster and monitor their emr, jobs, possible download application logs.
+Should be simple to use with high level infor, details can ebe obained on further clicks
+Make it use for modellers and infra support team.
+
+```

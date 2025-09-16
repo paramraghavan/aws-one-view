@@ -1,0 +1,29 @@
+emr_clusters:
+  staging:
+    name: "Staging EMR"
+    spark_url: "http://staging-master:18080"
+    yarn_url: "http://staging-master:8088"
+    description: "Staging EMR cluster"
+
+  production:
+    name: "Production EMR"
+    spark_url: "http://production-master:18080"
+    yarn_url: "http://production-master:8088"
+    description: "Production EMR cluster"
+
+  dev-cluster:
+    name: "Development EMR"
+    spark_url: "http://dev-master:18080"
+    yarn_url: "http://dev-master:8088"
+    description: "Development EMR cluster for testing"
+
+# Optional: Configure refresh intervals (in seconds)
+refresh_intervals:
+  auto_refresh: 30
+  cluster_info: 60
+  applications: 30
+
+# Optional: Configure log settings
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
