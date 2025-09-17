@@ -394,10 +394,10 @@ function toggleView() {
     // Update button text with more descriptive labels
     const btn = document.querySelector('[onclick="toggleView()"]');
     if (viewMode === 'spark') {
-        btn.textContent = 'Switch to YARN (Live)';
+        btn.textContent = 'Switch to YARN (Running Jobs)';
         btn.title = 'Switch to YARN ResourceManager - better for running applications';
     } else {
-        btn.textContent = 'Switch to Spark (History)';
+        btn.textContent = 'Switch to Spark (Completed Jobs)';
         btn.title = 'Switch to Spark History Server - better for completed applications';
     }
 
