@@ -2,6 +2,7 @@
 
 let currentCluster = '';
 let viewMode = 'spark';
+let statusFilter = 'all';
 let refreshInterval;
 let isRefreshing = false;
 
@@ -175,7 +176,7 @@ async function loadApplications() {
         document.getElementById('applicationsLoading').style.display = 'block';
         document.getElementById('applicationsContent').style.display = 'none';
 
-        const response = await fetch(`/api/cluster/${currentCluster}/applications?source=${viewMode}`);
+        const response = await fetch(`/api/cluster/${currentCluster}/applications?source=${viewMode}&status=${statusFilter}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const applications = await response.json();
@@ -187,6 +188,15 @@ async function loadApplications() {
         console.error('Error loading applications:', error);
         document.getElementById('applicationsLoading').innerHTML =
             '<div class="error">❌ Error loading applications</div>';
+    }
+}
+
+function filterApplications() {
+    const filterSelect = document.getElementById('statusFilter');
+    statusFilter = filterSelect.value;
+
+    if (currentCluster) {
+        loadApplications();
     }
 }
 
@@ -240,6 +250,12 @@ function updateApplicationsTable(applications) {
 }
 
 function getApplicationStatus(app) {
+    // Use standardized status if available, otherwise fallback to source-specific logic
+    if (app.standardized_status) {
+        return app.standardized_status;
+    }
+
+    // Fallback logic for older data
     if (app.source === 'spark') {
         const lastAttempt = app.attempts ? app.attempts[app.attempts.length - 1] : {};
         return lastAttempt.completed === false ? 'RUNNING' : 'SUCCEEDED';

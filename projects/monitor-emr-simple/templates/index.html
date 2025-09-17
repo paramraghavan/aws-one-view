@@ -42,7 +42,17 @@
         <div class="card full-width">
             <div class="card-header">
                 Applications
-                <button class="btn btn-small" onclick="toggleView()" title="Switch between Spark History Server and YARN ResourceManager">Switch to YARN (Live)</button>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <select id="statusFilter" onchange="filterApplications()" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px;">
+                        <option value="all">All Status</option>
+                        <option value="running">🔄 Running</option>
+                        <option value="completed">✅ Completed</option>
+                        <option value="failed">❌ Failed</option>
+                        <option value="killed">⛔ Killed</option>
+                        <option value="accepted">⏳ Accepted/Waiting</option>
+                    </select>
+                    <button class="btn btn-small" onclick="toggleView()" title="Switch between Spark History Server and YARN ResourceManager">Switch to YARN (Live)</button>
+                </div>
             </div>
             <div class="card-content">
                 <div class="loading" id="applicationsLoading">Loading applications...</div>

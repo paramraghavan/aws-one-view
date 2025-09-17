@@ -49,15 +49,41 @@ class EMRMonitor:
                 }
             }
 
-    def get_spark_applications(self, cluster_id: str) -> List[Dict]:
-        """Get applications from Spark History Server"""
+    def get_spark_applications(self, cluster_id: str, status_filter: str = None) -> List[Dict]:
+        """
+        Get applications from Spark History Server with optional status filtering
+
+        Args:
+            cluster_id: The cluster identifier from config
+            status_filter: Optional status filter ('completed', 'running', 'failed', 'killed', 'all')
+        """
         cluster = self.config['emr_clusters'].get(cluster_id)
         if not cluster:
             return []
 
         try:
             spark_url = cluster['spark_url']
-            response = requests.get(f"{spark_url}/api/v1/applications", timeout=10)
+
+            # Build API URL with status filter if provided
+            api_url = f"{spark_url}/api/v1/applications"
+            params = {}
+
+            # Map user-friendly filters to Spark API status values
+            status_mapping = {
+                'completed': ['SUCCEEDED'],
+                'running': ['RUNNING'],
+                'failed': ['FAILED'],
+                'killed': ['KILLED'],
+                'all': None  # No filter
+            }
+
+            if status_filter and status_filter in status_mapping:
+                spark_statuses = status_mapping[status_filter]
+                if spark_statuses:
+                    # Spark History Server accepts multiple status values
+                    params['status'] = ','.join(spark_statuses)
+
+            response = requests.get(api_url, params=params, timeout=10)
             response.raise_for_status()
 
             applications = response.json()
@@ -67,21 +93,31 @@ class EMRMonitor:
                 app['cluster_id'] = cluster_id
                 app['cluster_name'] = cluster['name']
 
-                # Get detailed info ONLY for completed applications
-                # Spark History Server has complete data for finished apps
+                # Determine application status from attempts
                 last_attempt = app.get('attempts', [{}])[-1]
                 is_completed = last_attempt.get('completed', True)
 
-                if is_completed:  # Only get details for completed apps
+                # Add standardized status field
+                if is_completed:
+                    # For completed apps, check if it succeeded or failed
+                    if any(attempt.get('completed', False) for attempt in app.get('attempts', [])):
+                        app['standardized_status'] = 'SUCCEEDED'
+                    else:
+                        app['standardized_status'] = 'FAILED'
+                else:
+                    app['standardized_status'] = 'RUNNING'
+
+                # Get detailed info ONLY for completed applications
+                if is_completed:
                     detailed_info = self.get_application_details(cluster_id, app['id'])
                     if detailed_info:
                         app.update(detailed_info)
                 else:
-                    # For running applications, we can only get basic info
-                    # The detailed metrics aren't available in History Server yet
+                    # For running applications, add note about limited data
                     app['status_note'] = 'Running - detailed metrics not available in History Server'
 
             return applications
+
         except Exception as e:
             logger.error(f"Error fetching Spark applications for {cluster_id}: {e}")
             return []
@@ -160,10 +196,14 @@ class EMRMonitor:
             logger.error(f"Error fetching application details for {app_id}: {e}")
             return {}
 
-    def get_yarn_applications(self, cluster_id: str) -> List[Dict]:
+    def get_yarn_applications(self, cluster_id: str, status_filter: str = None) -> List[Dict]:
         """
-        Get applications from YARN ResourceManager
+        Get applications from YARN ResourceManager with optional status filtering
         This is the primary source for monitoring running applications
+
+        Args:
+            cluster_id: The cluster identifier from config
+            status_filter: Optional status filter ('running', 'completed', 'failed', 'killed', 'accepted', 'all')
         """
         cluster = self.config['emr_clusters'].get(cluster_id)
         if not cluster:
@@ -171,7 +211,28 @@ class EMRMonitor:
 
         try:
             yarn_url = cluster['yarn_url']
-            response = requests.get(f"{yarn_url}/ws/v1/cluster/apps", timeout=10)
+
+            # Build API URL with status filter
+            api_url = f"{yarn_url}/ws/v1/cluster/apps"
+            params = {}
+
+            # Map user-friendly filters to YARN API state values
+            yarn_state_mapping = {
+                'running': ['RUNNING'],
+                'completed': ['FINISHED'],
+                'failed': ['FAILED'],
+                'killed': ['KILLED'],
+                'accepted': ['ACCEPTED'],
+                'waiting': ['SUBMITTED', 'ACCEPTED'],  # YARN waiting states
+                'all': None  # No filter
+            }
+
+            if status_filter and status_filter in yarn_state_mapping:
+                yarn_states = yarn_state_mapping[status_filter]
+                if yarn_states:
+                    params['states'] = ','.join(yarn_states)
+
+            response = requests.get(api_url, params=params, timeout=10)
             response.raise_for_status()
 
             data = response.json()
@@ -196,6 +257,21 @@ class EMRMonitor:
                 # Calculate duration
                 if 'elapsedTime' in app:
                     app['durationFormatted'] = self.format_duration(app['elapsedTime'])
+
+                # Add standardized status field for consistency
+                yarn_state = app.get('state', 'UNKNOWN')
+                final_status = app.get('finalStatus', 'UNDEFINED')
+
+                if yarn_state == 'RUNNING':
+                    app['standardized_status'] = 'RUNNING'
+                elif yarn_state == 'FINISHED' and final_status == 'SUCCEEDED':
+                    app['standardized_status'] = 'SUCCEEDED'
+                elif yarn_state in ['FAILED', 'KILLED'] or final_status in ['FAILED', 'KILLED']:
+                    app['standardized_status'] = 'FAILED'
+                elif yarn_state in ['ACCEPTED', 'SUBMITTED']:
+                    app['standardized_status'] = 'ACCEPTED'
+                else:
+                    app['standardized_status'] = yarn_state
 
                 # Add resource efficiency metrics for better monitoring
                 allocated_mb = app.get('allocatedMB', 0)
@@ -350,19 +426,20 @@ def api_cluster_info(cluster_id):
 
 @app.route('/api/cluster/<cluster_id>/applications')
 def api_applications(cluster_id):
-    """Get applications for a cluster"""
+    """Get applications for a cluster with optional filtering"""
     source = request.args.get('source', 'both')
+    status_filter = request.args.get('status', 'all')  # New status filter parameter
 
     applications = []
 
     if source in ['spark', 'both']:
-        spark_apps = monitor.get_spark_applications(cluster_id)
+        spark_apps = monitor.get_spark_applications(cluster_id, status_filter)
         for app in spark_apps:
             app['source'] = 'spark'
         applications.extend(spark_apps)
 
     if source in ['yarn', 'both']:
-        yarn_apps = monitor.get_yarn_applications(cluster_id)
+        yarn_apps = monitor.get_yarn_applications(cluster_id, status_filter)
         for app in yarn_apps:
             app['source'] = 'yarn'
         applications.extend(yarn_apps)

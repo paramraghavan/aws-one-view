@@ -63,6 +63,21 @@ body {
     align-items: center;
 }
 
+.card-header select {
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    background: white;
+    cursor: pointer;
+}
+
+.card-header select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
 .card-content {
     padding: 20px;
 }
@@ -154,6 +169,16 @@ body {
 .status-killed {
     background: #ffebee;
     color: #c62828;
+}
+
+.status-submitted {
+    background: #f3e5f5;
+    color: #7b1fa2;
+}
+
+.status-unknown {
+    background: #f5f5f5;
+    color: #757575;
 }
 
 .resource-bar {
@@ -454,3 +479,8 @@ pre {
 .status-indicator.succeeded { background: #4caf50; }
 .status-indicator.failed { background: #f44336; }
 .status-indicator.pending { background: #ff9800; }
+.status-indicator.accepted { background: #ff9800; }
+.status-indicator.killed { background: #f44336; }
+.status-indicator.finished { background: #4caf50; }
+.status-indicator.submitted { background: #9c27b0; }
+.status-indicator.unknown { background: #757575; }
