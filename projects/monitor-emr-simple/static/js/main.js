@@ -18,7 +18,8 @@ async function init() {
         for (const [id, cluster] of Object.entries(clusters)) {
             const option = document.createElement('option');
             option.value = id;
-            option.textContent = `${cluster.name} - ${cluster.description}`;
+            const clusterIdText = cluster.aws_cluster_id ? ` (${cluster.aws_cluster_id})` : '';
+            option.textContent = `${cluster.name}${clusterIdText} - ${cluster.description}`;
             select.appendChild(option);
         }
 
@@ -70,6 +71,15 @@ async function loadClusterInfo() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const info = await response.json();
+
+        // Get cluster config for additional details
+        const clustersResponse = await fetch('/api/clusters');
+        const clusters = await clustersResponse.json();
+        const clusterConfig = clusters[currentCluster] || {};
+
+        // Add cluster config info to the cluster info
+        info.clusterConfig = clusterConfig;
+
         updateClusterStats(info);
         updateResourceUsage(info);
     } catch (error) {
@@ -80,6 +90,21 @@ async function loadClusterInfo() {
 
 function updateClusterStats(info) {
     const statsContainer = document.getElementById('clusterStats');
+
+    // Add cluster info header
+    let clusterHeader = '';
+    if (info.clusterConfig || info.awsClusterId) {
+        const config = info.clusterConfig || {};
+        const awsId = info.awsClusterId || config.aws_cluster_id || 'Not Available';
+
+        clusterHeader = `
+            <div class="cluster-info-header" style="grid-column: 1 / -1; margin-bottom: 15px; padding: 15px; background: #e3f2fd; border-radius: 6px; border-left: 4px solid #2196f3;">
+                <h4 style="margin: 0 0 5px 0; color: #1976d2;">🏷️ ${config.name || 'EMR Cluster'}</h4>
+                <div style="font-weight: bold; color: #1976d2; margin-bottom: 5px;">AWS Cluster ID: <span style="font-family: monospace; background: #fff; padding: 2px 6px; border-radius: 3px;">${awsId}</span></div>
+                ${config.description ? `<div style="font-size: 14px; color: #666;">${config.description}</div>` : ''}
+            </div>
+        `;
+    }
 
     const stats = [
         {
@@ -104,7 +129,7 @@ function updateClusterStats(info) {
         }
     ];
 
-    statsContainer.innerHTML = stats.map(stat => `
+    statsContainer.innerHTML = clusterHeader + stats.map(stat => `
         <div class="stat-item">
             <div class="stat-value">${stat.icon} ${stat.value}</div>
             <div class="stat-label">${stat.label}</div>
@@ -186,11 +211,16 @@ function updateApplicationsTable(applications) {
         const resources = getApplicationResources(app);
         const appId = app.id || app.applicationId || 'N/A';
 
+        // Add source indicator
+        const sourceIcon = app.source === 'spark' ? '📊' : '🎯';
+        const sourceTitle = app.source === 'spark' ? 'Spark History Server' : 'YARN ResourceManager';
+
         return `
             <tr>
                 <td title="${appId}">
                     <span class="status-indicator ${status.toLowerCase()}"></span>
                     ${appId.length > 20 ? appId.substring(0, 20) + '...' : appId}
+                    <span style="opacity: 0.6; margin-left: 5px;" title="${sourceTitle}">${sourceIcon}</span>
                 </td>
                 <td title="${app.name || 'N/A'}">${app.name ? (app.name.length > 30 ? app.name.substring(0, 30) + '...' : app.name) : 'N/A'}</td>
                 <td><span class="status-badge status-${status.toLowerCase()}">${status}</span></td>
@@ -235,12 +265,44 @@ function getApplicationDuration(app) {
 }
 
 function getApplicationResources(app) {
-    if (app.total_cores && app.total_memory_mb) {
-        return `${app.total_cores} cores, ${formatMemory(app.total_memory_mb * 1024 * 1024)}`;
-    } else if (app.allocatedMB && app.allocatedVCores) {
-        return `${app.allocatedVCores} cores, ${formatMemory(app.allocatedMB * 1024 * 1024)}`;
+    if (app.source === 'spark') {
+        // Spark History Server data
+        if (app.total_cores && app.total_memory_mb) {
+            return `${app.total_cores} cores, ${formatMemory(app.total_memory_mb * 1024 * 1024)}`;
+        }
+        return 'N/A (History Server)';
+    } else {
+        // YARN ResourceManager data - better for running apps
+        const allocated_mb = app.allocatedMB || 0;
+        const allocated_vcores = app.allocatedVCores || 0;
+        const running_containers = app.runningContainers || 0;
+
+        let resourceText = '';
+        if (allocated_vcores > 0 && allocated_mb > 0) {
+            resourceText = `${allocated_vcores} cores, ${formatMemory(allocated_mb * 1024 * 1024)}`;
+            if (running_containers > 0) {
+                resourceText += ` (${running_containers} containers)`;
+            }
+
+            // Add efficiency indicators for running apps
+            const status = app.finalStatus || app.state || '';
+            if (status === 'RUNNING' && app.memory_efficiency_percent !== undefined) {
+                const memEff = app.memory_efficiency_percent;
+                const vcoreEff = app.vcore_efficiency_percent || 0;
+                const avgEff = (memEff + vcoreEff) / 2;
+
+                let effIcon = '🔴'; // Low efficiency
+                if (avgEff > 75) effIcon = '🟢'; // Good efficiency
+                else if (avgEff > 50) effIcon = '🟡'; // Medium efficiency
+
+                resourceText += ` ${effIcon}${avgEff.toFixed(0)}%`;
+            }
+        } else {
+            resourceText = 'N/A';
+        }
+
+        return resourceText;
     }
-    return 'N/A';
 }
 
 async function viewDetails(appId) {
@@ -313,9 +375,15 @@ function closeModal() {
 function toggleView() {
     viewMode = viewMode === 'spark' ? 'yarn' : 'spark';
 
-    // Update button text
+    // Update button text with more descriptive labels
     const btn = document.querySelector('[onclick="toggleView()"]');
-    btn.textContent = viewMode === 'spark' ? 'Switch to YARN' : 'Switch to Spark';
+    if (viewMode === 'spark') {
+        btn.textContent = 'Switch to YARN (Live)';
+        btn.title = 'Switch to YARN ResourceManager - better for running applications';
+    } else {
+        btn.textContent = 'Switch to Spark (History)';
+        btn.title = 'Switch to Spark History Server - better for completed applications';
+    }
 
     if (currentCluster) {
         loadApplications();

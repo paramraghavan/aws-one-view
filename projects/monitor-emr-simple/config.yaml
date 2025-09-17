@@ -4,18 +4,21 @@ emr_clusters:
     spark_url: "http://staging-master:18080"
     yarn_url: "http://staging-master:8088"
     description: "Staging EMR cluster"
+    aws_cluster_id: "j-3SD91U2E1L2QX"
 
   production:
     name: "Production EMR"
     spark_url: "http://production-master:18080"
     yarn_url: "http://production-master:8088"
     description: "Production EMR cluster"
+    aws_cluster_id: "j-2ABC123DEF456"
 
   dev-cluster:
     name: "Development EMR"
     spark_url: "http://dev-master:18080"
     yarn_url: "http://dev-master:8088"
     description: "Development EMR cluster for testing"
+    aws_cluster_id: "j-1XYZ789GHI012"
 
 # Optional: Configure refresh intervals (in seconds)
 refresh_intervals:
