@@ -39,6 +39,27 @@
             </div>
         </div>
 
+        <div class="card">
+            <div class="card-header">
+                Task Nodes & Spot Instances
+                <button class="btn btn-small" onclick="refreshTaskNodes()" title="Refresh Task Node Information">🔄 Refresh</button>
+            </div>
+            <div class="card-content">
+                <div id="taskNodesInfo">
+                    <!-- Task nodes information will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Spot Instance Analysis</div>
+            <div class="card-content">
+                <div id="spotAnalysis">
+                    <!-- Spot instance analysis will be populated here -->
+                </div>
+            </div>
+        </div>
+
         <div class="card full-width">
             <div class="card-header">
                 Applications
@@ -51,7 +72,8 @@
                         <option value="killed">⛔ Killed</option>
                         <option value="accepted">⏳ Accepted/Waiting</option>
                     </select>
-                    <button class="btn btn-small" onclick="toggleView()" title="Switch between Spark History Server and YARN ResourceManager">Switch to YARN (Running Jobs)</button>
+                    <button class="btn btn-small" onclick="toggleView()" title="Switch between Spark History Server and YARN ResourceManager">Switch to YARN (Live)</button>
+                    <button class="btn btn-small" onclick="showApplicationSummary()" title="Show application summary by name">📊 Summary</button>
                 </div>
             </div>
             <div class="card-content">
@@ -65,6 +87,7 @@
                                 <th>Status</th>
                                 <th>Duration</th>
                                 <th>Resources</th>
+                                <th>Efficiency</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>

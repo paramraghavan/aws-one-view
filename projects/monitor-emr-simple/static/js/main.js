@@ -83,9 +83,196 @@ async function loadClusterInfo() {
 
         updateClusterStats(info);
         updateResourceUsage(info);
+        updateTaskNodesInfo(info);
+        updateSpotAnalysis(info);
     } catch (error) {
         console.error('Error loading cluster info:', error);
         showError('Failed to load cluster information');
+    }
+}
+
+function updateTaskNodesInfo(info) {
+    const container = document.getElementById('taskNodesInfo');
+
+    const taskNodes = info.taskNodes || [];
+    const instanceTypes = info.instanceTypes || {};
+    const nodeStates = info.nodeStates || {};
+
+    if (taskNodes.length === 0) {
+        container.innerHTML = '<div class="text-center">No task node information available</div>';
+        return;
+    }
+
+    // Summary stats
+    const totalNodes = taskNodes.length;
+    const spotNodes = instanceTypes.spot || 0;
+    const onDemandNodes = instanceTypes['on-demand'] || 0;
+    const unhealthyNodes = (nodeStates.LOST || 0) + (nodeStates.UNHEALTHY || 0) + (nodeStates.DECOMMISSIONED || 0);
+
+    container.innerHTML = `
+        <div class="stats-grid" style="margin-bottom: 20px;">
+            <div class="stat-item">
+                <div class="stat-value">🖥️ ${totalNodes}</div>
+                <div class="stat-label">Total Nodes</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">⚡ ${spotNodes}</div>
+                <div class="stat-label">Spot Instances</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">💎 ${onDemandNodes}</div>
+                <div class="stat-label">On-Demand</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">⚠️ ${unhealthyNodes}</div>
+                <div class="stat-label">Unhealthy</div>
+            </div>
+        </div>
+
+        <details>
+            <summary style="cursor: pointer; font-weight: bold; margin-bottom: 10px;">📋 View All Task Nodes (${totalNodes})</summary>
+            <div class="task-nodes-table-container" style="max-height: 300px; overflow-y: auto;">
+                <table class="applications-table">
+                    <thead>
+                        <tr>
+                            <th>Node ID</th>
+                            <th>State</th>
+                            <th>Type</th>
+                            <th>Health</th>
+                            <th>Risk</th>
+                            <th>Resources</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${taskNodes.map(node => `
+                            <tr>
+                                <td title="${node.node_id}">${node.node_id.length > 20 ? node.node_id.substring(0, 20) + '...' : node.node_id}</td>
+                                <td><span class="status-badge status-${node.state.toLowerCase()}">${node.state}</span></td>
+                                <td>${getInstanceTypeIcon(node.instance_type)} ${node.instance_type}</td>
+                                <td><span class="health-indicator ${node.health_status}">${getHealthIcon(node.health_status)}</span></td>
+                                <td><span class="risk-indicator ${node.spot_termination_risk}">${getRiskIcon(node.spot_termination_risk)}</span></td>
+                                <td>${formatMemory(node.memory_mb * 1024 * 1024)} / ${node.vcores} cores</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </details>
+    `;
+}
+
+function updateSpotAnalysis(info) {
+    const container = document.getElementById('spotAnalysis');
+
+    // Load spot analysis data
+    loadSpotAnalysisData();
+}
+
+async function loadSpotAnalysisData() {
+    try {
+        const response = await fetch(`/api/cluster/${currentCluster}/spot-analysis`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const analysis = await response.json();
+        const container = document.getElementById('spotAnalysis');
+
+        const totalSpot = analysis.total_spot_nodes || 0;
+        const highRisk = analysis.high_risk_nodes || 0;
+        const mediumRisk = analysis.medium_risk_nodes || 0;
+        const lowRisk = analysis.low_risk_nodes || 0;
+        const unhealthy = analysis.unhealthy_nodes || 0;
+
+        if (totalSpot === 0) {
+            container.innerHTML = '<div class="text-center">No spot instances detected</div>';
+            return;
+        }
+
+        const riskPercentage = totalSpot > 0 ? ((highRisk + mediumRisk) / totalSpot * 100) : 0;
+        const riskClass = riskPercentage > 50 ? 'danger' : riskPercentage > 25 ? 'warning' : '';
+
+        container.innerHTML = `
+            <div class="stats-grid" style="margin-bottom: 20px;">
+                <div class="stat-item">
+                    <div class="stat-value">⚡ ${totalSpot}</div>
+                    <div class="stat-label">Spot Instances</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">🔴 ${highRisk}</div>
+                    <div class="stat-label">High Risk</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">🟡 ${mediumRisk}</div>
+                    <div class="stat-label">Medium Risk</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">🟢 ${lowRisk}</div>
+                    <div class="stat-label">Low Risk</div>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <h4>⚠️ Termination Risk Assessment</h4>
+                <div>Risk Level: ${riskPercentage.toFixed(1)}% of spot instances at risk</div>
+                <div class="resource-bar ${riskClass}" style="margin-top: 10px;">
+                    <div class="resource-fill" style="width: ${riskPercentage}%"></div>
+                </div>
+            </div>
+
+            ${unhealthy > 0 ? `
+                <div class="error" style="margin-top: 10px;">
+                    ⚠️ ${unhealthy} spot instance(s) currently unhealthy or terminated
+                </div>
+            ` : ''}
+
+            <div style="margin-top: 15px; font-size: 14px; color: #666;">
+                💡 Tip: Monitor high-risk spot instances closely. Consider using mixed instance types for critical workloads.
+            </div>
+        `;
+
+    } catch (error) {
+        console.error('Error loading spot analysis:', error);
+        document.getElementById('spotAnalysis').innerHTML =
+            '<div class="error">Error loading spot instance analysis</div>';
+    }
+}
+
+function getInstanceTypeIcon(type) {
+    switch(type) {
+        case 'spot': return '⚡';
+        case 'on-demand': return '💎';
+        case 'reserved': return '🔒';
+        default: return '❓';
+    }
+}
+
+function getHealthIcon(health) {
+    switch(health) {
+        case 'healthy': return '🟢';
+        case 'stale': return '🟡';
+        case 'unknown': return '🔴';
+        default: return '❓';
+    }
+}
+
+function getRiskIcon(risk) {
+    switch(risk) {
+        case 'low': return '🟢';
+        case 'medium': return '🟡';
+        case 'high': return '🔴';
+        default: return '❓';
+    }
+}
+
+async function refreshTaskNodes() {
+    try {
+        const refreshBtn = document.querySelector('[onclick="refreshTaskNodes()"]');
+        refreshBtn.classList.add('spinning');
+
+        await loadClusterInfo();
+
+        refreshBtn.classList.remove('spinning');
+    } catch (error) {
+        console.error('Error refreshing task nodes:', error);
     }
 }
 
@@ -204,7 +391,7 @@ function updateApplicationsTable(applications) {
     const tbody = document.getElementById('applicationsBody');
 
     if (!applications || applications.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center">No applications found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center">No applications found</td></tr>';
         return;
     }
 
@@ -219,6 +406,7 @@ function updateApplicationsTable(applications) {
         const status = getApplicationStatus(app);
         const duration = getApplicationDuration(app);
         const resources = getApplicationResources(app);
+        const efficiency = getApplicationEfficiency(app);
         const appId = app.id || app.applicationId || 'N/A';
 
         // Add source indicator
@@ -236,6 +424,7 @@ function updateApplicationsTable(applications) {
                 <td><span class="status-badge status-${status.toLowerCase()}">${status}</span></td>
                 <td>${duration}</td>
                 <td>${resources}</td>
+                <td>${efficiency}</td>
                 <td>
                     <button class="btn btn-small" onclick="viewDetails('${appId}')" title="View Details">
                         📊
@@ -247,6 +436,32 @@ function updateApplicationsTable(applications) {
             </tr>
         `;
     }).join('');
+}
+
+function getApplicationEfficiency(app) {
+    if (app.source === 'yarn' && app.standardized_status === 'RUNNING') {
+        // For running YARN applications, show real-time efficiency
+        const memEff = app.memory_efficiency_percent || 0;
+        const vcoreEff = app.vcore_efficiency_percent || 0;
+
+        if (memEff > 0 || vcoreEff > 0) {
+            const avgEff = (memEff + vcoreEff) / 2;
+            let effIcon = '🔴'; // Low efficiency
+            if (avgEff > 75) effIcon = '🟢'; // Good efficiency
+            else if (avgEff > 50) effIcon = '🟡'; // Medium efficiency
+
+            return `${effIcon} ${avgEff.toFixed(0)}%`;
+        }
+    }
+
+    // For completed applications, show resource hours
+    if (app.memory_hours || app.vcore_hours) {
+        const memHours = (app.memory_hours || 0).toFixed(1);
+        const vcoreHours = (app.vcore_hours || 0).toFixed(1);
+        return `${memHours}h mem, ${vcoreHours}h cpu`;
+    }
+
+    return 'N/A';
 }
 
 function getApplicationStatus(app) {
@@ -282,13 +497,15 @@ function getApplicationDuration(app) {
 
 function getApplicationResources(app) {
     if (app.source === 'spark') {
-        // Spark History Server data
-        if (app.total_cores && app.total_memory_mb) {
+        // Enhanced Spark History Server data
+        if (app.memory_gb && app.total_cores) {
+            return `${app.total_cores} cores, ${formatMemory(app.memory_gb * 1024 * 1024 * 1024)}`;
+        } else if (app.total_cores && app.total_memory_mb) {
             return `${app.total_cores} cores, ${formatMemory(app.total_memory_mb * 1024 * 1024)}`;
         }
         return 'N/A (History Server)';
     } else {
-        // YARN ResourceManager data - better for running apps
+        // Enhanced YARN ResourceManager data
         const allocated_mb = app.allocatedMB || 0;
         const allocated_vcores = app.allocatedVCores || 0;
         const running_containers = app.runningContainers || 0;
@@ -299,25 +516,95 @@ function getApplicationResources(app) {
             if (running_containers > 0) {
                 resourceText += ` (${running_containers} containers)`;
             }
-
-            // Add efficiency indicators for running apps
-            const status = app.finalStatus || app.state || '';
-            if (status === 'RUNNING' && app.memory_efficiency_percent !== undefined) {
-                const memEff = app.memory_efficiency_percent;
-                const vcoreEff = app.vcore_efficiency_percent || 0;
-                const avgEff = (memEff + vcoreEff) / 2;
-
-                let effIcon = '🔴'; // Low efficiency
-                if (avgEff > 75) effIcon = '🟢'; // Good efficiency
-                else if (avgEff > 50) effIcon = '🟡'; // Medium efficiency
-
-                resourceText += ` ${effIcon}${avgEff.toFixed(0)}%`;
-            }
         } else {
             resourceText = 'N/A';
         }
 
         return resourceText;
+    }
+}
+
+async function showApplicationSummary() {
+    try {
+        const modal = document.getElementById('detailsModal');
+        const modalBody = document.getElementById('modalBody');
+
+        // Show loading
+        document.querySelector('.modal-header h2').textContent = 'Application Summary by Name';
+        modalBody.innerHTML = '<div class="loading">Loading application summary...</div>';
+        modal.style.display = 'block';
+
+        // Fetch summary data
+        const response = await fetch(`/api/cluster/${currentCluster}/application-summary?hours=24`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const summary = await response.json();
+
+        if (!summary || summary.length === 0) {
+            modalBody.innerHTML = '<div class="text-center">No application summary available</div>';
+            return;
+        }
+
+        // Create summary table
+        modalBody.innerHTML = `
+            <div style="margin-bottom: 20px;">
+                <h4>📊 Application Summary (Last 24 Hours)</h4>
+                <p>Grouped by application name showing resource usage patterns</p>
+            </div>
+
+            <div style="max-height: 60vh; overflow-y: auto;">
+                <table class="applications-table">
+                    <thead>
+                        <tr>
+                            <th>Application Name</th>
+                            <th>Total Runs</th>
+                            <th>Success Rate</th>
+                            <th>Memory-Hours</th>
+                            <th>vCore-Hours</th>
+                            <th>Avg Duration</th>
+                            <th>Users</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${summary.map(app => `
+                            <tr>
+                                <td title="${app.app_name}">${app.app_name.length > 30 ? app.app_name.substring(0, 30) + '...' : app.app_name}</td>
+                                <td>
+                                    <span style="color: #2196f3;">${app.running || 0} running</span> /
+                                    <span style="color: #4caf50;">${app.succeeded || 0} success</span> /
+                                    <span style="color: #f44336;">${app.failed || 0} failed</span>
+                                    <br><strong>Total: ${app.total_runs}</strong>
+                                </td>
+                                <td>
+                                    <span class="status-badge ${app.success_rate >= 90 ? 'status-succeeded' : app.success_rate >= 70 ? 'status-accepted' : 'status-failed'}">
+                                        ${app.success_rate.toFixed(1)}%
+                                    </span>
+                                </td>
+                                <td>${app.total_memory_hours.toFixed(1)}</td>
+                                <td>${app.total_vcore_hours.toFixed(1)}</td>
+                                <td>${app.avg_duration_minutes.toFixed(1)} min</td>
+                                <td title="${app.users}">${app.users.length > 20 ? app.users.substring(0, 20) + '...' : app.users}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 6px;">
+                <h5>💡 Insights</h5>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li><strong>High Memory-Hours:</strong> Look for applications that might benefit from optimization</li>
+                    <li><strong>Low Success Rates:</strong> Applications that frequently fail may need attention</li>
+                    <li><strong>Many Runs:</strong> Frequently executed applications should be optimized for efficiency</li>
+                    <li><strong>Long Durations:</strong> Applications taking too long might need performance tuning</li>
+                </ul>
+            </div>
+        `;
+
+    } catch (error) {
+        console.error('Error loading application summary:', error);
+        document.getElementById('modalBody').innerHTML =
+            '<div class="error">❌ Error loading application summary</div>';
     }
 }
 
@@ -394,10 +681,10 @@ function toggleView() {
     // Update button text with more descriptive labels
     const btn = document.querySelector('[onclick="toggleView()"]');
     if (viewMode === 'spark') {
-        btn.textContent = 'Switch to YARN (Running Jobs)';
+        btn.textContent = 'Switch to YARN (Live)';
         btn.title = 'Switch to YARN ResourceManager - better for running applications';
     } else {
-        btn.textContent = 'Switch to Spark (Completed Jobs)';
+        btn.textContent = 'Switch to Spark (History)';
         btn.title = 'Switch to Spark History Server - better for completed applications';
     }
 
