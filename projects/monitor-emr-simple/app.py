@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-Enhanced EMR Monitoring Tool
-A Flask-based web application for monitoring EMR clusters, jobs, and resources.
-Incorporates improvements from Streamlit version + task node monitoring.
+Enhanced EMR Monitoring Tool with Fixed Memory Tracking
+Properly tracks available, allocated, and used memory across nodes and applications
 """
 
 import json
@@ -82,16 +81,169 @@ class EMRMonitor:
     def safe_float_convert(self, value, default=0.0):
         """Safely convert value to float"""
         try:
-            return float(value) if value is not None else default
+            if value is None or value == '':
+                return default
+            if isinstance(value, str):
+                value = value.replace(',', '').replace('$', '').strip()
+                if value.lower() in ['null', 'none', 'n/a', '']:
+                    return default
+            result = float(value)
+            return result if result >= 0 else default
         except (ValueError, TypeError):
             return default
 
     def safe_int_convert(self, value, default=0):
         """Safely convert value to int"""
         try:
-            return int(value) if value is not None else default
+            if value is None or value == '':
+                return default
+            if isinstance(value, str):
+                value = value.replace(',', '').replace('$', '').strip()
+                if value.lower() in ['null', 'none', 'n/a', '']:
+                    return default
+            result = int(float(value))  # Convert through float to handle decimal strings
+            return result if result >= 0 else default
         except (ValueError, TypeError):
             return default
+
+    def extract_memory_from_node(self, node: Dict) -> Dict:
+        """Extract memory information from a YARN node with multiple field attempts"""
+        memory_info = {
+            'total_memory_mb': 0,
+            'available_memory_mb': 0,
+            'used_memory_mb': 0,
+            'allocated_memory_mb': 0,
+            'reserved_memory_mb': 0
+        }
+
+        # Try different field combinations for total/max memory
+        total_memory_fields = [
+            'totalMemoryMB', 'maxMemoryMB', 'memoryMB',
+            'totalPhysicalMemoryMB', 'physicalMemoryMB'
+        ]
+
+        for field in total_memory_fields:
+            if field in node:
+                memory_info['total_memory_mb'] = self.safe_int_convert(node[field])
+                if memory_info['total_memory_mb'] > 0:
+                    logger.debug(f"Found total memory in field '{field}': {memory_info['total_memory_mb']} MB")
+                    break
+
+        # Try different field combinations for available memory
+        available_memory_fields = [
+            'availMemoryMB', 'availableMemoryMB', 'freeMemoryMB',
+            'unallocatedMemoryMB', 'unusedMemoryMB'
+        ]
+
+        for field in available_memory_fields:
+            if field in node:
+                memory_info['available_memory_mb'] = self.safe_int_convert(node[field])
+                if memory_info['available_memory_mb'] > 0:
+                    logger.debug(f"Found available memory in field '{field}': {memory_info['available_memory_mb']} MB")
+                    break
+
+        # Try different field combinations for used/allocated memory
+        used_memory_fields = [
+            'usedMemoryMB', 'allocatedMemoryMB', 'reservedMemoryMB',
+            'allocatedContainersMB', 'runningContainersMB'
+        ]
+
+        for field in used_memory_fields:
+            if field in node:
+                used_value = self.safe_int_convert(node[field])
+                if used_value > 0:
+                    if 'used' in field.lower():
+                        memory_info['used_memory_mb'] = used_value
+                        logger.debug(f"Found used memory in field '{field}': {used_value} MB")
+                    elif 'allocated' in field.lower():
+                        memory_info['allocated_memory_mb'] = used_value
+                        logger.debug(f"Found allocated memory in field '{field}': {used_value} MB")
+                    elif 'reserved' in field.lower():
+                        memory_info['reserved_memory_mb'] = used_value
+                        logger.debug(f"Found reserved memory in field '{field}': {used_value} MB")
+
+        # Calculate derived values if not directly available
+        if memory_info['total_memory_mb'] > 0:
+            # If we have total and available, calculate used
+            if memory_info['available_memory_mb'] > 0 and memory_info['used_memory_mb'] == 0:
+                memory_info['used_memory_mb'] = memory_info['total_memory_mb'] - memory_info['available_memory_mb']
+                logger.debug(f"Calculated used memory: {memory_info['used_memory_mb']} MB")
+
+            # If we have total and used, calculate available
+            elif memory_info['used_memory_mb'] > 0 and memory_info['available_memory_mb'] == 0:
+                memory_info['available_memory_mb'] = memory_info['total_memory_mb'] - memory_info['used_memory_mb']
+                logger.debug(f"Calculated available memory: {memory_info['available_memory_mb']} MB")
+
+        # Use allocated memory as used memory if used is not available
+        if memory_info['used_memory_mb'] == 0 and memory_info['allocated_memory_mb'] > 0:
+            memory_info['used_memory_mb'] = memory_info['allocated_memory_mb']
+            logger.debug(f"Using allocated memory as used memory: {memory_info['used_memory_mb']} MB")
+
+        return memory_info
+
+    def extract_vcores_from_node(self, node: Dict) -> Dict:
+        """Extract vcore information from a YARN node"""
+        vcore_info = {
+            'total_vcores': 0,
+            'available_vcores': 0,
+            'used_vcores': 0,
+            'allocated_vcores': 0
+        }
+
+        # Try different field combinations for total vcores
+        total_vcore_fields = [
+            'totalVirtualCores', 'maxVirtualCores', 'vCores', 'totalCores',
+            'physicalCores', 'logicalCores'
+        ]
+
+        for field in total_vcore_fields:
+            if field in node:
+                vcore_info['total_vcores'] = self.safe_int_convert(node[field])
+                if vcore_info['total_vcores'] > 0:
+                    logger.debug(f"Found total vcores in field '{field}': {vcore_info['total_vcores']}")
+                    break
+
+        # Try different field combinations for available vcores
+        available_vcore_fields = [
+            'availableVirtualCores', 'availVCores', 'freeVirtualCores',
+            'unallocatedVirtualCores', 'unusedVirtualCores'
+        ]
+
+        for field in available_vcore_fields:
+            if field in node:
+                vcore_info['available_vcores'] = self.safe_int_convert(node[field])
+                if vcore_info['available_vcores'] > 0:
+                    logger.debug(f"Found available vcores in field '{field}': {vcore_info['available_vcores']}")
+                    break
+
+        # Try different field combinations for used vcores
+        used_vcore_fields = [
+            'usedVirtualCores', 'usedVCores', 'allocatedVirtualCores',
+            'allocatedVCores', 'runningVirtualCores'
+        ]
+
+        for field in used_vcore_fields:
+            if field in node:
+                used_value = self.safe_int_convert(node[field])
+                if used_value > 0:
+                    if 'used' in field.lower():
+                        vcore_info['used_vcores'] = used_value
+                    elif 'allocated' in field.lower():
+                        vcore_info['allocated_vcores'] = used_value
+                    logger.debug(f"Found {field}: {used_value}")
+
+        # Calculate derived values
+        if vcore_info['total_vcores'] > 0:
+            if vcore_info['available_vcores'] > 0 and vcore_info['used_vcores'] == 0:
+                vcore_info['used_vcores'] = vcore_info['total_vcores'] - vcore_info['available_vcores']
+            elif vcore_info['used_vcores'] > 0 and vcore_info['available_vcores'] == 0:
+                vcore_info['available_vcores'] = vcore_info['total_vcores'] - vcore_info['used_vcores']
+
+        # Use allocated as used if used is not available
+        if vcore_info['used_vcores'] == 0 and vcore_info['allocated_vcores'] > 0:
+            vcore_info['used_vcores'] = vcore_info['allocated_vcores']
+
+        return vcore_info
 
     def detect_instance_type(self, node_id: str, node_rack: str = None) -> str:
         """Detect if instance is spot, on-demand, or reserved"""
@@ -119,9 +271,10 @@ class EMRMonitor:
             return 'unknown'
 
     def get_task_nodes_details(self, cluster_id: str) -> List[Dict]:
-        """Get detailed task node information including instance types and health"""
+        """Get detailed task node information with enhanced memory tracking"""
         cluster = self.config['emr_clusters'].get(cluster_id)
         if not cluster:
+            logger.error(f"Cluster {cluster_id} not found in config")
             return []
 
         try:
@@ -130,21 +283,48 @@ class EMRMonitor:
                 logger.error(f"No yarn_url configured for cluster {cluster_id}")
                 return []
 
-            response = requests.get(f"{yarn_url}/ws/v1/cluster/nodes", timeout=10)
+            api_url = f"{yarn_url}/ws/v1/cluster/nodes"
+            logger.info(f"Fetching node details from: {api_url}")
+
+            response = requests.get(api_url, timeout=10)
             response.raise_for_status()
 
             data = response.json()
-            nodes = data.get('nodes', {}).get('node', [])
+            logger.info(f"YARN nodes API response keys: {list(data.keys())}")
+
+            # Handle different response structures
+            nodes = data.get('nodes', {})
+            if isinstance(nodes, dict) and 'node' in nodes:
+                nodes = nodes['node']
 
             if isinstance(nodes, dict):
                 nodes = [nodes]
 
+            if not isinstance(nodes, list):
+                logger.error(f"Unexpected nodes data type: {type(nodes)}")
+                return []
+
+            logger.info(f"Processing {len(nodes)} nodes")
+
             task_nodes = []
-            for node in nodes:
+            for i, node in enumerate(nodes):
+                logger.info(f"=== Processing Node {i + 1}/{len(nodes)} ===")
+
+                # Basic node information
                 node_id = node.get('id', '')
                 node_state = node.get('state', 'UNKNOWN')
                 node_rack = node.get('rack', '')
                 node_host = node.get('nodeHostName', '')
+
+                logger.info(f"Node ID: {node_id}, State: {node_state}")
+
+                # Extract memory information using enhanced method
+                memory_info = self.extract_memory_from_node(node)
+                logger.info(f"Memory info: {memory_info}")
+
+                # Extract vcore information using enhanced method
+                vcore_info = self.extract_vcores_from_node(node)
+                logger.info(f"VCore info: {vcore_info}")
 
                 # Detect instance type
                 instance_type = self.detect_instance_type(node_id, node_rack)
@@ -167,6 +347,15 @@ class EMRMonitor:
                     elif health_status == 'stale':
                         spot_termination_risk = 'medium'
 
+                # Calculate utilization percentages
+                memory_utilization = 0
+                if memory_info['total_memory_mb'] > 0:
+                    memory_utilization = (memory_info['used_memory_mb'] / memory_info['total_memory_mb']) * 100
+
+                vcore_utilization = 0
+                if vcore_info['total_vcores'] > 0:
+                    vcore_utilization = (vcore_info['used_vcores'] / vcore_info['total_vcores']) * 100
+
                 node_info = {
                     'node_id': node_id,
                     'hostname': node_host,
@@ -177,19 +366,278 @@ class EMRMonitor:
                     'last_health_update': last_update_time.strftime(
                         '%Y-%m-%d %H:%M:%S') if last_update_time else 'Unknown',
                     'spot_termination_risk': spot_termination_risk,
-                    'memory_mb': self.safe_int_convert(node.get('availMemoryMB', 0)),
-                    'vcores': self.safe_int_convert(node.get('availableVirtualCores', 0)),
-                    'used_memory_mb': self.safe_int_convert(node.get('usedMemoryMB', 0)),
-                    'used_vcores': self.safe_int_convert(node.get('usedVirtualCores', 0)),
+
+                    # Memory information
+                    'total_memory_mb': memory_info['total_memory_mb'],
+                    'available_memory_mb': memory_info['available_memory_mb'],
+                    'used_memory_mb': memory_info['used_memory_mb'],
+                    'allocated_memory_mb': memory_info['allocated_memory_mb'],
+                    'reserved_memory_mb': memory_info['reserved_memory_mb'],
+                    'memory_utilization_percent': round(memory_utilization, 2),
+
+                    # VCore information
+                    'total_vcores': vcore_info['total_vcores'],
+                    'available_vcores': vcore_info['available_vcores'],
+                    'used_vcores': vcore_info['used_vcores'],
+                    'allocated_vcores': vcore_info['allocated_vcores'],
+                    'vcore_utilization_percent': round(vcore_utilization, 2),
+
+                    # Legacy fields for backward compatibility
+                    'memory_mb': memory_info['available_memory_mb'],  # Available memory
+                    'vcores': vcore_info['available_vcores'],  # Available vcores
+
                     'num_containers': self.safe_int_convert(node.get('numContainers', 0))
                 }
 
+                logger.info(
+                    f"Final node summary - Total: {memory_info['total_memory_mb']}MB, Available: {memory_info['available_memory_mb']}MB, Used: {memory_info['used_memory_mb']}MB")
                 task_nodes.append(node_info)
 
+            logger.info(f"Completed processing {len(task_nodes)} nodes")
             return task_nodes
 
         except Exception as e:
             logger.error(f"Error fetching task nodes for {cluster_id}: {e}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            return []
+
+    def get_cluster_resource_summary(self, cluster_id: str) -> Dict:
+        """Get comprehensive cluster resource summary"""
+        task_nodes = self.get_task_nodes_details(cluster_id)
+
+        if not task_nodes:
+            return {}
+
+        # Initialize aggregators
+        total_memory_mb = 0
+        available_memory_mb = 0
+        used_memory_mb = 0
+        allocated_memory_mb = 0
+
+        total_vcores = 0
+        available_vcores = 0
+        used_vcores = 0
+        allocated_vcores = 0
+
+        # Node categorization
+        node_counts = {
+            'total': len(task_nodes),
+            'healthy': 0,
+            'unhealthy': 0,
+            'master': 0,
+            'core': 0,
+            'task': 0,
+            'spot': 0,
+            'on_demand': 0
+        }
+
+        # Aggregate resources across all nodes
+        for node in task_nodes:
+            # Memory aggregation
+            total_memory_mb += node.get('total_memory_mb', 0)
+            available_memory_mb += node.get('available_memory_mb', 0)
+            used_memory_mb += node.get('used_memory_mb', 0)
+            allocated_memory_mb += node.get('allocated_memory_mb', 0)
+
+            # VCore aggregation
+            total_vcores += node.get('total_vcores', 0)
+            available_vcores += node.get('available_vcores', 0)
+            used_vcores += node.get('used_vcores', 0)
+            allocated_vcores += node.get('allocated_vcores', 0)
+
+            # Node counting
+            if node.get('state') in ['RUNNING', 'HEALTHY']:
+                node_counts['healthy'] += 1
+            else:
+                node_counts['unhealthy'] += 1
+
+            node_id = node.get('node_id', '').lower()
+            if 'master' in node_id:
+                node_counts['master'] += 1
+            elif 'core' in node_id:
+                node_counts['core'] += 1
+            else:
+                node_counts['task'] += 1
+
+            if node.get('instance_type') == 'spot':
+                node_counts['spot'] += 1
+            elif node.get('instance_type') == 'on-demand':
+                node_counts['on_demand'] += 1
+
+        # Calculate utilization percentages
+        memory_utilization = (used_memory_mb / total_memory_mb * 100) if total_memory_mb > 0 else 0
+        vcore_utilization = (used_vcores / total_vcores * 100) if total_vcores > 0 else 0
+
+        return {
+            'cluster_id': cluster_id,
+            'timestamp': datetime.now().isoformat(),
+
+            # Memory metrics
+            'memory': {
+                'total_mb': total_memory_mb,
+                'available_mb': available_memory_mb,
+                'used_mb': used_memory_mb,
+                'allocated_mb': allocated_memory_mb,
+                'total_gb': round(total_memory_mb / 1024, 2),
+                'available_gb': round(available_memory_mb / 1024, 2),
+                'used_gb': round(used_memory_mb / 1024, 2),
+                'allocated_gb': round(allocated_memory_mb / 1024, 2),
+                'utilization_percent': round(memory_utilization, 2)
+            },
+
+            # VCore metrics
+            'vcores': {
+                'total': total_vcores,
+                'available': available_vcores,
+                'used': used_vcores,
+                'allocated': allocated_vcores,
+                'utilization_percent': round(vcore_utilization, 2)
+            },
+
+            # Node metrics
+            'nodes': node_counts,
+
+            # Additional metrics
+            'efficiency': {
+                'avg_memory_per_node_gb': round((total_memory_mb / 1024) / node_counts['total'], 2) if node_counts[
+                                                                                                           'total'] > 0 else 0,
+                'avg_vcores_per_node': round(total_vcores / node_counts['total'], 2) if node_counts['total'] > 0 else 0,
+                'memory_waste_gb': round((available_memory_mb / 1024), 2),
+                'vcore_waste': available_vcores
+            }
+        }
+
+    def get_yarn_applications_enhanced(self, cluster_id: str, status_filter: str = None) -> List[Dict]:
+        """Enhanced YARN applications with resource efficiency calculations"""
+        cluster = self.config['emr_clusters'].get(cluster_id)
+        if not cluster:
+            return []
+
+        try:
+            yarn_url = cluster.get('yarn_url')
+            if not yarn_url:
+                logger.error(f"No yarn_url configured for cluster {cluster_id}")
+                return []
+
+            api_url = f"{yarn_url}/ws/v1/cluster/apps"
+            params = {}
+
+            # Add status filter
+            yarn_state_mapping = {
+                'running': ['RUNNING'],
+                'completed': ['FINISHED'],
+                'failed': ['FAILED'],
+                'killed': ['KILLED'],
+                'accepted': ['ACCEPTED'],
+                'waiting': ['SUBMITTED', 'ACCEPTED'],
+                'all': None
+            }
+
+            if status_filter and status_filter in yarn_state_mapping:
+                yarn_states = yarn_state_mapping[status_filter]
+                if yarn_states:
+                    params['states'] = ','.join(yarn_states)
+
+            response = requests.get(api_url, params=params, timeout=10)
+            response.raise_for_status()
+
+            data = response.json()
+            applications = data.get('apps', {})
+
+            if isinstance(applications, dict) and 'app' in applications:
+                applications = applications['app']
+
+            if isinstance(applications, dict):
+                applications = [applications]
+
+            if not isinstance(applications, list):
+                logger.warning(f"Unexpected applications data type: {type(applications)}")
+                return []
+
+            logger.info(f"Processing {len(applications)} YARN applications")
+
+            enhanced_apps = []
+            for app in applications:
+                try:
+                    app['cluster_id'] = cluster_id
+                    app['cluster_name'] = cluster.get('name', 'Unknown')
+
+                    # Safe type conversions
+                    started_time = self.safe_int_convert(app.get('startedTime', 0))
+                    finished_time = self.safe_int_convert(app.get('finishedTime', 0))
+                    elapsed_time = self.safe_int_convert(app.get('elapsedTime', 0))
+
+                    # Convert timestamps
+                    if started_time > 0:
+                        app['startedTimeFormatted'] = datetime.fromtimestamp(started_time / 1000).strftime(
+                            '%Y-%m-%d %H:%M:%S')
+                        app['start_time_est'] = convert_gmt_to_est(started_time)
+
+                    if finished_time > 0:
+                        app['finishedTimeFormatted'] = datetime.fromtimestamp(finished_time / 1000).strftime(
+                            '%Y-%m-%d %H:%M:%S')
+                        app['end_time_est'] = convert_gmt_to_est(finished_time)
+
+                    # Duration calculations
+                    duration_seconds = elapsed_time / 1000 if elapsed_time > 0 else 0
+                    duration_hours = duration_seconds / 3600
+                    app['duration_minutes'] = duration_seconds / 60
+                    app['duration_hours'] = duration_hours
+                    app['durationFormatted'] = self.format_duration(elapsed_time)
+
+                    # Enhanced resource calculations
+                    allocated_mb = self.safe_float_convert(app.get('allocatedMB', 0))
+                    allocated_vcores = self.safe_int_convert(app.get('allocatedVCores', 0))
+                    memory_seconds = self.safe_float_convert(app.get('memorySeconds', 0))
+                    vcore_seconds = self.safe_float_convert(app.get('vcoreSeconds', 0))
+
+                    app['allocated_memory_mb'] = allocated_mb
+                    app['allocated_memory_gb'] = allocated_mb / 1024
+                    app['allocated_vcores'] = allocated_vcores
+                    app['memory_gb'] = allocated_mb / 1024
+                    app['memory_hours'] = (allocated_mb / 1024) * duration_hours
+                    app['vcore_hours'] = allocated_vcores * duration_hours
+
+                    # Resource efficiency calculations
+                    if duration_seconds > 0 and allocated_mb > 0:
+                        expected_memory_seconds = allocated_mb * duration_seconds
+                        memory_efficiency = (
+                                    memory_seconds / expected_memory_seconds * 100) if expected_memory_seconds > 0 else 0
+                        app['memory_efficiency_percent'] = round(memory_efficiency, 2)
+
+                    if duration_seconds > 0 and allocated_vcores > 0:
+                        expected_vcore_seconds = allocated_vcores * duration_seconds
+                        vcore_efficiency = (
+                                    vcore_seconds / expected_vcore_seconds * 100) if expected_vcore_seconds > 0 else 0
+                        app['vcore_efficiency_percent'] = round(vcore_efficiency, 2)
+
+                    # Standardized status
+                    yarn_state = app.get('state', 'UNKNOWN')
+                    final_status = app.get('finalStatus', 'UNDEFINED')
+
+                    if yarn_state == 'RUNNING':
+                        app['standardized_status'] = 'RUNNING'
+                    elif yarn_state == 'FINISHED' and final_status == 'SUCCEEDED':
+                        app['standardized_status'] = 'SUCCEEDED'
+                    elif yarn_state in ['FAILED', 'KILLED'] or final_status in ['FAILED', 'KILLED']:
+                        app['standardized_status'] = 'FAILED'
+                    elif yarn_state in ['ACCEPTED', 'SUBMITTED']:
+                        app['standardized_status'] = 'ACCEPTED'
+                    else:
+                        app['standardized_status'] = yarn_state
+
+                    enhanced_apps.append(app)
+
+                except Exception as e:
+                    logger.warning(f"Error processing YARN application {app.get('id', 'unknown')}: {e}")
+                    app['standardized_status'] = 'ERROR'
+                    enhanced_apps.append(app)
+
+            return enhanced_apps
+
+        except Exception as e:
+            logger.error(f"Error fetching enhanced YARN applications for {cluster_id}: {e}")
             return []
 
     def get_spark_applications_enhanced(self, cluster_id: str, status_filter: str = None, limit: int = 200) -> List[
@@ -263,6 +711,9 @@ class EMRMonitor:
                         vcores = self.safe_int_convert(app.get('total_cores', 0))
 
                         app['memory_gb'] = memory_gb
+                        app['allocated_memory_gb'] = memory_gb
+                        app['allocated_memory_mb'] = self.safe_float_convert(app.get('total_memory_mb', 0))
+                        app['allocated_vcores'] = vcores
                         app['memory_hours'] = memory_gb * duration_hours
                         app['vcore_hours'] = vcores * duration_hours
 
@@ -286,126 +737,6 @@ class EMRMonitor:
 
         except Exception as e:
             logger.error(f"Error fetching enhanced Spark applications for {cluster_id}: {e}")
-            return []
-
-    def get_yarn_applications_enhanced(self, cluster_id: str, status_filter: str = None) -> List[Dict]:
-        """Enhanced YARN applications with resource efficiency calculations"""
-        cluster = self.config['emr_clusters'].get(cluster_id)
-        if not cluster:
-            return []
-
-        try:
-            yarn_url = cluster.get('yarn_url')
-            if not yarn_url:
-                logger.error(f"No yarn_url configured for cluster {cluster_id}")
-                return []
-
-            api_url = f"{yarn_url}/ws/v1/cluster/apps"
-            params = {}
-
-            # Add status filter
-            yarn_state_mapping = {
-                'running': ['RUNNING'],
-                'completed': ['FINISHED'],
-                'failed': ['FAILED'],
-                'killed': ['KILLED'],
-                'accepted': ['ACCEPTED'],
-                'waiting': ['SUBMITTED', 'ACCEPTED'],
-                'all': None
-            }
-
-            if status_filter and status_filter in yarn_state_mapping:
-                yarn_states = yarn_state_mapping[status_filter]
-                if yarn_states:
-                    params['states'] = ','.join(yarn_states)
-
-            response = requests.get(api_url, params=params, timeout=10)
-            response.raise_for_status()
-
-            data = response.json()
-            applications = data.get('apps', {}).get('app', [])
-
-            if isinstance(applications, dict):
-                applications = [applications]
-
-            enhanced_apps = []
-            for app in applications:
-                try:
-                    app['cluster_id'] = cluster_id
-                    app['cluster_name'] = cluster.get('name', 'Unknown')
-
-                    # Safe type conversions
-                    started_time = self.safe_int_convert(app.get('startedTime', 0))
-                    finished_time = self.safe_int_convert(app.get('finishedTime', 0))
-                    elapsed_time = self.safe_int_convert(app.get('elapsedTime', 0))
-
-                    # Convert timestamps
-                    if started_time > 0:
-                        app['startedTimeFormatted'] = datetime.fromtimestamp(started_time / 1000).strftime(
-                            '%Y-%m-%d %H:%M:%S')
-                        app['start_time_est'] = convert_gmt_to_est(started_time)
-
-                    if finished_time > 0:
-                        app['finishedTimeFormatted'] = datetime.fromtimestamp(finished_time / 1000).strftime(
-                            '%Y-%m-%d %H:%M:%S')
-                        app['end_time_est'] = convert_gmt_to_est(finished_time)
-
-                    # Duration calculations
-                    duration_seconds = elapsed_time / 1000 if elapsed_time > 0 else 0
-                    duration_hours = duration_seconds / 3600
-                    app['duration_minutes'] = duration_seconds / 60
-                    app['duration_hours'] = duration_hours
-                    app['durationFormatted'] = self.format_duration(elapsed_time)
-
-                    # Resource calculations
-                    allocated_mb = self.safe_float_convert(app.get('allocatedMB', 0))
-                    allocated_vcores = self.safe_int_convert(app.get('allocatedVCores', 0))
-                    memory_seconds = self.safe_float_convert(app.get('memorySeconds', 0))
-                    vcore_seconds = self.safe_float_convert(app.get('vcoreSeconds', 0))
-
-                    app['memory_gb'] = allocated_mb / 1024
-                    app['memory_hours'] = (allocated_mb / 1024) * duration_hours
-                    app['vcore_hours'] = allocated_vcores * duration_hours
-
-                    # Resource efficiency calculations
-                    if duration_seconds > 0 and allocated_mb > 0:
-                        expected_memory_seconds = allocated_mb * duration_seconds
-                        memory_efficiency = (
-                                    memory_seconds / expected_memory_seconds * 100) if expected_memory_seconds > 0 else 0
-                        app['memory_efficiency_percent'] = round(memory_efficiency, 2)
-
-                    if duration_seconds > 0 and allocated_vcores > 0:
-                        expected_vcore_seconds = allocated_vcores * duration_seconds
-                        vcore_efficiency = (
-                                    vcore_seconds / expected_vcore_seconds * 100) if expected_vcore_seconds > 0 else 0
-                        app['vcore_efficiency_percent'] = round(vcore_efficiency, 2)
-
-                    # Standardized status
-                    yarn_state = app.get('state', 'UNKNOWN')
-                    final_status = app.get('finalStatus', 'UNDEFINED')
-
-                    if yarn_state == 'RUNNING':
-                        app['standardized_status'] = 'RUNNING'
-                    elif yarn_state == 'FINISHED' and final_status == 'SUCCEEDED':
-                        app['standardized_status'] = 'SUCCEEDED'
-                    elif yarn_state in ['FAILED', 'KILLED'] or final_status in ['FAILED', 'KILLED']:
-                        app['standardized_status'] = 'FAILED'
-                    elif yarn_state in ['ACCEPTED', 'SUBMITTED']:
-                        app['standardized_status'] = 'ACCEPTED'
-                    else:
-                        app['standardized_status'] = yarn_state
-
-                    enhanced_apps.append(app)
-
-                except Exception as e:
-                    logger.warning(f"Error processing YARN application {app.get('id', 'unknown')}: {e}")
-                    app['standardized_status'] = 'ERROR'
-                    enhanced_apps.append(app)
-
-            return enhanced_apps
-
-        except Exception as e:
-            logger.error(f"Error fetching enhanced YARN applications for {cluster_id}: {e}")
             return []
 
     def get_application_summary_by_name(self, cluster_id: str, hours_back: int = 24) -> List[Dict]:
@@ -458,6 +789,11 @@ class EMRMonitor:
                 avg_duration_minutes = sum(self.safe_float_convert(app.get('duration_minutes', 0)) for app in
                                            apps) / total_runs if total_runs > 0 else 0
 
+                # Calculate total allocated resources
+                total_allocated_memory_mb = sum(
+                    self.safe_float_convert(app.get('allocated_memory_mb', 0)) for app in apps)
+                total_allocated_vcores = sum(self.safe_int_convert(app.get('allocated_vcores', 0)) for app in apps)
+
                 users = list(set(app.get('user', app.get('sparkUser', 'Unknown')) for app in apps))
 
                 summary = {
@@ -469,6 +805,8 @@ class EMRMonitor:
                     'success_rate': (succeeded_count / total_runs * 100) if total_runs > 0 else 0,
                     'total_memory_hours': total_memory_hours,
                     'total_vcore_hours': total_vcore_hours,
+                    'total_allocated_memory_gb': round(total_allocated_memory_mb / 1024, 2),
+                    'total_allocated_vcores': total_allocated_vcores,
                     'avg_duration_minutes': avg_duration_minutes,
                     'users': ', '.join(users[:3])  # Limit to first 3 users
                 }
@@ -522,7 +860,7 @@ class EMRMonitor:
             return {}
 
     def get_cluster_info(self, cluster_id: str) -> Dict:
-        """Enhanced cluster information with task node details"""
+        """Enhanced cluster information with comprehensive resource tracking"""
         cluster = self.config['emr_clusters'].get(cluster_id)
         if not cluster:
             return {}
@@ -538,42 +876,14 @@ class EMRMonitor:
 
             cluster_info = response.json().get('clusterInfo', {})
 
-            # Get enhanced node information
+            # Get comprehensive resource summary
+            resource_summary = self.get_cluster_resource_summary(cluster_id)
+
+            # Merge resource summary into cluster info
+            cluster_info.update(resource_summary)
+
+            # Get task node details
             task_nodes = self.get_task_nodes_details(cluster_id)
-
-            # Categorize nodes
-            node_types = {'master': 0, 'core': 0, 'task': 0}
-            node_states = {}
-            instance_types = {'spot': 0, 'on-demand': 0, 'unknown': 0}
-            spot_risk_summary = {'high': 0, 'medium': 0, 'low': 0}
-
-            for node in task_nodes:
-                # Categorize by role
-                node_id = node['node_id'].lower()
-                if 'master' in node_id:
-                    node_types['master'] += 1
-                elif 'core' in node_id:
-                    node_types['core'] += 1
-                else:
-                    node_types['task'] += 1
-
-                # Count states
-                state = node['state']
-                node_states[state] = node_states.get(state, 0) + 1
-
-                # Count instance types
-                instance_type = node['instance_type']
-                instance_types[instance_type] = instance_types.get(instance_type, 0) + 1
-
-                # Count spot termination risk
-                risk = node['spot_termination_risk']
-                spot_risk_summary[risk] = spot_risk_summary.get(risk, 0) + 1
-
-            cluster_info['nodeTypes'] = node_types
-            cluster_info['nodeStates'] = node_states
-            cluster_info['instanceTypes'] = instance_types
-            cluster_info['spotTerminationRisk'] = spot_risk_summary
-            cluster_info['totalNodes'] = len(task_nodes)
             cluster_info['taskNodes'] = task_nodes
 
             # Add AWS cluster ID
@@ -687,14 +997,21 @@ def api_clusters():
 
 @app.route('/api/cluster/<cluster_id>/info')
 def api_cluster_info(cluster_id):
-    """Get enhanced cluster information with task nodes"""
+    """Get enhanced cluster information with comprehensive resource tracking"""
     info = monitor.get_cluster_info(cluster_id)
     return jsonify(info)
 
 
+@app.route('/api/cluster/<cluster_id>/resources')
+def api_cluster_resources(cluster_id):
+    """Get detailed cluster resource summary"""
+    resource_summary = monitor.get_cluster_resource_summary(cluster_id)
+    return jsonify(resource_summary)
+
+
 @app.route('/api/cluster/<cluster_id>/task-nodes')
 def api_task_nodes(cluster_id):
-    """Get detailed task node information"""
+    """Get detailed task node information with enhanced memory tracking"""
     task_nodes = monitor.get_task_nodes_details(cluster_id)
     return jsonify(task_nodes)
 
@@ -800,18 +1117,24 @@ if __name__ == '__main__':
                 print(f"❌ Error creating config.yaml: {e}")
 
         print("\n" + "=" * 60)
-        print("🚀 Starting Enhanced EMR Monitoring Tool")
+        print("🚀 Starting Enhanced EMR Monitoring Tool (FIXED MEMORY TRACKING)")
         print("=" * 60)
-        print("Features:")
-        print("  ✅ Task node monitoring")
-        print("  ✅ Resource efficiency tracking")
-        print("  ✅ Spot instance analysis")
-        print("  ✅ Enhanced data processing")
-        print("  ✅ Real-time monitoring")
+        print("🔧 New Features:")
+        print("  ✅ Comprehensive memory tracking (total, available, used, allocated)")
+        print("  ✅ Enhanced VCore monitoring")
+        print("  ✅ Multiple API field detection")
+        print("  ✅ Resource utilization percentages")
+        print("  ✅ Cluster-level resource aggregation")
+        print("  ✅ Memory waste analysis")
+        print("  ✅ Improved error handling and logging")
+        print("=" * 60)
+        print("📊 Available Endpoints:")
+        print("  • /api/cluster/<id>/resources - Detailed resource summary")
+        print("  • /api/cluster/<id>/task-nodes - Enhanced node details")
+        print("  • /api/cluster/<id>/info - Complete cluster information")
         print("=" * 60)
         print(f"🌐 Access the dashboard at: http://localhost:6001")
         print(f"📋 Note: Run 'python create_static_files.py' first to generate template files")
-        print(f"🔍 Run 'python validate_config.py' to test your configuration")
         print("=" * 60)
 
         # Start the Flask application
