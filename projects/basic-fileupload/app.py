@@ -55,7 +55,7 @@ def load_config():
         save_config(DEFAULT_CONFIG)
         return DEFAULT_CONFIG
     except yaml.YAMLError as e:
-        logger.error(f"Error parsing config.yaml: {e}")
+        logger.error(f"Error parsing emr_config.yaml: {e}")
         return DEFAULT_CONFIG
 
 
@@ -66,7 +66,7 @@ def save_config(config):
             yaml.dump(config, file, default_flow_style=False, indent=2)
         return True
     except Exception as e:
-        logger.error(f"Error saving config.yaml: {e}")
+        logger.error(f"Error saving emr_config.yaml: {e}")
         return False
 
 

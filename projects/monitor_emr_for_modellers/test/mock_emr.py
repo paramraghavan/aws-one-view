@@ -733,7 +733,7 @@ def main():
     print("   • Interruption risk assessment")
     print("   • Failed jobs due to spot interruptions")
     print()
-    print("🔧 Update your config.yaml:")
+    print("🔧 Update your emr_config.yaml:")
     print('   mock_cluster:')
     print('     name: "Complete Mock EMR Cluster"')
     print('     spark_url: "http://localhost:18080"')

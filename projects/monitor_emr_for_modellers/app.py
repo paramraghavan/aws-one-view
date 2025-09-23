@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 class EMRMonitor:
-    def __init__(self, config_file='config.yaml'):
+    def __init__(self, config_file='emr_config.yaml'):
         self.config = self.load_config(config_file)
         self.session = requests.Session()
         self.session.timeout = 30
