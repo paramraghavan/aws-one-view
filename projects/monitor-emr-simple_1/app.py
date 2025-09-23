@@ -75,25 +75,40 @@ class SparkMonitor:
             logger.error(f"Error fetching application {app_id}: {e}")
             return {}
 
-    def get_long_running_jobs(self, hours_threshold: int = 2) -> List[Dict[str, Any]]:
+    def get_long_running_jobs(self, hours_threshold: float = 2.0) -> List[Dict[str, Any]]:
         """Find long-running applications that might be consuming resources"""
         apps = self.get_applications(100)
         long_running = []
 
-        threshold_time = datetime.now() - timedelta(hours=hours_threshold)
-
         for app in apps:
             try:
-                # Parse start time
-                start_time = datetime.strptime(app['attempts'][0]['startTime'], '%Y-%m-%dT%H:%M:%S.%fZ')
+                attempt = app['attempts'][0]
+                start_time_str = attempt['startTime']
+                end_time_str = attempt.get('endTime')
 
-                # Check if it's running and started before threshold
-                if start_time < threshold_time:
+                # Parse start time
+                start_time = datetime.strptime(start_time_str, '%Y-%m-%dT%H:%M:%S.%fZ')
+
+                # Calculate duration based on whether job is completed or still running
+                if end_time_str:
+                    # Job is completed - use end time
+                    end_time = datetime.strptime(end_time_str, '%Y-%m-%dT%H:%M:%S.%fZ')
+                    duration_hours = (end_time - start_time).total_seconds() / 3600
+                    app['is_running'] = False
+                else:
+                    # Job is still running - use current time
                     duration_hours = (datetime.now() - start_time).total_seconds() / 3600
+                    app['is_running'] = True
+
+                # Only include if duration exceeds threshold
+                if duration_hours > hours_threshold:
                     app['duration_hours'] = round(duration_hours, 2)
+                    app['start_time_parsed'] = start_time
+                    app['end_time_parsed'] = end_time if end_time_str else None
                     long_running.append(app)
+
             except (KeyError, ValueError, IndexError) as e:
-                logger.warning(f"Error processing application timing: {e}")
+                logger.warning(f"Error processing application timing for app {app.get('id', 'unknown')}: {e}")
                 continue
 
         return sorted(long_running, key=lambda x: x.get('duration_hours', 0), reverse=True)
@@ -192,7 +207,7 @@ class EMRMonitor:
 
         return self.monitors[cluster_id]
 
-    def get_cluster_status(self, cluster_id: str) -> Dict[str, Any]:
+    def get_cluster_status(self, cluster_id: str, threshold_hours: float = 2.0) -> Dict[str, Any]:
         """Get comprehensive cluster status"""
         spark_monitor, yarn_monitor = self.get_monitor(cluster_id)
         if not spark_monitor or not yarn_monitor:
@@ -205,7 +220,7 @@ class EMRMonitor:
 
         running_apps = yarn_monitor.get_applications(['RUNNING', 'ACCEPTED', 'SUBMITTED'])
         spark_apps = spark_monitor.get_applications(20)
-        long_running = spark_monitor.get_long_running_jobs()
+        long_running = spark_monitor.get_long_running_jobs(threshold_hours)
 
         # Calculate resource usage
         total_memory = cluster_metrics.get('totalMB', 0)
@@ -240,6 +255,7 @@ class EMRMonitor:
                 'long_running_count': len(long_running),
                 'long_running': long_running[:5]  # Top 5 long running
             },
+            'threshold': threshold_hours,
             'timestamp': datetime.now().isoformat()
         }
 
@@ -265,18 +281,21 @@ def api_clusters():
 @app.route('/api/cluster/<cluster_id>/status')
 def api_cluster_status(cluster_id):
     """API endpoint to get cluster status"""
-    status = emr_monitor.get_cluster_status(cluster_id)
+    threshold = request.args.get('threshold', 2.0, type=float)
+    status = emr_monitor.get_cluster_status(cluster_id, threshold)
     return jsonify(status)
 
 
 @app.route('/api/cluster/<cluster_id>/refresh')
 def api_cluster_refresh(cluster_id):
     """API endpoint to refresh cluster data"""
+    threshold = request.args.get('threshold', 2.0, type=float)
+
     # Clear cached monitors to force refresh
     if cluster_id in emr_monitor.monitors:
         del emr_monitor.monitors[cluster_id]
 
-    status = emr_monitor.get_cluster_status(cluster_id)
+    status = emr_monitor.get_cluster_status(cluster_id, threshold)
     return jsonify(status)
 
 

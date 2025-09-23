@@ -241,6 +241,66 @@
             margin-top: 20px;
         }
 
+        .threshold-input-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #f8f9fa;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s ease;
+        }
+
+        .threshold-input-group:hover {
+            border-color: #667eea;
+        }
+
+        .threshold-input-group input {
+            width: 80px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .threshold-input-group label {
+            font-size: 14px;
+            color: #666;
+            margin: 0;
+        }
+
+        .threshold-presets {
+            display: flex;
+            gap: 5px;
+            margin-top: 8px;
+        }
+
+        .threshold-preset {
+            padding: 4px 8px;
+            font-size: 12px;
+            border: 1px solid #ddd;
+            background: white;
+            color: #666;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .threshold-preset:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .threshold-help {
+            font-size: 12px;
+            color: #888;
+            text-align: center;
+            margin-top: 5px;
+        }
+
         @media (max-width: 768px) {
             .dashboard {
                 grid-template-columns: 1fr;
@@ -253,6 +313,10 @@
 
             .cluster-selector select {
                 min-width: auto;
+            }
+
+            .threshold-input-group {
+                justify-content: center;
             }
         }
     </style>
@@ -269,6 +333,23 @@
                     <option value="{{ cluster_id }}">{{ cluster_config.name }}</option>
                     {% endfor %}
                 </select>
+
+                <div style="display: flex; flex-direction: column; align-items: center;">
+                    <label for="thresholdInput" style="margin-bottom: 5px; font-weight: 600;">Long-running Threshold:</label>
+                    <div class="threshold-input-group">
+                        <input type="number" id="thresholdInput" min="0.5" max="24" step="0.5" value="2"
+                               title="Set the minimum duration (in hours) to consider a job as long-running">
+                        <span>hours</span>
+                    </div>
+                    <div class="threshold-presets">
+                        <button class="threshold-preset" onclick="setThreshold(1)">1h</button>
+                        <button class="threshold-preset" onclick="setThreshold(2)">2h</button>
+                        <button class="threshold-preset" onclick="setThreshold(4)">4h</button>
+                        <button class="threshold-preset" onclick="setThreshold(8)">8h</button>
+                    </div>
+                    <div class="threshold-help">Jobs running longer than this will be highlighted</div>
+                </div>
+
                 <button class="btn btn-primary" onclick="loadClusterData()">Monitor</button>
                 <button class="btn btn-success" onclick="refreshData()" id="refreshBtn" style="display:none;">Refresh</button>
             </div>
@@ -365,9 +446,9 @@
 
             <!-- Long Running Jobs -->
             <div class="card">
-                <h3 class="card-title">⏰ Long Running Jobs</h3>
+                <h3 class="card-title" id="long-running-title">⏰ Long Running Jobs</h3>
                 <div class="metric">
-                    <span class="metric-label">Jobs Running > 2 hours:</span>
+                    <span class="metric-label" id="long-running-label">Jobs Running > 2 hours:</span>
                     <span class="metric-value" id="long-running-count">0</span>
                 </div>
                 <div style="max-height: 300px; overflow-y: auto;">
@@ -376,8 +457,9 @@
                             <tr>
                                 <th>Application Name</th>
                                 <th>Duration (hours)</th>
-                                <th>Start Time</th>
                                 <th>Status</th>
+                                <th>Start Time</th>
+                                <th>End Time</th>
                             </tr>
                         </thead>
                         <tbody id="long-running-body">
@@ -421,6 +503,15 @@
         let currentCluster = null;
         let refreshInterval = null;
 
+        function setThreshold(hours) {
+            document.getElementById('thresholdInput').value = hours;
+
+            // If we're currently monitoring a cluster, refresh with new threshold
+            if (currentCluster) {
+                refreshData();
+            }
+        }
+
         function loadClusterData() {
             const clusterId = document.getElementById('clusterSelect').value;
             if (!clusterId) {
@@ -428,28 +519,30 @@
                 return;
             }
 
+            const threshold = document.getElementById('thresholdInput').value;
             currentCluster = clusterId;
             document.getElementById('refreshBtn').style.display = 'inline-block';
-            fetchClusterStatus(clusterId);
+            fetchClusterStatus(clusterId, threshold);
 
             // Auto-refresh every 30 seconds
             if (refreshInterval) clearInterval(refreshInterval);
-            refreshInterval = setInterval(() => fetchClusterStatus(clusterId), 30000);
+            refreshInterval = setInterval(() => fetchClusterStatus(clusterId, threshold), 30000);
         }
 
         function refreshData() {
             if (currentCluster) {
-                fetch(`/api/cluster/${currentCluster}/refresh`)
+                const threshold = document.getElementById('thresholdInput').value;
+                fetch(`/api/cluster/${currentCluster}/refresh?threshold=${threshold}`)
                     .then(response => response.json())
                     .then(data => updateDashboard(data))
                     .catch(error => showError('Error refreshing data: ' + error.message));
             }
         }
 
-        function fetchClusterStatus(clusterId) {
+        function fetchClusterStatus(clusterId, threshold = 2) {
             showLoading();
 
-            fetch(`/api/cluster/${clusterId}/status`)
+            fetch(`/api/cluster/${clusterId}/status?threshold=${threshold}`)
                 .then(response => response.json())
                 .then(data => {
                     hideLoading();
@@ -509,6 +602,10 @@
             document.getElementById('running-count').textContent = applications.running_count || 0;
             document.getElementById('long-running-count').textContent = applications.long_running_count || 0;
 
+            // Update long-running jobs label with current threshold
+            const threshold = data.threshold || document.getElementById('thresholdInput').value || 2;
+            document.getElementById('long-running-label').textContent = `Jobs Running > ${threshold} hours:`;
+
             // Update running applications table
             updateRunningAppsTable(applications.running_apps || []);
 
@@ -555,11 +652,19 @@
             apps.forEach(app => {
                 const row = tbody.insertRow();
                 const attempt = app.attempts && app.attempts[0];
+                const isRunning = app.is_running;
+                const status = isRunning ? 'Running' : 'Completed';
+                const statusClass = isRunning ? 'running' : 'succeeded';
+                const endTime = !isRunning && attempt && attempt.endTime ?
+                    new Date(attempt.endTime).toLocaleString() :
+                    (isRunning ? 'Still Running' : 'Unknown');
+
                 row.innerHTML = `
                     <td>${app.name || 'Unknown'}</td>
                     <td>${app.duration_hours || 0}</td>
+                    <td><span class="status-${statusClass}">${status}</span></td>
                     <td>${attempt && attempt.startTime ? new Date(attempt.startTime).toLocaleString() : 'Unknown'}</td>
-                    <td><span class="status-${attempt && attempt.completed ? 'completed' : 'running'}">${attempt && attempt.completed ? 'Completed' : 'Running'}</span></td>
+                    <td>${endTime}</td>
                 `;
             });
         }
