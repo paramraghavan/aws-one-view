@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMR Cluster Monitor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        function updateYarnApplicationsTable(yarnApps) {
+            const content = document.getElementById('yarnAppsContent');
+
+            if (!yarnApps || yarnApps.length === 0) {
+                content.innerHTML = '<div class="loading">No YARN applications found</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Application ID</th>
+                            <th>Name</th>
+                            <th>State</th>
+                            <th>Final Status</th>
+                            <th>User</th>
+                            <th>Queue</th>
+                            <th>Memory (MB)</th>
+                            <th>vCores</th>
+                            <th>Progress</th>
+                            <th>Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            yarnApps.slice(0, 20).forEach(app => {
+                const state = app.state || 'UNKNOWN';
+                const stateClass = state === 'RUNNING' ? 'status-running' :
+                                 state === 'FAILED' ? 'status-failed' : 'status-completed';
+                const progress = app.progress || 0;
+                const duration = formatDuration(app.elapsedTime);
+                const finalStatus = app.finalStatus || 'N/A';
+
+                html += `
+                    <tr>
+                        <td><code>${app.id || 'N/A'}</code></td>
+                        <td>${app.name || 'N/A'}</td>
+                        <td><span class="status-indicator ${stateClass}"></span>${state}</td>
+                        <td>${finalStatus}</td>
+                        <td>${app.user || 'N/A'}</td>
+                        <td>${app.queue || 'N/A'}</td>
+                        <td>${app.allocatedMB || 0}</td>
+                        <td>${app.allocatedVCores || 0}</td>
+                        <td>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${progress}%"></div>
+                            </div>
+                            ${progress.toFixed(1)}%
+                        </td>
+                        <td>${duration}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            content.innerHTML = html;
+        }
+
+        function updateSparkApplicationsTable(sparkApps) {
+            const content = document.getElementById('sparkAppsContent');
+
+            if (!sparkApps || sparkApps.length === 0) {
+                content.innerHTML = '<div class="loading">No Spark applications found</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Application ID</th>
+                            <th>Name</th>
+                            <th>Status</th>
+                            <th>User</th>
+                            <th>Start Time</th>
+                            <th>End Time</th>
+                            <th>Duration</th>
+                            <th>Executors</th>
+                            <th>Cores</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            sparkApps.slice(0, 20).forEach(app => {
+                const attempts = app.attempts || [];
+                const lastAttempt = attempts[attempts.length - 1] || {};
+                const completed = lastAttempt.completed || false;
+                const statusClass = completed ? 'status-completed' : 'status-running';
+                const startTime = lastAttempt.startTime ? new Date(lastAttempt.startTime).toLocaleString() : 'N/A';
+                const endTime = lastAttempt.endTime ? new Date(lastAttempt.endTime).toLocaleString() : 'N/A';
+                const duration = lastAttempt.duration ? formatDuration(lastAttempt.duration) : 'N/A';
+                const executorCount = app.executors ? app.executors.length : 0;
+                const totalCores = app.executors ? app.executors.reduce((sum, exec) => sum + (exec.totalCores || 0), 0) : 0;
+
+                html += `
+                    <tr>
+                        <td><code>${app.id || 'N/A'}</code></td>
+                        <td>${app.name || 'N/A'}</td>
+                        <td><span class="status-indicator ${statusClass}"></span>${completed ? 'COMPLETED' : 'RUNNING'}</td>
+                        <td>${lastAttempt.sparkUser || 'N/A'}</td>
+                        <td>${startTime}</td>
+                        <td>${endTime}</td>
+                        <td>${duration}</td>
+                        <td>${executorCount}</td>
+                        <td>${totalCores}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            content.innerHTML = html;
+        }
+
+        function updateNodesTable(nodes) {
+            const content = document.getElementById('nodesContent');
+
+            if (!nodes || nodes.length === 0) {
+                content.innerHTML = '<div class="loading">No cluster nodes found</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Node ID</th>
+                            <th>Host</th>
+                            <th>State</th>
+                            <th>Health Status</th>
+                            <th>Memory (MB)</th>
+                            <th>vCores</th>
+                            <th>Used Memory</th>
+                            <th>Used vCores</th>
+                            <th>Last Health Update</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            nodes.forEach(node => {
+                const state = node.state || 'UNKNOWN';
+                const stateClass = state === 'RUNNING' ? 'status-running' :
+                                 state === 'UNHEALTHY' ? 'status-unhealthy' : 'status-failed';
+                const healthReport = node.healthReport || 'Healthy';
+                const lastHealthUpdate = node.lastHealthUpdate ?
+                    new Date(node.lastHealthUpdate).toLocaleString() : 'N/A';
+
+                html += `
+                    <tr>
+                        <td><code>${node.id || 'N/A'}</code></td>
+                        <td>${node.nodeHostName || 'N/A'}</td>
+                        <td><span class="status-indicator ${stateClass}"></span>${state}</td>
+                        <td>${healthReport}</td>
+                        <td>${node.availMemoryMB || 0}</td>
+                        <td>${node.availableVirtualCores || 0}</td>
+                        <td>${node.usedMemoryMB || 0}</td>
+                        <td>${node.usedVirtualCores || 0}</td>
+                        <td>${lastHealthUpdate}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            content.innerHTML = html;
+        }
+
+        function formatDuration(milliseconds) {
+            if (!milliseconds) return 'N/A';
+
+            const seconds = Math.floor(milliseconds / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            const days = Math.floor(hours / 24);
+
+            if (days > 0) {
+                return `${days}d ${hours % 24}h ${minutes % 60}m`;
+            } else if (hours > 0) {
+                return `${hours}h ${minutes % 60}m`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${seconds % 60}s`;
+            } else {
+                return `${seconds}s`;
+            }
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .cluster-selector {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+
+        .cluster-selector label {
+            font-weight: 600;
+            color: #34495e;
+        }
+
+        .cluster-selector select {
+            padding: 10px 15px;
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            font-size: 16px;
+            background: white;
+            color: #2c3e50;
+            cursor: pointer;
+            transition: border-color 0.3s ease;
+        }
+
+        .cluster-selector select:focus {
+            outline: none;
+            border-color: #2980b9;
+        }
+
+        .refresh-btn {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            margin: 0 5px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: transform 0.2s ease, background 0.3s ease;
+        }
+
+        .refresh-btn:hover {
+            transform: translateY(-2px);
+            background: linear-gradient(135deg, #2980b9, #1f5f8b);
+        }
+
+        .refresh-btn:active {
+            transform: translateY(0);
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #ecf0f1;
+        }
+
+        .metric:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            font-weight: 600;
+            color: #34495e;
+        }
+
+        .metric-value {
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 5px;
+            color: white;
+        }
+
+        .metric-value.success {
+            background: #27ae60;
+        }
+
+        .metric-value.warning {
+            background: #f39c12;
+        }
+
+        .metric-value.danger {
+            background: #e74c3c;
+        }
+
+        .metric-value.info {
+            background: #3498db;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-running { background: #27ae60; }
+        .status-failed { background: #e74c3c; }
+        .status-completed { background: #3498db; }
+        .status-unhealthy { background: #f39c12; }
+
+        code {
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            color: #2c3e50;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .section-header h3 {
+            margin: 0;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+
+        .badge-success { background: #d4edda; color: #155724; }
+        .badge-warning { background: #fff3cd; color: #856404; }
+        .badge-danger { background: #f8d7da; color: #721c24; }
+        .badge-info { background: #cce7ff; color: #0c5460; }
+
+        .table-container {
+            overflow-x: auto;
+            margin-top: 15px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ecf0f1;
+        }
+
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+            font-style: italic;
+        }
+
+        .error {
+            background: #ffe6e6;
+            color: #e74c3c;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 4px solid #e74c3c;
+        }
+
+        .last-updated {
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            margin-top: 20px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #ecf0f1;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3498db, #2980b9);
+            transition: width 0.3s ease;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .cluster-selector {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 EMR Cluster Monitor</h1>
+            <div class="cluster-selector">
+                <label for="clusterSelect">Select Cluster:</label>
+                <select id="clusterSelect">
+                    <option value="">Choose a cluster...</option>
+                    {% for cluster_id, cluster_info in clusters.items() %}
+                    <option value="{{ cluster_id }}">{{ cluster_info.name }}</option>
+                    {% endfor %}
+                </select>
+                <div class="button-group">
+                    <button class="refresh-btn" onclick="refreshData()">🔄 Refresh All</button>
+                    <button class="refresh-btn" onclick="refreshYarnData()" title="Refresh YARN data">🎯 YARN</button>
+                    <button class="refresh-btn" onclick="refreshSparkData()" title="Refresh Spark data">⚡ Spark</button>
+                    <button class="refresh-btn" onclick="refreshNodesData()" title="Refresh Nodes data">🖥️ Nodes</button>
+                </div>
+                <label>
+                    <input type="checkbox" id="autoRefresh" checked> Auto Refresh (30s)
+                </label>
+            </div>
+        </div>
+
+        <div id="clusterInfo" style="display: none;">
+            <div class="dashboard-grid">
+                <!-- Summary Card -->
+                <div class="card">
+                    <h3>📊 Cluster Summary</h3>
+                    <div id="summaryContent">
+                        <div class="loading">Loading cluster data...</div>
+                    </div>
+                </div>
+
+                <!-- Resource Usage Card -->
+                <div class="card">
+                    <h3>💾 Resource Usage</h3>
+                    <div id="resourceContent">
+                        <div class="loading">Loading resource data...</div>
+                    </div>
+                </div>
+
+                <!-- Node Status Card -->
+                <div class="card">
+                    <h3>🖥️ Node Status</h3>
+                    <div id="nodeContent">
+                        <div class="loading">Loading node data...</div>
+                    </div>
+                </div>
+
+                <!-- Top Resource Consumers -->
+                <div class="card">
+                    <h3>🔥 Top Resource Consumers</h3>
+                    <div id="topConsumersContent">
+                        <div class="loading">Loading application data...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Long Running Applications -->
+            <div class="card">
+                <h3>⏰ Long Running Applications</h3>
+                <div id="longRunningContent">
+                    <div class="loading">Loading long running applications...</div>
+                </div>
+            </div>
+
+            <!-- YARN Applications Table -->
+            <div class="card">
+                <h3>🎯 YARN Applications</h3>
+                <div class="table-container">
+                    <div id="yarnAppsContent">
+                        <div class="loading">Loading YARN applications...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Spark Applications Table -->
+            <div class="card">
+                <h3>⚡ Spark Applications</h3>
+                <div class="table-container">
+                    <div id="sparkAppsContent">
+                        <div class="loading">Loading Spark applications...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cluster Nodes Table -->
+            <div class="card">
+                <h3>🖥️ Cluster Nodes</h3>
+                <div class="table-container">
+                    <div id="nodesContent">
+                        <div class="loading">Loading cluster nodes...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- All Applications Table -->
+            <div class="card">
+                <h3>📋 All Applications Summary</h3>
+                <div id="applicationsContent">
+                    <div class="loading">Loading applications...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="last-updated" id="lastUpdated"></div>
+    </div>
+
+    <script>
+        let currentCluster = '';
+        let autoRefreshInterval;
+
+        document.getElementById('clusterSelect').addEventListener('change', function() {
+            currentCluster = this.value;
+            if (currentCluster) {
+                document.getElementById('clusterInfo').style.display = 'block';
+                loadClusterData();
+                setupAutoRefresh();
+            } else {
+                document.getElementById('clusterInfo').style.display = 'none';
+                clearInterval(autoRefreshInterval);
+            }
+        });
+
+        document.getElementById('autoRefresh').addEventListener('change', function() {
+            if (this.checked && currentCluster) {
+                setupAutoRefresh();
+            } else {
+                clearInterval(autoRefreshInterval);
+            }
+        });
+
+        function setupAutoRefresh() {
+            clearInterval(autoRefreshInterval);
+            if (document.getElementById('autoRefresh').checked) {
+                autoRefreshInterval = setInterval(loadClusterData, 30000);
+            }
+        }
+
+        function refreshData() {
+            if (currentCluster) {
+                loadClusterData();
+            }
+        }
+
+        async function refreshYarnData() {
+            if (!currentCluster) return;
+
+            document.getElementById('yarnAppsContent').innerHTML = '<div class="loading">Refreshing YARN data...</div>';
+
+            try {
+                const response = await fetch(`/api/yarn/${currentCluster}`);
+                const yarnApps = await response.json();
+                updateYarnApplicationsTable(Array.isArray(yarnApps) ? yarnApps : []);
+            } catch (error) {
+                console.error('Error refreshing YARN data:', error);
+                document.getElementById('yarnAppsContent').innerHTML =
+                    '<div class="error">Failed to refresh YARN data</div>';
+            }
+        }
+
+        async function refreshSparkData() {
+            if (!currentCluster) return;
+
+            document.getElementById('sparkAppsContent').innerHTML = '<div class="loading">Refreshing Spark data...</div>';
+
+            try {
+                const response = await fetch(`/api/spark/${currentCluster}`);
+                const sparkApps = await response.json();
+                updateSparkApplicationsTable(Array.isArray(sparkApps) ? sparkApps : []);
+            } catch (error) {
+                console.error('Error refreshing Spark data:', error);
+                document.getElementById('sparkAppsContent').innerHTML =
+                    '<div class="error">Failed to refresh Spark data</div>';
+            }
+        }
+
+        async function refreshNodesData() {
+            if (!currentCluster) return;
+
+            document.getElementById('nodesContent').innerHTML = '<div class="loading">Refreshing nodes data...</div>';
+
+            try {
+                const response = await fetch(`/api/nodes/${currentCluster}`);
+                const nodes = await response.json();
+                updateNodesTable(Array.isArray(nodes) ? nodes : []);
+            } catch (error) {
+                console.error('Error refreshing nodes data:', error);
+                document.getElementById('nodesContent').innerHTML =
+                    '<div class="error">Failed to refresh nodes data</div>';
+            }
+        }
+
+        async function loadClusterData() {
+            if (!currentCluster) return;
+
+            // Show loading states
+            showLoadingStates();
+
+            try {
+                // Load data from different endpoints in parallel
+                const [monitorData, yarnData, sparkData, nodesData] = await Promise.allSettled([
+                    fetch(`/api/monitor/${currentCluster}`).then(r => r.json()),
+                    fetch(`/api/yarn/${currentCluster}`).then(r => r.json()),
+                    fetch(`/api/spark/${currentCluster}`).then(r => r.json()),
+                    fetch(`/api/nodes/${currentCluster}`).then(r => r.json())
+                ]);
+
+                // Process monitor data (summary)
+                if (monitorData.status === 'fulfilled' && monitorData.value.summary) {
+                    updateSummary(monitorData.value.summary);
+                    updateResourceUsage(monitorData.value.summary);
+                    updateNodeStatus(monitorData.value.summary);
+                    updateTopConsumers(monitorData.value.summary);
+                    updateLongRunning(monitorData.value.summary);
+                } else {
+                    showError('Failed to load cluster summary data');
+                }
+
+                // Process YARN data
+                let yarnApps = [];
+                if (yarnData.status === 'fulfilled') {
+                    yarnApps = Array.isArray(yarnData.value) ? yarnData.value : [];
+                    updateYarnApplicationsTable(yarnApps);
+                } else {
+                    console.error('Failed to load YARN data:', yarnData.reason);
+                    document.getElementById('yarnAppsContent').innerHTML =
+                        '<div class="error">Failed to load YARN applications</div>';
+                }
+
+                // Process Spark data
+                let sparkApps = [];
+                if (sparkData.status === 'fulfilled') {
+                    sparkApps = Array.isArray(sparkData.value) ? sparkData.value : [];
+                    updateSparkApplicationsTable(sparkApps);
+                } else {
+                    console.error('Failed to load Spark data:', sparkData.reason);
+                    document.getElementById('sparkAppsContent').innerHTML =
+                        '<div class="error">Failed to load Spark applications</div>';
+                }
+
+                // Process Nodes data
+                if (nodesData.status === 'fulfilled') {
+                    updateNodesTable(Array.isArray(nodesData.value) ? nodesData.value : []);
+                } else {
+                    console.error('Failed to load nodes data:', nodesData.reason);
+                    document.getElementById('nodesContent').innerHTML =
+                        '<div class="error">Failed to load nodes data</div>';
+                }
+
+                // Update combined applications table
+                updateApplicationsTable(yarnApps, sparkApps);
+
+                document.getElementById('lastUpdated').textContent =
+                    `Last updated: ${new Date().toLocaleString()}`;
+
+            } catch (error) {
+                console.error('Error loading cluster data:', error);
+                showError('Failed to load cluster data. Please check if the cluster endpoints are accessible.');
+            }
+        }
+
+        function showLoadingStates() {
+            const loadingMessage = '<div class="loading">Loading...</div>';
+            document.getElementById('summaryContent').innerHTML = loadingMessage;
+            document.getElementById('resourceContent').innerHTML = loadingMessage;
+            document.getElementById('nodeContent').innerHTML = loadingMessage;
+            document.getElementById('topConsumersContent').innerHTML = loadingMessage;
+            document.getElementById('longRunningContent').innerHTML = loadingMessage;
+            document.getElementById('applicationsContent').innerHTML = loadingMessage;
+            if (document.getElementById('yarnAppsContent')) {
+                document.getElementById('yarnAppsContent').innerHTML = loadingMessage;
+            }
+            if (document.getElementById('sparkAppsContent')) {
+                document.getElementById('sparkAppsContent').innerHTML = loadingMessage;
+            }
+            if (document.getElementById('nodesContent')) {
+                document.getElementById('nodesContent').innerHTML = loadingMessage;
+            }
+        }
+
+        function updateSummary(summary) {
+            const content = document.getElementById('summaryContent');
+            content.innerHTML = `
+                <div class="metric">
+                    <span class="metric-label">Total Applications</span>
+                    <span class="metric-value info">${summary.total_yarn_apps}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Running</span>
+                    <span class="metric-value success">${summary.running_apps}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Completed</span>
+                    <span class="metric-value info">${summary.completed_apps}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Failed</span>
+                    <span class="metric-value danger">${summary.failed_apps}</span>
+                </div>
+            `;
+        }
+
+        function updateResourceUsage(summary) {
+            const content = document.getElementById('resourceContent');
+            const memoryGB = (summary.total_memory_used / 1024).toFixed(2);
+
+            content.innerHTML = `
+                <div class="metric">
+                    <span class="metric-label">Total Memory Used</span>
+                    <span class="metric-value info">${memoryGB} GB</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Total vCores Used</span>
+                    <span class="metric-value info">${summary.total_vcores_used}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Heavy Resource Apps</span>
+                    <span class="metric-value ${summary.resource_heavy_apps.length > 0 ? 'warning' : 'success'}">
+                        ${summary.resource_heavy_apps.length}
+                    </span>
+                </div>
+            `;
+        }
+
+        function updateNodeStatus(summary) {
+            const content = document.getElementById('nodeContent');
+            const nodeStatus = summary.node_status;
+
+            content.innerHTML = `
+                <div class="metric">
+                    <span class="metric-label"><span class="status-indicator status-running"></span>Running</span>
+                    <span class="metric-value success">${nodeStatus.RUNNING || 0}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label"><span class="status-indicator status-failed"></span>Lost</span>
+                    <span class="metric-value danger">${nodeStatus.LOST || 0}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label"><span class="status-indicator status-unhealthy"></span>Unhealthy</span>
+                    <span class="metric-value warning">${nodeStatus.UNHEALTHY || 0}</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label"><span class="status-indicator status-failed"></span>Decommissioned</span>
+                    <span class="metric-value danger">${nodeStatus.DECOMMISSIONED || 0}</span>
+                </div>
+            `;
+        }
+
+        function updateTopConsumers(summary) {
+            const content = document.getElementById('topConsumersContent');
+            const heavyApps = summary.resource_heavy_apps.slice(0, 5);
+
+            if (heavyApps.length === 0) {
+                content.innerHTML = '<div class="loading">No heavy resource applications detected</div>';
+                return;
+            }
+
+            let html = '';
+            heavyApps.forEach(app => {
+                html += `
+                    <div class="metric">
+                        <span class="metric-label">${app.name || app.id}</span>
+                        <span class="metric-value warning">${app.cores} cores, ${app.memory_gb.toFixed(1)} GB</span>
+                    </div>
+                `;
+            });
+
+            content.innerHTML = html;
+        }
+
+        function updateLongRunning(summary) {
+            const content = document.getElementById('longRunningContent');
+            const longRunning = summary.long_running_apps;
+
+            if (longRunning.length === 0) {
+                content.innerHTML = '<div class="loading">No long running applications detected</div>';
+                return;
+            }
+
+            let html = '<div class="table-container"><table><thead><tr><th>Application</th><th>User</th><th>Duration (hours)</th></tr></thead><tbody>';
+
+            longRunning.forEach(app => {
+                html += `
+                    <tr>
+                        <td>${app.name || app.id}</td>
+                        <td>${app.user}</td>
+                        <td>${app.duration_hours.toFixed(1)}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table></div>';
+            content.innerHTML = html;
+        }
+
+        function updateApplicationsTable(yarnApps, sparkApps) {
+            const content = document.getElementById('applicationsContent');
+
+            if (!yarnApps || yarnApps.length === 0) {
+                content.innerHTML = '<div class="loading">No applications found</div>';
+                return;
+            }
+
+            let html = `
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Application ID</th>
+                                <th>Name</th>
+                                <th>State</th>
+                                <th>User</th>
+                                <th>Memory (MB)</th>
+                                <th>vCores</th>
+                                <th>Progress</th>
+                                <th>Start Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            yarnApps.slice(0, 20).forEach(app => {
+                const state = app.state || 'UNKNOWN';
+                const stateClass = state === 'RUNNING' ? 'status-running' :
+                                 state === 'FAILED' ? 'status-failed' : 'status-completed';
+                const progress = app.progress || 0;
+                const startTime = app.startedTime ? new Date(app.startedTime).toLocaleString() : 'N/A';
+
+                html += `
+                    <tr>
+                        <td>${app.id || 'N/A'}</td>
+                        <td>${app.name || 'N/A'}</td>
+                        <td><span class="status-indicator ${stateClass}"></span>${state}</td>
+                        <td>${app.user || 'N/A'}</td>
+                        <td>${app.allocatedMB || 0}</td>
+                        <td>${app.allocatedVCores || 0}</td>
+                        <td>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${progress}%"></div>
+                            </div>
+                            ${progress.toFixed(1)}%
+                        </td>
+                        <td>${startTime}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table></div>';
+            content.innerHTML = html;
+        }
+
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = message;
+            document.querySelector('.container').insertBefore(errorDiv, document.querySelector('.dashboard-grid'));
+
+            setTimeout(() => {
+                errorDiv.remove();
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

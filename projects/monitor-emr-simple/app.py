@@ -432,7 +432,7 @@ monitor = EnhancedEMRMonitor()
 def index():
     """Main dashboard page"""
     clusters = monitor.clusters
-    return render_template('dashboard.html', clusters=clusters)
+    return render_template('dashboard_1.html', clusters=clusters)
 
 
 @app.route('/api/clusters')
