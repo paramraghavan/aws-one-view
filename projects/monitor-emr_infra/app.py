@@ -19,7 +19,7 @@ from dataclasses import dataclass, asdict
 # from email.mime.text import MimeText
 # from email.mime.multipart import MimeMultipart
 from threading import Lock
-from flask import Flask, jsonify, render_template_string
+from flask import Flask, jsonify, render_template_string, request
 from apscheduler.schedulers.background import BackgroundScheduler
 import pandas as pd
 
@@ -642,6 +642,8 @@ def dashboard():
             .metric { display: flex; justify-content: space-between; margin: 10px 0; }
             .metric-value { font-weight: bold; }
             h1, h2 { color: #333; }
+            .btn { display: inline-block; padding: 10px 20px; border-radius: 5px; text-decoration: none; font-weight: bold; transition: all 0.3s ease; }
+            .btn:hover { transform: translateY(-2px); opacity: 0.9; }
             .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 20px; }
             .summary-item { background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; }
         </style>
@@ -651,6 +653,11 @@ def dashboard():
             <div class="header">
                 <h1>🏥 EMR Health Monitor</h1>
                 <p>Background monitoring service for EMR clusters</p>
+
+                <div style="margin-top: 15px;">
+                    <a href="/data" class="btn" style="background: #28a745; color: white; text-decoration: none; padding: 10px 20px; border-radius: 5px; margin-right: 10px;">📊 View Historical Data</a>
+                    <a href="/api/data/export" class="btn" style="background: #17a2b8; color: white; text-decoration: none; padding: 10px 20px; border-radius: 5px;">📥 Export Data</a>
+                </div>
 
                 <div class="summary">
                     <div class="summary-item">
@@ -725,6 +732,259 @@ def api_events(cluster_id):
     hours = request.args.get('hours', 24, type=int)
     events = health_monitor.data_manager.get_recent_events(cluster_id, hours)
     return jsonify([asdict(event) for event in events])
+
+
+@app.route('/data')
+def data_viewer():
+    """View stored health monitoring data"""
+    # Get filter parameters
+    cluster_filter = request.args.get('cluster', 'all')
+    hours = request.args.get('hours', 24, type=int)
+    severity_filter = request.args.get('severity', 'all')
+
+    # Get events
+    if cluster_filter == 'all':
+        events = health_monitor.data_manager.get_recent_events(hours=hours)
+    else:
+        events = health_monitor.data_manager.get_recent_events(cluster_filter, hours)
+
+    # Filter by severity
+    if severity_filter != 'all':
+        events = [e for e in events if e.severity == severity_filter]
+
+    # Get available clusters for filter dropdown
+    clusters = health_monitor.config.get_clusters()
+
+    # Prepare data for template
+    data = {
+        'events': events,
+        'clusters': clusters,
+        'total_events': len(health_monitor.data_manager.health_events),
+        'current_filters': {
+            'cluster': cluster_filter,
+            'hours': hours,
+            'severity': severity_filter
+        },
+        'alert_history': health_monitor.data_manager.alert_history
+    }
+
+    html_template = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>EMR Health Data Viewer</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+            .container { max-width: 1400px; margin: 0 auto; }
+            .header { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+            .filters { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+            .filter-group { display: inline-block; margin-right: 20px; margin-bottom: 10px; }
+            .filter-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+            .filter-group select, .filter-group input { padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+            .btn { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; display: inline-block; }
+            .btn:hover { background: #0056b3; }
+            .btn-secondary { background: #6c757d; }
+            .btn-secondary:hover { background: #545b62; }
+            .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+            .stat-card { background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+            .stat-value { font-size: 2em; font-weight: bold; color: #007bff; }
+            .events-table { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow-x: auto; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+            th { background: #f8f9fa; font-weight: bold; position: sticky; top: 0; }
+            tr:hover { background: #f8f9fa; }
+            .severity-critical { color: #dc3545; font-weight: bold; }
+            .severity-warning { color: #ffc107; font-weight: bold; }
+            .severity-error { color: #fd7e14; font-weight: bold; }
+            .event-type { background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-size: 0.9em; }
+            .details-toggle { cursor: pointer; color: #007bff; text-decoration: underline; }
+            .details { display: none; background: #f8f9fa; padding: 10px; margin-top: 10px; border-radius: 4px; font-family: monospace; font-size: 0.9em; }
+            .no-events { text-align: center; padding: 40px; color: #666; }
+            .back-link { margin-bottom: 20px; }
+            .alert-history { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="back-link">
+                <a href="/" class="btn btn-secondary">← Back to Dashboard</a>
+            </div>
+
+            <div class="header">
+                <h1>📊 EMR Health Data Viewer</h1>
+                <p>View and analyze stored health monitoring events from pickle file</p>
+            </div>
+
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value">{{ data.total_events }}</div>
+                    <div>Total Events Stored</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ events|length }}</div>
+                    <div>Events Shown</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ data.clusters|length }}</div>
+                    <div>Clusters Monitored</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ data.alert_history|length }}</div>
+                    <div>Clusters with Alerts</div>
+                </div>
+            </div>
+
+            <div class="filters">
+                <form method="GET" action="/data">
+                    <div class="filter-group">
+                        <label>Cluster:</label>
+                        <select name="cluster">
+                            <option value="all" {% if data.current_filters.cluster == 'all' %}selected{% endif %}>All Clusters</option>
+                            {% for cluster_id, cluster_config in data.clusters.items() %}
+                            <option value="{{ cluster_id }}" {% if data.current_filters.cluster == cluster_id %}selected{% endif %}>
+                                {{ cluster_config.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label>Time Period:</label>
+                        <select name="hours">
+                            <option value="1" {% if data.current_filters.hours == 1 %}selected{% endif %}>Last 1 hour</option>
+                            <option value="6" {% if data.current_filters.hours == 6 %}selected{% endif %}>Last 6 hours</option>
+                            <option value="24" {% if data.current_filters.hours == 24 %}selected{% endif %}>Last 24 hours</option>
+                            <option value="168" {% if data.current_filters.hours == 168 %}selected{% endif %}>Last 7 days</option>
+                            <option value="720" {% if data.current_filters.hours == 720 %}selected{% endif %}>Last 30 days</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label>Severity:</label>
+                        <select name="severity">
+                            <option value="all" {% if data.current_filters.severity == 'all' %}selected{% endif %}>All Severities</option>
+                            <option value="critical" {% if data.current_filters.severity == 'critical' %}selected{% endif %}>Critical</option>
+                            <option value="warning" {% if data.current_filters.severity == 'warning' %}selected{% endif %}>Warning</option>
+                            <option value="error" {% if data.current_filters.severity == 'error' %}selected{% endif %}>Error</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label>&nbsp;</label>
+                        <button type="submit" class="btn">Apply Filters</button>
+                    </div>
+                </form>
+            </div>
+
+            {% if data.alert_history %}
+            <div class="alert-history">
+                <h3>📧 Recent Alert History</h3>
+                <table style="margin-top: 10px;">
+                    <thead>
+                        <tr>
+                            <th>Cluster</th>
+                            <th>Last Alert Sent</th>
+                            <th>Time Ago</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for cluster_id, alert_time in data.alert_history.items() %}
+                        <tr>
+                            <td>{{ data.clusters.get(cluster_id, {}).get('name', cluster_id) }}</td>
+                            <td>{{ alert_time.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td>{{ ((data.events[0].timestamp - alert_time).total_seconds() / 3600) | round(1) if data.events else 'N/A' }}h ago</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+
+            <div class="events-table">
+                <h3>🔍 Health Events</h3>
+                {% if events %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Cluster</th>
+                            <th>Severity</th>
+                            <th>Event Type</th>
+                            <th>Message</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for event in events %}
+                        <tr>
+                            <td>{{ event.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                            <td>{{ event.cluster_name }}</td>
+                            <td><span class="severity-{{ event.severity }}">{{ event.severity.upper() }}</span></td>
+                            <td><span class="event-type">{{ event.event_type }}</span></td>
+                            <td>{{ event.message }}</td>
+                            <td>
+                                <span class="details-toggle" onclick="toggleDetails({{ loop.index }})">View Details</span>
+                                <div id="details-{{ loop.index }}" class="details">
+                                    <pre>{{ event.details | tojson(indent=2) }}</pre>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="no-events">
+                    <h3>No events found</h3>
+                    <p>No health events match the current filters.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <div style="margin-top: 30px; text-align: center; color: #666;">
+                <p>Data loaded from: {{ health_monitor.data_manager.data_file }}</p>
+                <p>Total events in pickle file: {{ data.total_events }}</p>
+            </div>
+        </div>
+
+        <script>
+            function toggleDetails(index) {
+                const details = document.getElementById('details-' + index);
+                if (details.style.display === 'none' || details.style.display === '') {
+                    details.style.display = 'block';
+                } else {
+                    details.style.display = 'none';
+                }
+            }
+
+            // Auto-refresh every 60 seconds
+            setTimeout(function() {
+                location.reload();
+            }, 60000);
+        </script>
+    </body>
+    </html>
+    """
+
+    return render_template_string(html_template, data=data, events=events, health_monitor=health_monitor)
+
+
+@app.route('/api/data/export')
+def export_data():
+    """Export health data as JSON"""
+    hours = request.args.get('hours', 24, type=int)
+    events = health_monitor.data_manager.get_recent_events(hours=hours)
+
+    export_data = {
+        'export_time': datetime.now().isoformat(),
+        'events': [asdict(event) for event in events],
+        'alert_history': {k: v.isoformat() for k, v in health_monitor.data_manager.alert_history.items()},
+        'total_events': len(health_monitor.data_manager.health_events)
+    }
+
+    response = jsonify(export_data)
+    response.headers[
+        'Content-Disposition'] = f'attachment; filename=emr_health_data_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+    return response
 
 
 def cleanup_handler(signum=None, frame=None):
