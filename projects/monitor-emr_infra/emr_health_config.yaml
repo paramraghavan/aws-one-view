@@ -1,0 +1,49 @@
+# EMR Health Monitor Configuration
+
+# Monitoring settings
+monitoring:
+  interval_minutes: 5           # How often to check cluster health (minutes)
+  data_file: 'emr_health_data.pkl'  # File to store historical data
+  max_history_days: 30         # How long to keep historical data (days)
+
+# Alert settings
+alerts:
+  email_enabled: true          # Enable/disable email alerts
+  email_smtp_server: 'smtp.gmail.com'    # SMTP server
+  email_smtp_port: 587         # SMTP port
+  email_username: 'your-email@gmail.com'  # SMTP username
+  email_password: 'your-app-password'     # SMTP password (use app password for Gmail)
+  email_recipients:            # List of email addresses to send alerts to
+    - 'admin@yourcompany.com'
+    - 'devops@yourcompany.com'
+  error_threshold: 5           # Number of errors before sending alert
+  alert_cooldown_hours: 1      # Minimum hours between alerts for same cluster
+
+# Health check thresholds
+thresholds:
+  memory_warning: 80          # Memory usage % to trigger warning
+  memory_critical: 90         # Memory usage % to trigger critical alert
+  cpu_warning: 80             # CPU usage % to trigger warning
+  cpu_critical: 90            # CPU usage % to trigger critical alert
+  unhealthy_nodes_warning: 1  # Number of unhealthy nodes for warning
+  unhealthy_nodes_critical: 3 # Number of unhealthy nodes for critical alert
+
+# EMR clusters to monitor
+clusters:
+  production:
+    name: "Production EMR"
+    spark_url: "http://production-master:18080"
+    yarn_url: "http://production-master:8088"
+    description: "Production EMR cluster"
+
+  dev-cluster:
+    name: "Development EMR"
+    spark_url: "http://dev-master:18080"
+    yarn_url: "http://dev-master:8088"
+    description: "Development EMR cluster for testing"
+
+  staging:
+    name: "Staging EMR"
+    spark_url: "http://staging-master:18080"
+    yarn_url: "http://staging-master:8088"
+    description: "Staging environment"
