@@ -18,12 +18,6 @@
 **Request URL Whitelisting:**
 
 ```
-Subject: EMR Monitoring URL Whitelist Request
-
-Hi IT Team,
-
-We need to whitelist these URLs for EMR cluster health monitoring:
-
 YARN ResourceManager APIs:
 - http://[emr-master]:8088/ws/v1/cluster/info
 - http://[emr-master]:8088/ws/v1/cluster/metrics  
@@ -39,9 +33,8 @@ Business Justification:
 - Internal infrastructure APIs, not external web browsing
 - Required for compliance and SLA monitoring
 
-Please whitelist these URLs in Zscaler policy.
+Whitelist these URLs in Zscaler policy.
 
-Thanks!
 ```
 
 ### **2. Configure Proxy in Application**
