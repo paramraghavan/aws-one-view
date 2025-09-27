@@ -97,7 +97,7 @@ class SparkMonitor:
                     app['is_running'] = False
                 else:
                     # Job is still running - use current time
-                    duration_hours = (datetime.now() - start_time).total_seconds() / 3600
+                    duration_hours = (datetime.utcnow() - start_time).total_seconds() / 3600
                     app['is_running'] = True
 
                 # Only include if duration exceeds threshold
