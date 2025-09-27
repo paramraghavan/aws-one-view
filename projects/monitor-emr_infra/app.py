@@ -16,8 +16,8 @@ import sys
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
-# from email.mime.text import MimeText
-# from email.mime.multipart import MimeMultipart
+from email.mime.text import MimeText
+from email.mime.multipart import MimeMultipart
 from threading import Lock
 from flask import Flask, jsonify, render_template_string, request
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -33,6 +33,35 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+
+# Configure requests for corporate proxy (if needed)
+def get_requests_session():
+    """Get requests session with proxy configuration if needed"""
+    session = requests.Session()
+
+    # Check for proxy configuration in environment variables
+    http_proxy = os.environ.get('HTTP_PROXY') or os.environ.get('http_proxy')
+    https_proxy = os.environ.get('HTTPS_PROXY') or os.environ.get('https_proxy')
+
+    if http_proxy or https_proxy:
+        proxies = {}
+        if http_proxy:
+            proxies['http'] = http_proxy
+        if https_proxy:
+            proxies['https'] = https_proxy
+        session.proxies.update(proxies)
+        logger.info(f"Using proxy configuration: {proxies}")
+
+    # Disable SSL verification if needed for corporate proxies (NOT recommended for production)
+    # Uncomment the line below only if absolutely necessary and approved by security team
+    # session.verify = False
+
+    return session
+
+
+# Global session for reuse
+requests_session = get_requests_session()
 
 
 @dataclass
@@ -248,7 +277,7 @@ class ClusterHealthChecker:
 
         try:
             # Get cluster metrics
-            metrics_response = requests.get(f"{yarn_url}/ws/v1/cluster/metrics", timeout=10)
+            metrics_response = requests_session.get(f"{yarn_url}/ws/v1/cluster/metrics", timeout=30)
             metrics_response.raise_for_status()
             metrics = metrics_response.json().get('clusterMetrics', {})
 
@@ -256,7 +285,7 @@ class ClusterHealthChecker:
             events.extend(self._check_resource_usage(metrics))
 
             # Get node information
-            nodes_response = requests.get(f"{yarn_url}/ws/v1/cluster/nodes", timeout=10)
+            nodes_response = requests_session.get(f"{yarn_url}/ws/v1/cluster/nodes", timeout=30)
             nodes_response.raise_for_status()
             nodes_data = nodes_response.json().get('nodes', {})
             nodes = nodes_data.get('node', []) if nodes_data else []
@@ -284,7 +313,7 @@ class ClusterHealthChecker:
 
         try:
             # Simple connectivity check
-            response = requests.get(f"{spark_url}/api/v1/applications", timeout=10, params={'limit': 1})
+            response = requests_session.get(f"{spark_url}/api/v1/applications", timeout=30, params={'limit': 1})
             response.raise_for_status()
             logger.debug(f"Spark History Server accessible for {self.cluster_id}")
 
@@ -311,52 +340,90 @@ class ClusterHealthChecker:
         total_cores = metrics.get('totalVirtualCores', 0)
         used_cores = metrics.get('allocatedVirtualCores', 0)
 
+        # ========================================
+        # 🚨 MEMORY CRITICAL THRESHOLD CHECK 🚨
+        # ========================================
         if total_memory > 0:
             memory_usage = (used_memory / total_memory) * 100
 
+            # CHECK FOR CRITICAL MEMORY USAGE (default: 90%)
             if memory_usage >= self.thresholds.get('memory_critical', 90):
+                logger.warning(f"🚨 CRITICAL: {self.cluster_name} memory usage: {memory_usage:.1f}%")
                 events.append(HealthEvent(
                     timestamp=datetime.now(),
                     cluster_id=self.cluster_id,
                     cluster_name=self.cluster_name,
                     event_type='resource_alert',
-                    severity='critical',
+                    severity='critical',  # ← THIS MARKS IT AS CRITICAL!
                     message=f"Critical memory usage: {memory_usage:.1f}%",
-                    details={'memory_usage_pct': memory_usage, 'used_mb': used_memory, 'total_mb': total_memory}
+                    details={
+                        'memory_usage_pct': memory_usage,
+                        'used_mb': used_memory,
+                        'total_mb': total_memory,
+                        'threshold_exceeded': 'memory_critical',
+                        'threshold_value': self.thresholds.get('memory_critical', 90)
+                    }
                 ))
+            # CHECK FOR WARNING MEMORY USAGE (default: 80%)
             elif memory_usage >= self.thresholds.get('memory_warning', 80):
+                logger.info(f"⚠️ WARNING: {self.cluster_name} memory usage: {memory_usage:.1f}%")
                 events.append(HealthEvent(
                     timestamp=datetime.now(),
                     cluster_id=self.cluster_id,
                     cluster_name=self.cluster_name,
                     event_type='resource_alert',
-                    severity='warning',
+                    severity='warning',  # ← Warning level
                     message=f"High memory usage: {memory_usage:.1f}%",
-                    details={'memory_usage_pct': memory_usage, 'used_mb': used_memory, 'total_mb': total_memory}
+                    details={
+                        'memory_usage_pct': memory_usage,
+                        'used_mb': used_memory,
+                        'total_mb': total_memory,
+                        'threshold_exceeded': 'memory_warning',
+                        'threshold_value': self.thresholds.get('memory_warning', 80)
+                    }
                 ))
 
+        # =====================================
+        # 🚨 CPU CRITICAL THRESHOLD CHECK 🚨
+        # =====================================
         if total_cores > 0:
             cpu_usage = (used_cores / total_cores) * 100
 
+            # CHECK FOR CRITICAL CPU USAGE (default: 90%)
             if cpu_usage >= self.thresholds.get('cpu_critical', 90):
+                logger.warning(f"🚨 CRITICAL: {self.cluster_name} CPU usage: {cpu_usage:.1f}%")
                 events.append(HealthEvent(
                     timestamp=datetime.now(),
                     cluster_id=self.cluster_id,
                     cluster_name=self.cluster_name,
                     event_type='resource_alert',
-                    severity='critical',
+                    severity='critical',  # ← THIS MARKS IT AS CRITICAL!
                     message=f"Critical CPU usage: {cpu_usage:.1f}%",
-                    details={'cpu_usage_pct': cpu_usage, 'used_cores': used_cores, 'total_cores': total_cores}
+                    details={
+                        'cpu_usage_pct': cpu_usage,
+                        'used_cores': used_cores,
+                        'total_cores': total_cores,
+                        'threshold_exceeded': 'cpu_critical',
+                        'threshold_value': self.thresholds.get('cpu_critical', 90)
+                    }
                 ))
+            # CHECK FOR WARNING CPU USAGE (default: 80%)
             elif cpu_usage >= self.thresholds.get('cpu_warning', 80):
+                logger.info(f"⚠️ WARNING: {self.cluster_name} CPU usage: {cpu_usage:.1f}%")
                 events.append(HealthEvent(
                     timestamp=datetime.now(),
                     cluster_id=self.cluster_id,
                     cluster_name=self.cluster_name,
                     event_type='resource_alert',
-                    severity='warning',
+                    severity='warning',  # ← Warning level
                     message=f"High CPU usage: {cpu_usage:.1f}%",
-                    details={'cpu_usage_pct': cpu_usage, 'used_cores': used_cores, 'total_cores': total_cores}
+                    details={
+                        'cpu_usage_pct': cpu_usage,
+                        'used_cores': used_cores,
+                        'total_cores': total_cores,
+                        'threshold_exceeded': 'cpu_warning',
+                        'threshold_value': self.thresholds.get('cpu_warning', 80)
+                    }
                 ))
 
         return events
@@ -400,98 +467,159 @@ class ClusterHealthChecker:
         return events
 
 
-# class EmailAlertManager:
-#     """Manages email alerts for health events"""
-#
-#     def __init__(self, alert_config: Dict[str, Any]):
-#         self.config = alert_config
-#         self.enabled = alert_config.get('email_enabled', False)
-#
-#         if self.enabled and not alert_config.get('email_recipients'):
-#             logger.warning("Email alerts enabled but no recipients configured")
-#             self.enabled = False
-#
-#     def send_alert(self, cluster_id: str, cluster_name: str, recent_events: List[HealthEvent], error_count: int):
-#         """Send email alert for cluster issues"""
-#         if not self.enabled:
-#             return
-#
-#         try:
-#             subject = f"EMR Health Alert: {cluster_name} ({cluster_id}) - {error_count} errors"
-#             body = self._create_alert_body(cluster_name, recent_events, error_count)
-#
-#             msg = MimeMultipart()
-#             msg['From'] = self.config.get('email_username')
-#             msg['Subject'] = subject
-#             msg.attach(MimeText(body, 'html'))
-#
-#             # Send to all recipients
-#             recipients = self.config.get('email_recipients', [])
-#             for recipient in recipients:
-#                 msg['To'] = recipient
-#                 self._send_email(msg)
-#                 logger.info(f"Alert email sent to {recipient} for cluster {cluster_id}")
-#
-#         except Exception as e:
-#             logger.error(f"Failed to send email alert for cluster {cluster_id}: {e}")
-#
-#     def _create_alert_body(self, cluster_name: str, events: List[HealthEvent], error_count: int) -> str:
-#         """Create HTML email body"""
-#         html = f"""
-#         <html>
-#         <body>
-#             <h2>EMR Cluster Health Alert</h2>
-#             <p><strong>Cluster:</strong> {cluster_name}</p>
-#             <p><strong>Error Count (last 24h):</strong> {error_count}</p>
-#             <p><strong>Alert Time:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-#
-#             <h3>Recent Issues:</h3>
-#             <table border="1" style="border-collapse: collapse; width: 100%;">
-#                 <tr style="background-color: #f0f0f0;">
-#                     <th>Time</th>
-#                     <th>Severity</th>
-#                     <th>Type</th>
-#                     <th>Message</th>
-#                 </tr>
-#         """
-#
-#         for event in events[:10]:  # Show last 10 events
-#             severity_color = {
-#                 'critical': '#ff4444',
-#                 'warning': '#ffaa00',
-#                 'error': '#ff6666'
-#             }.get(event.severity, '#000000')
-#
-#             html += f"""
-#                 <tr>
-#                     <td>{event.timestamp.strftime('%H:%M:%S')}</td>
-#                     <td style="color: {severity_color}; font-weight: bold;">{event.severity.upper()}</td>
-#                     <td>{event.event_type}</td>
-#                     <td>{event.message}</td>
-#                 </tr>
-#             """
-#
-#         html += """
-#             </table>
-#             <p><em>This is an automated alert from EMR Health Monitor.</em></p>
-#         </body>
-#         </html>
-#         """
-#
-#         return html
-#
-#     def _send_email(self, msg: MimeMultipart):
-#         """Send email via SMTP"""
-#         smtp_server = self.config.get('email_smtp_server', 'smtp.gmail.com')
-#         smtp_port = self.config.get('email_smtp_port', 587)
-#         username = self.config.get('email_username')
-#         password = self.config.get('email_password')
-#
-#         server = smtplib.SMTP(smtp_server, smtp_port)
-#         server.starttls()
-#         server.login(username, password)
-#         server.send_message(msg)
-#         server.quit()
+class EmailAlertManager:
+    """Manages email alerts for health events"""
+
+    def __init__(self, alert_config: Dict[str, Any]):
+        self.config = alert_config
+        self.enabled = alert_config.get('email_enabled', False)
+
+        if self.enabled and not alert_config.get('email_recipients'):
+            logger.warning("Email alerts enabled but no recipients configured")
+            self.enabled = False
+
+    def send_alert(self, cluster_id: str, cluster_name: str, recent_events: List[HealthEvent], error_count: int):
+        """Send email alert for cluster issues"""
+        if not self.enabled:
+            return
+
+        try:
+            subject = f"EMR Health Alert: {cluster_name} ({cluster_id}) - {error_count} errors"
+            body = self._create_alert_body(cluster_name, recent_events, error_count)
+
+            msg = MimeMultipart()
+            msg['From'] = self.config.get('email_username')
+            msg['Subject'] = subject
+            msg.attach(MimeText(body, 'html'))
+
+            # Send to all recipients
+            recipients = self.config.get('email_recipients', [])
+            sent_to = []
+            failed_recipients = []
+
+            for recipient in recipients:
+                try:
+                    msg_copy = MimeMultipart()
+                    msg_copy['From'] = self.config.get('email_username')
+                    msg_copy['To'] = recipient
+                    msg_copy['Subject'] = subject
+                    msg_copy.attach(MimeText(body, 'html'))
+
+                    self._send_email(msg_copy)
+                    sent_to.append(recipient)
+                    logger.info(f"Alert email sent to {recipient} for cluster {cluster_id}")
+                except Exception as e:
+                    failed_recipients.append({'email': recipient, 'error': str(e)})
+                    logger.error(f"Failed to send email to {recipient}: {e}")
+
+            # Determine severity based on success/failure ratio
+            total_recipients = len(recipients)
+            successful_sends = len(sent_to)
+            failed_sends = len(failed_recipients)
+
+            if successful_sends == 0:
+                # Complete failure - no emails sent
+                severity = 'error'
+                message = f"Failed to send email alert to any recipients ({failed_sends} failures)"
+            elif failed_sends == 0:
+                # Complete success - all emails sent
+                severity = 'info'
+                message = f"Email alert sent to {successful_sends} recipients - {error_count} errors detected"
+            else:
+                # Partial failure - some emails sent, some failed
+                severity = 'warning'
+                message = f"Email alert partially sent: {successful_sends} successful, {failed_sends} failed - {error_count} errors detected"
+
+            # Return email alert event to be logged
+            return HealthEvent(
+                timestamp=datetime.now(),
+                cluster_id=cluster_id,
+                cluster_name=cluster_name,
+                event_type='email_alert',
+                severity=severity,
+                message=message,
+                details={
+                    'recipients_successful': sent_to,
+                    'recipients_failed': failed_recipients,
+                    'total_recipients': total_recipients,
+                    'success_count': successful_sends,
+                    'failure_count': failed_sends,
+                    'error_count': error_count,
+                    'recent_events_count': len(recent_events),
+                    'alert_subject': subject
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to send email alert for cluster {cluster_id}: {e}")
+            # Return error event for complete system failure
+            return HealthEvent(
+                timestamp=datetime.now(),
+                cluster_id=cluster_id,
+                cluster_name=cluster_name,
+                event_type='email_alert',
+                severity='error',
+                message=f"Email alert system failure: {str(e)}",
+                details={'error': str(e), 'error_count': error_count, 'failure_type': 'system_failure'}
+            )
+
+    def _create_alert_body(self, cluster_name: str, events: List[HealthEvent], error_count: int) -> str:
+        """Create HTML email body"""
+        html = f"""
+        <html>
+        <body>
+            <h2>EMR Cluster Health Alert</h2>
+            <p><strong>Cluster:</strong> {cluster_name}</p>
+            <p><strong>Error Count (last 24h):</strong> {error_count}</p>
+            <p><strong>Alert Time:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+
+            <h3>Recent Issues:</h3>
+            <table border="1" style="border-collapse: collapse; width: 100%;">
+                <tr style="background-color: #f0f0f0;">
+                    <th>Time</th>
+                    <th>Severity</th>
+                    <th>Type</th>
+                    <th>Message</th>
+                </tr>
+        """
+
+        for event in events[:10]:  # Show last 10 events
+            severity_color = {
+                'critical': '#ff4444',
+                'warning': '#ffaa00',
+                'error': '#ff6666'
+            }.get(event.severity, '#000000')
+
+            html += f"""
+                <tr>
+                    <td>{event.timestamp.strftime('%H:%M:%S')}</td>
+                    <td style="color: {severity_color}; font-weight: bold;">{event.severity.upper()}</td>
+                    <td>{event.event_type}</td>
+                    <td>{event.message}</td>
+                </tr>
+            """
+
+        html += """
+            </table>
+            <p><em>This is an automated alert from EMR Health Monitor.</em></p>
+        </body>
+        </html>
+        """
+
+        return html
+
+    def _send_email(self, msg: MimeMultipart):
+        """Send email via SMTP"""
+        smtp_server = self.config.get('email_smtp_server', 'smtp.gmail.com')
+        smtp_port = self.config.get('email_smtp_port', 587)
+        username = self.config.get('email_username')
+        password = self.config.get('email_password')
+
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(username, password)
+        server.send_message(msg)
+        server.quit()
 
 
 class EMRHealthMonitor:
@@ -502,7 +630,7 @@ class EMRHealthMonitor:
         self.data_manager = HealthDataManager(
             self.config.get_monitoring_config().get('data_file', 'emr_health_data.pkl')
         )
-        # self.email_manager = EmailAlertManager(self.config.get_alert_config())
+        self.email_manager = EmailAlertManager(self.config.get_alert_config())
         self.scheduler = BackgroundScheduler()
         self.running = False
 
@@ -566,13 +694,19 @@ class EMRHealthMonitor:
 
                 if (error_count >= threshold and
                         self.data_manager.can_send_alert(cluster_id, cooldown)):
+
                     recent_events = self.data_manager.get_recent_events(cluster_id, 24)
-                    # self.email_manager.send_alert(
-                    #     cluster_id,
-                    #     cluster_config.get('name', cluster_id),
-                    #     recent_events,
-                    #     error_count
-                    # )
+                    email_event = self.email_manager.send_alert(
+                        cluster_id,
+                        cluster_config.get('name', cluster_id),
+                        recent_events,
+                        error_count
+                    )
+
+                    # Log the email alert event
+                    if email_event:
+                        self.data_manager.add_event(email_event)
+
                     self.data_manager.record_alert_sent(cluster_id)
 
         logger.info("Completed health check cycle")
@@ -586,13 +720,38 @@ class EMRHealthMonitor:
     def get_dashboard_data(self) -> Dict[str, Any]:
         """Get data for web dashboard"""
         clusters = self.config.get_clusters()
+        recent_events_24h = self.data_manager.get_recent_events(hours=24)
+        email_alerts_24h = len([e for e in recent_events_24h if e.event_type == 'email_alert'])
+
+        # Get critical alerts for dashboard table
+        critical_alerts = []
+        email_errors = []
+
+        for event in recent_events_24h:
+            # Collect critical resource/node alerts
+            if event.severity == 'critical' and event.event_type in ['resource_alert', 'node_alert']:
+                critical_alerts.append(event)
+
+            # Collect email alert errors/warnings
+            if event.event_type == 'email_alert' and event.severity in ['error', 'warning']:
+                email_errors.append(event)
+
+        # Sort by timestamp (most recent first)
+        critical_alerts.sort(key=lambda x: x.timestamp, reverse=True)
+        email_errors.sort(key=lambda x: x.timestamp, reverse=True)
+
         dashboard_data = {
             'clusters': {},
+            'critical_alerts': critical_alerts[:10],  # Show last 10 critical alerts
+            'email_errors': email_errors[:5],  # Show last 5 email issues
             'summary': {
                 'total_clusters': len(clusters),
                 'monitoring_status': 'running' if self.running else 'stopped',
                 'last_check': datetime.now().isoformat(),
-                'total_events_24h': len(self.data_manager.get_recent_events(hours=24))
+                'total_events_24h': len(recent_events_24h),
+                'email_alerts_24h': email_alerts_24h,
+                'critical_alerts_count': len(critical_alerts),
+                'has_critical_issues': len(critical_alerts) > 0 or len(email_errors) > 0
             }
         }
 
@@ -600,13 +759,17 @@ class EMRHealthMonitor:
             recent_events = self.data_manager.get_recent_events(cluster_id, 24)
             error_count = len([e for e in recent_events if e.severity in ['critical', 'error']])
             warning_count = len([e for e in recent_events if e.severity == 'warning'])
+            email_alert_count = len([e for e in recent_events if e.event_type == 'email_alert'])
+            critical_count = len([e for e in recent_events if e.severity == 'critical'])
 
             dashboard_data['clusters'][cluster_id] = {
                 'name': cluster_config.get('name', cluster_id),
                 'error_count_24h': error_count,
                 'warning_count_24h': warning_count,
+                'email_alert_count_24h': email_alert_count,
+                'critical_count_24h': critical_count,
                 'last_event': recent_events[0].timestamp.isoformat() if recent_events else None,
-                'status': 'critical' if error_count > 0 else 'warning' if warning_count > 0 else 'healthy'
+                'status': 'critical' if critical_count > 0 else 'error' if error_count > 0 else 'warning' if warning_count > 0 else 'healthy'
             }
 
         return dashboard_data
@@ -628,7 +791,7 @@ def dashboard():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>EMR Health Monitor</title>
+        <title>{% if data.summary.has_critical_issues %}🚨 CRITICAL ISSUES - {% endif %}EMR Health Monitor</title>
         <meta http-equiv="refresh" content="30">
         <style>
             body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
@@ -638,9 +801,24 @@ def dashboard():
             .cluster-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
             .status-healthy { border-left: 5px solid #28a745; }
             .status-warning { border-left: 5px solid #ffc107; }
-            .status-critical { border-left: 5px solid #dc3545; }
+            .status-critical { border-left: 5px solid #dc3545; background: #f8d7da !important; }
+            .status-error { border-left: 5px solid #fd7e14; background: #fff3cd !important; }
             .metric { display: flex; justify-content: space-between; margin: 10px 0; }
             .metric-value { font-weight: bold; }
+            .critical-section { background: linear-gradient(135deg, #dc3545, #c82333); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(220,53,69,0.3); }
+            .warning-section { background: linear-gradient(135deg, #ffc107, #e0a800); color: #212529; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(255,193,7,0.3); }
+            .alert-table { width: 100%; border-collapse: collapse; margin-top: 15px; background: rgba(255,255,255,0.95); border-radius: 8px; overflow: hidden; }
+            .alert-table th { background: rgba(0,0,0,0.1); padding: 12px; text-align: left; font-weight: bold; }
+            .alert-table td { padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.2); }
+            .alert-table tr:hover { background: rgba(255,255,255,0.1); }
+            .critical-badge { background: #dc3545; color: white; padding: 4px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold; }
+            .warning-badge { background: #ffc107; color: #212529; padding: 4px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold; }
+            .error-badge { background: #fd7e14; color: white; padding: 4px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold; }
+            .pulse { animation: pulse 2s infinite; }
+            @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+            .blink { animation: blink 1.5s infinite; }
+            @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.3; } }
+            .no-issues { background: linear-gradient(135deg, #28a745, #20c997); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; text-align: center; }
             h1, h2 { color: #333; }
             .btn { display: inline-block; padding: 10px 20px; border-radius: 5px; text-decoration: none; font-weight: bold; transition: all 0.3s ease; }
             .btn:hover { transform: translateY(-2px); opacity: 0.9; }
@@ -650,9 +828,17 @@ def dashboard():
     </head>
     <body>
         <div class="container">
-            <div class="header">
-                <h1>🏥 EMR Health Monitor</h1>
-                <p>Background monitoring service for EMR clusters</p>
+            <div class="header"{% if data.summary.has_critical_issues %} style="border: 3px solid #dc3545; background: linear-gradient(135deg, #f8d7da, #ffffff);"{% endif %}>
+                <h1>🏥 EMR Health Monitor
+                    {% if data.summary.has_critical_issues %}
+                        <span style="color: #dc3545; animation: blink 1s infinite;">🚨 CRITICAL ISSUES DETECTED!</span>
+                    {% endif %}
+                </h1>
+                <p>Background monitoring service for EMR clusters
+                    {% if data.summary.has_critical_issues %}
+                        <strong style="color: #dc3545;"> - {{ data.summary.critical_alerts_count }} critical alerts require immediate attention!</strong>
+                    {% endif %}
+                </p>
 
                 <div style="margin-top: 15px;">
                     <a href="/data" class="btn" style="background: #28a745; color: white; text-decoration: none; padding: 10px 20px; border-radius: 5px; margin-right: 10px;">📊 View Historical Data</a>
@@ -672,27 +858,50 @@ def dashboard():
                         <strong>{{ data.summary.total_events_24h }}</strong><br>
                         Events (24h)
                     </div>
+                    <div class="summary-item">
+                        <strong>{{ data.summary.email_alerts_24h }}</strong><br>
+                        📧 Alerts Sent (24h)
+                    </div>
                 </div>
             </div>
 
             <div class="cluster-grid">
                 {% for cluster_id, cluster in data.clusters.items() %}
-                <div class="cluster-card status-{{ cluster.status }}">
-                    <h3>{{ cluster.name }}</h3>
+                <div class="cluster-card status-{{ cluster.status }}{% if cluster.critical_count_24h > 0 %} pulse{% endif %}">
+                    <h3>{{ cluster.name }}
+                        {% if cluster.critical_count_24h > 0 %}
+                            <span class="critical-badge blink">🚨 {{ cluster.critical_count_24h }} CRITICAL</span>
+                        {% endif %}
+                    </h3>
 
                     <div class="metric">
                         <span>Status:</span>
-                        <span class="metric-value">{{ cluster.status|title }}</span>
+                        <span class="metric-value" style="color: {% if cluster.status == 'critical' %}#dc3545{% elif cluster.status == 'error' %}#fd7e14{% elif cluster.status == 'warning' %}#ffc107{% else %}#28a745{% endif %};">
+                            {{ cluster.status|title }}
+                            {% if cluster.status == 'critical' %}🚨{% elif cluster.status == 'error' %}⚠️{% elif cluster.status == 'warning' %}⚠️{% else %}✅{% endif %}
+                        </span>
                     </div>
+
+                    {% if cluster.critical_count_24h > 0 %}
+                    <div class="metric" style="background: #f8d7da; padding: 8px; border-radius: 4px; border: 1px solid #dc3545;">
+                        <span style="color: #721c24; font-weight: bold;">🚨 Critical Issues:</span>
+                        <span class="metric-value" style="color: #dc3545; font-size: 1.2em;">{{ cluster.critical_count_24h }}</span>
+                    </div>
+                    {% endif %}
 
                     <div class="metric">
                         <span>Errors (24h):</span>
-                        <span class="metric-value">{{ cluster.error_count_24h }}</span>
+                        <span class="metric-value" style="color: {% if cluster.error_count_24h > 0 %}#dc3545{% else %}#333{% endif %};">{{ cluster.error_count_24h }}</span>
                     </div>
 
                     <div class="metric">
                         <span>Warnings (24h):</span>
-                        <span class="metric-value">{{ cluster.warning_count_24h }}</span>
+                        <span class="metric-value" style="color: {% if cluster.warning_count_24h > 0 %}#ffc107{% else %}#333{% endif %};">{{ cluster.warning_count_24h }}</span>
+                    </div>
+
+                    <div class="metric">
+                        <span>📧 Email Alerts (24h):</span>
+                        <span class="metric-value" style="color: #17a2b8;">{{ cluster.email_alert_count_24h }}</span>
                     </div>
 
                     <div class="metric">
@@ -741,6 +950,7 @@ def data_viewer():
     cluster_filter = request.args.get('cluster', 'all')
     hours = request.args.get('hours', 24, type=int)
     severity_filter = request.args.get('severity', 'all')
+    event_type_filter = request.args.get('event_type', 'all')
 
     # Get events
     if cluster_filter == 'all':
@@ -752,6 +962,10 @@ def data_viewer():
     if severity_filter != 'all':
         events = [e for e in events if e.severity == severity_filter]
 
+    # Filter by event type
+    if event_type_filter != 'all':
+        events = [e for e in events if e.event_type == event_type_filter]
+
     # Get available clusters for filter dropdown
     clusters = health_monitor.config.get_clusters()
 
@@ -760,10 +974,12 @@ def data_viewer():
         'events': events,
         'clusters': clusters,
         'total_events': len(health_monitor.data_manager.health_events),
+        'email_alerts_count': len([e for e in events if e.event_type == 'email_alert']),
         'current_filters': {
             'cluster': cluster_filter,
             'hours': hours,
-            'severity': severity_filter
+            'severity': severity_filter,
+            'event_type': event_type_filter
         },
         'alert_history': health_monitor.data_manager.alert_history
     }
@@ -796,7 +1012,12 @@ def data_viewer():
             .severity-critical { color: #dc3545; font-weight: bold; }
             .severity-warning { color: #ffc107; font-weight: bold; }
             .severity-error { color: #fd7e14; font-weight: bold; }
+            .severity-info { color: #17a2b8; font-weight: bold; }
             .event-type { background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-size: 0.9em; }
+            .event-type-email_alert { background: #d1ecf1; color: #0c5460; font-weight: bold; }
+            .email-alert-row { background-color: #fff3cd !important; border-left: 4px solid #ffc107; }
+            .email-alert-success { background-color: #d4edda !important; border-left: 4px solid #28a745; }
+            .email-alert-error { background-color: #f8d7da !important; border-left: 4px solid #dc3545; }
             .details-toggle { cursor: pointer; color: #007bff; text-decoration: underline; }
             .details { display: none; background: #f8f9fa; padding: 10px; margin-top: 10px; border-radius: 4px; font-family: monospace; font-size: 0.9em; }
             .no-events { text-align: center; padding: 40px; color: #666; }
@@ -828,9 +1049,9 @@ def data_viewer():
                     <div class="stat-value">{{ data.clusters|length }}</div>
                     <div>Clusters Monitored</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-value">{{ data.alert_history|length }}</div>
-                    <div>Clusters with Alerts</div>
+                <div class="stat-card" style="background: #d1ecf1;">
+                    <div class="stat-value" style="color: #0c5460;">📧 {{ data.email_alerts_count }}</div>
+                    <div>Email Alerts (filtered)</div>
                 </div>
             </div>
 
@@ -866,6 +1087,18 @@ def data_viewer():
                             <option value="critical" {% if data.current_filters.severity == 'critical' %}selected{% endif %}>Critical</option>
                             <option value="warning" {% if data.current_filters.severity == 'warning' %}selected{% endif %}>Warning</option>
                             <option value="error" {% if data.current_filters.severity == 'error' %}selected{% endif %}>Error</option>
+                            <option value="info" {% if data.current_filters.severity == 'info' %}selected{% endif %}>Info</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label>Event Type:</label>
+                        <select name="event_type">
+                            <option value="all" {% if data.current_filters.event_type == 'all' %}selected{% endif %}>All Types</option>
+                            <option value="resource_alert" {% if data.current_filters.event_type == 'resource_alert' %}selected{% endif %}>Resource Alerts</option>
+                            <option value="node_alert" {% if data.current_filters.event_type == 'node_alert' %}selected{% endif %}>Node Alerts</option>
+                            <option value="connection_error" {% if data.current_filters.event_type == 'connection_error' %}selected{% endif %}>Connection Errors</option>
+                            <option value="email_alert" {% if data.current_filters.event_type == 'email_alert' %}selected{% endif %}>📧 Email Alerts</option>
                         </select>
                     </div>
 
@@ -916,11 +1149,32 @@ def data_viewer():
                     </thead>
                     <tbody>
                         {% for event in events %}
-                        <tr>
+                        {% set row_class = '' %}
+                        {% if event.event_type == 'email_alert' %}
+                            {% if event.severity == 'info' %}
+                                {% set row_class = 'email-alert-success' %}
+                            {% elif event.severity == 'error' %}
+                                {% set row_class = 'email-alert-error' %}
+                            {% elif event.severity == 'warning' %}
+                                {% set row_class = 'email-alert-row' %}
+                            {% else %}
+                                {% set row_class = 'email-alert-row' %}
+                            {% endif %}
+                        {% endif %}
+
+                        <tr class="{{ row_class }}">
                             <td>{{ event.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
                             <td>{{ event.cluster_name }}</td>
                             <td><span class="severity-{{ event.severity }}">{{ event.severity.upper() }}</span></td>
-                            <td><span class="event-type">{{ event.event_type }}</span></td>
+                            <td>
+                                <span class="event-type{% if event.event_type == 'email_alert' %} event-type-email_alert{% endif %}">
+                                    {% if event.event_type == 'email_alert' %}
+                                        📧 {{ event.event_type }}
+                                    {% else %}
+                                        {{ event.event_type }}
+                                    {% endif %}
+                                </span>
+                            </td>
                             <td>{{ event.message }}</td>
                             <td>
                                 <span class="details-toggle" onclick="toggleDetails({{ loop.index }})">View Details</span>
@@ -1004,5 +1258,5 @@ if __name__ == '__main__':
     health_monitor.start_monitoring()
 
     # Start Flask web interface
-    logger.info("Starting web interface on http://localhost:6111")
-    app.run(debug=False, host='0.0.0.0', port=6111, use_reloader=False)
+    logger.info("Starting web interface on http://localhost:7501")
+    app.run(debug=False, host='0.0.0.0', port=7501, use_reloader=False)
