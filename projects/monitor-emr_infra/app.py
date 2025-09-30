@@ -3,7 +3,7 @@ import yaml
 import requests
 import pickle
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from threading import Lock
 
 app = Flask(__name__)
@@ -191,48 +191,78 @@ def get_yarn_metrics(yarn_url):
 
 
 def check_thresholds(cluster_id, cluster_name, metrics, thresholds):
-    """Check if metrics exceed critical thresholds and log alerts"""
-    alerts = []
-    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    """
+    Check if ALL THREE critical thresholds are exceeded simultaneously.
+    Only creates a critical alert when memory, CPU, AND unhealthy nodes all exceed critical thresholds.
+    """
+    current_time = datetime.now()
 
-    # Check memory threshold
-    if metrics.get('memory_percent', 0) >= thresholds.get('memory_critical', 90):
-        alerts.append({
+    memory_critical = metrics.get('memory_percent', 0) >= thresholds.get('memory_critical', 90)
+    cpu_critical = metrics.get('cpu_percent', 0) >= thresholds.get('cpu_critical', 90)
+    nodes_critical = metrics.get('unhealthy_nodes', 0) >= thresholds.get('unhealthy_nodes_critical', 3)
+
+    # Critical alert ONLY when ALL THREE conditions are met
+    if memory_critical and cpu_critical and nodes_critical:
+        alert = {
             'cluster_id': cluster_id,
             'cluster_name': cluster_name,
             'timestamp': current_time,
-            'type': 'Memory',
-            'value': f"{metrics['memory_percent']}%",
-            'threshold': f"{thresholds['memory_critical']}%",
+            'timestamp_str': current_time.strftime('%Y-%m-%d %H:%M:%S'),
+            'memory_value': f"{metrics['memory_percent']}%",
+            'cpu_value': f"{metrics['cpu_percent']}%",
+            'nodes_value': str(metrics['unhealthy_nodes']),
+            'memory_threshold': f"{thresholds['memory_critical']}%",
+            'cpu_threshold': f"{thresholds['cpu_critical']}%",
+            'nodes_threshold': str(thresholds['unhealthy_nodes_critical']),
             'severity': 'CRITICAL'
-        })
+        }
+        return [alert]
 
-    # Check CPU threshold
-    if metrics.get('cpu_percent', 0) >= thresholds.get('cpu_critical', 90):
-        alerts.append({
-            'cluster_id': cluster_id,
-            'cluster_name': cluster_name,
-            'timestamp': current_time,
-            'type': 'CPU',
-            'value': f"{metrics['cpu_percent']}%",
-            'threshold': f"{thresholds['cpu_critical']}%",
-            'severity': 'CRITICAL'
-        })
+    return []
 
-    # Check unhealthy nodes threshold
-    unhealthy = metrics.get('unhealthy_nodes', 0)
-    if unhealthy >= thresholds.get('unhealthy_nodes_critical', 3):
-        alerts.append({
-            'cluster_id': cluster_id,
-            'cluster_name': cluster_name,
-            'timestamp': current_time,
-            'type': 'Unhealthy Nodes',
-            'value': str(unhealthy),
-            'threshold': str(thresholds['unhealthy_nodes_critical']),
-            'severity': 'CRITICAL'
-        })
 
-    return alerts
+def get_alert_counts_by_time(cluster_id, alerts):
+    """
+    Calculate alert counts for different time windows
+    Returns counts for: 1 hour, 3 hours, 24 hours, 1 week
+    """
+    now = datetime.now()
+
+    one_hour_ago = now - timedelta(hours=1)
+    three_hours_ago = now - timedelta(hours=3)
+    one_day_ago = now - timedelta(days=1)
+    one_week_ago = now - timedelta(weeks=1)
+
+    counts = {
+        '1h': 0,
+        '3h': 0,
+        '24h': 0,
+        '1w': 0
+    }
+
+    for alert in alerts:
+        if alert['cluster_id'] != cluster_id:
+            continue
+
+        alert_time = alert.get('timestamp')
+
+        # Handle both datetime objects and string timestamps
+        if isinstance(alert_time, str):
+            try:
+                alert_time = datetime.strptime(alert_time, '%Y-%m-%d %H:%M:%S')
+            except:
+                continue
+
+        if alert_time >= one_hour_ago:
+            counts['1h'] += 1
+        if alert_time >= three_hours_ago:
+            counts['3h'] += 1
+        if alert_time >= one_day_ago:
+            counts['24h'] += 1
+        if alert_time >= one_week_ago:
+            counts['1w'] += 1
+
+    return counts
 
 
 @app.route('/')
@@ -277,15 +307,15 @@ def get_clusters():
                 all_alerts.extend(new_alerts)
                 save_alerts(all_alerts)
 
-        # Count critical alerts for this cluster
+        # Get alert counts by time window
         with alerts_lock:
             all_alerts = load_alerts()
-            critical_count = sum(1 for alert in all_alerts if alert['cluster_id'] == cluster_id)
+            alert_counts = get_alert_counts_by_time(cluster_id, all_alerts)
 
         # Determine overall status
         status = 'healthy'
-        if (yarn_metrics.get('memory_percent', 0) >= thresholds['memory_critical'] or
-                yarn_metrics.get('cpu_percent', 0) >= thresholds['cpu_critical'] or
+        if (yarn_metrics.get('memory_percent', 0) >= thresholds['memory_critical'] and
+                yarn_metrics.get('cpu_percent', 0) >= thresholds['cpu_critical'] and
                 yarn_metrics.get('unhealthy_nodes', 0) >= thresholds['unhealthy_nodes_critical']):
             status = 'critical'
         elif (yarn_metrics.get('memory_percent', 0) >= thresholds['memory_warning'] or
@@ -302,7 +332,7 @@ def get_clusters():
             'spark_metrics': spark_metrics,
             'yarn_metrics': yarn_metrics,
             'thresholds': thresholds,
-            'critical_count': critical_count,
+            'alert_counts': alert_counts,
             'status': status
         })
 
@@ -314,7 +344,16 @@ def get_alerts():
     """API endpoint to get all critical alerts"""
     with alerts_lock:
         alerts = load_alerts()
-    return jsonify(alerts)
+
+    # Convert datetime objects to strings for JSON serialization
+    serializable_alerts = []
+    for alert in alerts:
+        alert_copy = alert.copy()
+        if isinstance(alert_copy.get('timestamp'), datetime):
+            alert_copy['timestamp'] = alert_copy['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+        serializable_alerts.append(alert_copy)
+
+    return jsonify(serializable_alerts)
 
 
 @app.route('/api/clear_alerts', methods=['POST'])

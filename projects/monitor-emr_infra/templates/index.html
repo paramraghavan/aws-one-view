@@ -39,6 +39,12 @@
             font-size: 28px;
         }
 
+        .header-subtitle {
+            font-size: 13px;
+            color: #666;
+            margin-top: 5px;
+        }
+
         .header-controls {
             display: flex;
             gap: 15px;
@@ -176,23 +182,47 @@
             margin-top: 3px;
         }
 
-        .critical-counter {
-            background: #e74c3c;
+        .alert-timeline {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
             color: white;
-            padding: 10px;
+            padding: 15px;
             border-radius: 8px;
-            text-align: center;
-            margin-top: 10px;
+            margin-top: 15px;
         }
 
-        .critical-counter-value {
+        .alert-timeline-header {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            text-align: center;
+            letter-spacing: 0.5px;
+        }
+
+        .alert-counts {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        .alert-count-box {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .alert-count-value {
             font-size: 24px;
             font-weight: 700;
+            margin-bottom: 3px;
         }
 
-        .critical-counter-label {
-            font-size: 11px;
-            margin-top: 5px;
+        .alert-count-label {
+            font-size: 10px;
+            opacity: 0.9;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .alerts-section {
@@ -273,6 +303,20 @@
             font-weight: 600;
             color: #e74c3c;
         }
+
+        .alert-note {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #856404;
+        }
+
+        .alert-note strong {
+            color: #c0392b;
+        }
     </style>
 </head>
 <body>
@@ -280,6 +324,9 @@
         <div class="header">
             <div>
                 <h1>🖥️ EMR Cluster Monitor</h1>
+                <div class="header-subtitle">
+                    ⚠️ Critical alerts triggered only when Memory, CPU, AND Unhealthy Nodes ALL exceed thresholds
+                </div>
             </div>
             <div class="header-controls">
                 <span class="last-update" id="lastUpdate">Last updated: Never</span>
@@ -343,6 +390,12 @@
                     cluster.thresholds.unhealthy_nodes_critical
                 );
 
+                // Check if currently in critical state
+                const isCurrentlyCritical =
+                    cluster.yarn_metrics.memory_percent >= cluster.thresholds.memory_critical &&
+                    cluster.yarn_metrics.cpu_percent >= cluster.thresholds.cpu_critical &&
+                    cluster.yarn_metrics.unhealthy_nodes >= cluster.thresholds.unhealthy_nodes_critical;
+
                 card.innerHTML = `
                     <div class="cluster-header">
                         <div>
@@ -405,12 +458,33 @@
                         </div>
                     </div>
 
-                    ${cluster.critical_count > 0 ? `
-                        <div class="critical-counter">
-                            <div class="critical-counter-value">${cluster.critical_count}</div>
-                            <div class="critical-counter-label">CRITICAL ALERTS TRIGGERED</div>
+                    ${isCurrentlyCritical ? `
+                        <div class="alert-note">
+                            <strong>⚠️ CRITICAL STATE ACTIVE:</strong> All three thresholds exceeded simultaneously!
                         </div>
                     ` : ''}
+
+                    <div class="alert-timeline">
+                        <div class="alert-timeline-header">🚨 CRITICAL ALERTS BY TIME WINDOW</div>
+                        <div class="alert-counts">
+                            <div class="alert-count-box">
+                                <div class="alert-count-value">${cluster.alert_counts['1h'] || 0}</div>
+                                <div class="alert-count-label">Last Hour</div>
+                            </div>
+                            <div class="alert-count-box">
+                                <div class="alert-count-value">${cluster.alert_counts['3h'] || 0}</div>
+                                <div class="alert-count-label">Last 3 Hours</div>
+                            </div>
+                            <div class="alert-count-box">
+                                <div class="alert-count-value">${cluster.alert_counts['24h'] || 0}</div>
+                                <div class="alert-count-label">Last 24 Hours</div>
+                            </div>
+                            <div class="alert-count-box">
+                                <div class="alert-count-value">${cluster.alert_counts['1w'] || 0}</div>
+                                <div class="alert-count-label">Last Week</div>
+                            </div>
+                        </div>
+                    </div>
 
                     ${cluster.status === 'offline' ? '<div class="offline-overlay">OFFLINE</div>' : ''}
                 `;
@@ -435,20 +509,20 @@
                             <tr>
                                 <th>Timestamp</th>
                                 <th>Cluster</th>
-                                <th>Type</th>
-                                <th>Value</th>
-                                <th>Threshold</th>
+                                <th>Memory</th>
+                                <th>CPU</th>
+                                <th>Unhealthy Nodes</th>
                                 <th>Severity</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${alerts.slice().reverse().map(alert => `
                                 <tr>
-                                    <td>${alert.timestamp}</td>
+                                    <td>${alert.timestamp_str || alert.timestamp}</td>
                                     <td>${alert.cluster_name}</td>
-                                    <td>${alert.type}</td>
-                                    <td>${alert.value}</td>
-                                    <td>${alert.threshold}</td>
+                                    <td>${alert.memory_value} (Threshold: ${alert.memory_threshold})</td>
+                                    <td>${alert.cpu_value} (Threshold: ${alert.cpu_threshold})</td>
+                                    <td>${alert.nodes_value} (Threshold: ${alert.nodes_threshold})</td>
                                     <td><span class="severity-badge">${alert.severity}</span></td>
                                 </tr>
                             `).join('')}
