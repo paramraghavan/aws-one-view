@@ -1,0 +1,29 @@
+# EMR Cluster Configuration
+
+# Threshold Configuration
+memory_warning: 80          # Memory usage % to trigger warning
+memory_critical: 90         # Memory usage % to trigger critical alert
+cpu_warning: 80             # CPU usage % to trigger warning
+cpu_critical: 90            # CPU usage % to trigger critical alert
+unhealthy_nodes_warning: 1  # Number of unhealthy nodes for warning
+unhealthy_nodes_critical: 3 # Number of unhealthy nodes for critical alert
+
+# EMR Clusters to Monitor
+production:
+  name: "Production EMR"
+  spark_url: "http://production-master:18080"
+  yarn_url: "http://production-master:8088"
+  description: "Production EMR cluster"
+
+dev-cluster:
+  name: "Development EMR"
+  spark_url: "http://dev-master:18080"
+  yarn_url: "http://dev-master:8088"
+  description: "Development EMR cluster for testing"
+
+# Add more clusters as needed following the same format:
+# cluster-id:
+#   name: "Cluster Display Name"
+#   spark_url: "http://master-node:18080"
+#   yarn_url: "http://master-node:8088"
+#   description: "Cluster description"
