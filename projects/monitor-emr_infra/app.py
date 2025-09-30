@@ -3,6 +3,9 @@ import yaml
 import requests
 import pickle
 import os
+import signal
+import sys
+import atexit
 from datetime import datetime, timedelta
 from threading import Lock
 
@@ -11,9 +14,14 @@ app = Flask(__name__)
 # File paths
 CONFIG_FILE = 'emr_config.yaml'
 ALERTS_FILE = 'critical_alerts.pkl'
+STATE_FILE = 'app_state.pkl'
 
 # Thread safety for alerts
 alerts_lock = Lock()
+
+# In-memory cache of alerts (for performance)
+alerts_cache = None
+cache_dirty = False
 
 
 def load_config():
@@ -28,23 +36,91 @@ def load_config():
 
 def load_alerts():
     """Load critical alerts from pickle file"""
+    global alerts_cache
+
+    # Use cache if available
+    if alerts_cache is not None:
+        return alerts_cache
+
     try:
         if os.path.exists(ALERTS_FILE):
             with open(ALERTS_FILE, 'rb') as f:
-                return pickle.load(f)
+                alerts_cache = pickle.load(f)
+                print(f"✅ Loaded {len(alerts_cache)} alerts from {ALERTS_FILE}")
+                return alerts_cache
+        alerts_cache = []
         return []
     except Exception as e:
-        print(f"Error loading alerts: {e}")
+        print(f"❌ Error loading alerts: {e}")
+        alerts_cache = []
         return []
 
 
 def save_alerts(alerts):
     """Save critical alerts to pickle file"""
+    global alerts_cache, cache_dirty
+
     try:
+        alerts_cache = alerts
         with open(ALERTS_FILE, 'wb') as f:
             pickle.dump(alerts, f)
+        cache_dirty = False
+        print(f"💾 Saved {len(alerts)} alerts to {ALERTS_FILE}")
     except Exception as e:
-        print(f"Error saving alerts: {e}")
+        print(f"❌ Error saving alerts: {e}")
+        cache_dirty = True
+
+
+def save_app_state():
+    """Save complete application state on shutdown"""
+    print("\n🔄 Saving application state before shutdown...")
+
+    try:
+        with alerts_lock:
+            # Save alerts
+            if alerts_cache is not None:
+                save_alerts(alerts_cache)
+
+            # Save additional state if needed
+            state = {
+                'last_shutdown': datetime.now(),
+                'alerts_count': len(alerts_cache) if alerts_cache else 0
+            }
+
+            with open(STATE_FILE, 'wb') as f:
+                pickle.dump(state, f)
+
+            print(f"✅ Application state saved successfully")
+            print(f"   - Alerts: {state['alerts_count']}")
+            print(f"   - Timestamp: {state['last_shutdown'].strftime('%Y-%m-%d %H:%M:%S')}")
+    except Exception as e:
+        print(f"❌ Error saving application state: {e}")
+
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals (SIGTERM, SIGINT)"""
+    signal_name = 'SIGTERM' if signum == signal.SIGTERM else 'SIGINT'
+    print(f"\n⚠️  Received {signal_name} signal - initiating graceful shutdown...")
+
+    # Save state
+    save_app_state()
+
+    print("👋 EMR Monitor shutdown complete")
+    sys.exit(0)
+
+
+def cleanup_on_exit():
+    """Cleanup function called by atexit"""
+    print("\n🛑 Application exiting - performing cleanup...")
+    save_app_state()
+
+
+# Register signal handlers for graceful shutdown
+signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
+signal.signal(signal.SIGTERM, signal_handler)  # Kill command
+
+# Register cleanup function for normal exit
+atexit.register(cleanup_on_exit)
 
 
 def get_spark_metrics(spark_url):
@@ -362,10 +438,59 @@ def clear_alerts():
     try:
         with alerts_lock:
             save_alerts([])
+        print("🗑️  All alerts cleared by user")
         return jsonify({'success': True, 'message': 'All alerts cleared successfully'})
     except Exception as e:
+        print(f"❌ Error clearing alerts: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
+def load_state_on_startup():
+    """Load and display previous application state on startup"""
+    try:
+        if os.path.exists(STATE_FILE):
+            with open(STATE_FILE, 'rb') as f:
+                state = pickle.load(f)
+                return state
+    except Exception as e:
+        print(f"ℹ️  Could not load previous state: {e}")
+    return None
+
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=7501)
+    print("=" * 60)
+    print("🚀 EMR Cluster Monitor Starting...")
+    print("=" * 60)
+
+    # Load existing state on startup
+    try:
+        if os.path.exists(STATE_FILE):
+            with open(STATE_FILE, 'rb') as f:
+                state = pickle.load(f)
+                print(f"📂 Previous session info:")
+                print(f"   - Last shutdown: {state['last_shutdown'].strftime('%Y-%m-%d %H:%M:%S')}")
+                print(f"   - Alerts at shutdown: {state['alerts_count']}")
+    except Exception as e:
+        print(f"ℹ️  No previous session state found")
+
+    # Preload alerts cache
+    with alerts_lock:
+        load_alerts()
+
+    print(f"📊 Monitoring configuration:")
+    print(f"   - Config file: {CONFIG_FILE}")
+    print(f"   - Alerts file: {ALERTS_FILE}")
+    print(f"   - State file: {STATE_FILE}")
+    print(f"\n🌐 Starting Flask server on http://0.0.0.0:7501")
+    print(f"⚠️  Press Ctrl+C to stop (state will be saved automatically)")
+    print("=" * 60)
+    print()
+
+    try:
+        app.run(debug=True, host='0.0.0.0', port=7501, use_reloader=False)
+    except KeyboardInterrupt:
+        print("\n⚠️  Keyboard interrupt received")
+    finally:
+        # Final save on any exit
+        save_app_state()
+        print("\n✅ Clean shutdown completed")
