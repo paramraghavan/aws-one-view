@@ -55,12 +55,31 @@ class SparkMonitor:
         self.spark_url = spark_url.rstrip('/')
         self.api_base = f"{self.spark_url}/api/v1/applications"
 
-    def get_applications(self, limit: int = 50) -> List[Dict[str, Any]]:
-        """Get Spark applications from History Server"""
+    def get_applications(self, limit: int = 50, include_resources: bool = True) -> List[Dict[str, Any]]:
+        """
+        Get Spark applications from History Server
+
+        Args:
+            limit: Maximum number of applications to retrieve
+            include_resources: If True, fetch detailed resource usage for each app
+
+        Returns:
+            List of application dictionaries with resource usage info
+        """
         try:
             response = requests.get(f"{self.api_base}?limit={limit}", timeout=10)
             response.raise_for_status()
-            return response.json()
+            apps = response.json()
+
+            if include_resources:
+                # Enrich each application with resource usage
+                for app in apps:
+                    app_id = app.get('id')
+                    if app_id:
+                        resources = self.get_application_resources(app_id)
+                        app['resources'] = resources
+
+            return apps
         except requests.RequestException as e:
             logger.error(f"Error fetching Spark applications: {e}")
             return []
@@ -75,9 +94,178 @@ class SparkMonitor:
             logger.error(f"Error fetching application {app_id}: {e}")
             return {}
 
+    def get_application_executors(self, app_id: str) -> List[Dict[str, Any]]:
+        """Get executor information for an application"""
+        try:
+            # Get all attempts for the application
+            app_details = self.get_application_details(app_id)
+            attempts = app_details.get('attempts', [])
+
+            if not attempts:
+                return []
+
+            # Use the first (most recent) attempt
+            attempt_id = attempts[0].get('attemptId')
+
+            # Fetch executors for this attempt
+            if attempt_id:
+                url = f"{self.api_base}/{app_id}/{attempt_id}/executors"
+            else:
+                url = f"{self.api_base}/{app_id}/executors"
+
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            logger.error(f"Error fetching executors for {app_id}: {e}")
+            return []
+
+    def get_application_resources(self, app_id: str) -> Dict[str, Any]:
+        """
+        Calculate total memory and cores used by a Spark application
+
+        Returns:
+            Dictionary with:
+                - total_memory_mb: Total memory used across all executors
+                - total_cores: Total cores used across all executors
+                - executor_count: Number of executors
+                - driver_memory_mb: Memory allocated to driver
+                - driver_cores: Cores allocated to driver
+        """
+        try:
+            executors = self.get_application_executors(app_id)
+
+            if not executors:
+                return {
+                    'total_memory_mb': 0,
+                    'total_cores': 0,
+                    'executor_count': 0,
+                    'driver_memory_mb': 0,
+                    'driver_cores': 0,
+                    'error': 'No executor data available'
+                }
+
+            total_memory_mb = 0
+            total_cores = 0
+            executor_count = 0
+            driver_memory_mb = 0
+            driver_cores = 0
+
+            for executor in executors:
+                executor_id = executor.get('id', '')
+
+                # Driver is typically executor with id "driver"
+                is_driver = executor_id.lower() == 'driver'
+
+                # Get memory (in bytes, convert to MB)
+                max_memory = executor.get('maxMemory', 0)
+                memory_mb = max_memory / (1024 * 1024) if max_memory > 0 else 0
+
+                # Get cores
+                cores = executor.get('totalCores', 0)
+
+                if is_driver:
+                    driver_memory_mb = memory_mb
+                    driver_cores = cores
+                else:
+                    executor_count += 1
+
+                total_memory_mb += memory_mb
+                total_cores += cores
+
+            return {
+                'total_memory_mb': round(total_memory_mb, 2),
+                'total_memory_gb': round(total_memory_mb / 1024, 2),
+                'total_cores': total_cores,
+                'executor_count': executor_count,
+                'driver_memory_mb': round(driver_memory_mb, 2),
+                'driver_cores': driver_cores,
+                'executor_memory_mb': round((total_memory_mb - driver_memory_mb) / executor_count,
+                                            2) if executor_count > 0 else 0,
+                'executor_cores': round((total_cores - driver_cores) / executor_count, 2) if executor_count > 0 else 0
+            }
+
+        except Exception as e:
+            logger.error(f"Error calculating resources for {app_id}: {e}")
+            return {
+                'total_memory_mb': 0,
+                'total_cores': 0,
+                'executor_count': 0,
+                'error': str(e)
+            }
+
+    def get_completed_jobs_summary(self, limit: int = 50) -> Dict[str, Any]:
+        """
+        Get summary of completed jobs with aggregated resource usage
+
+        Returns:
+            Dictionary with:
+                - total_jobs: Count of completed jobs
+                - failed_jobs: Count of failed jobs
+                - total_memory_gb: Sum of memory used by all jobs
+                - total_core_hours: Sum of core hours used
+                - avg_memory_gb: Average memory per job
+                - avg_cores: Average cores per job
+        """
+        apps = self.get_applications(limit=limit, include_resources=True)
+
+        total_jobs = 0
+        failed_jobs = 0
+        total_memory_gb = 0
+        total_core_hours = 0
+
+        for app in apps:
+            try:
+                attempts = app.get('attempts', [])
+                if not attempts:
+                    continue
+
+                attempt = attempts[0]
+
+                # Check if completed
+                if not attempt.get('completed', False):
+                    continue
+
+                total_jobs += 1
+
+                # Check if failed
+                if not attempt.get('completed') or attempt.get('lastUpdated') == attempt.get('endTime'):
+                    failed_jobs += 1
+
+                # Get resource usage
+                resources = app.get('resources', {})
+                memory_gb = resources.get('total_memory_gb', 0)
+                cores = resources.get('total_cores', 0)
+
+                # Calculate duration in hours
+                start_time_str = attempt.get('startTime')
+                end_time_str = attempt.get('endTime')
+
+                if start_time_str and end_time_str:
+                    start_time = datetime.strptime(start_time_str, '%Y-%m-%dT%H:%M:%S.%fZ')
+                    end_time = datetime.strptime(end_time_str, '%Y-%m-%dT%H:%M:%S.%fZ')
+                    duration_hours = (end_time - start_time).total_seconds() / 3600
+
+                    total_memory_gb += memory_gb
+                    total_core_hours += (cores * duration_hours)
+
+            except Exception as e:
+                logger.warning(f"Error processing app {app.get('id', 'unknown')}: {e}")
+                continue
+
+        return {
+            'total_jobs': total_jobs,
+            'failed_jobs': failed_jobs,
+            'success_rate': round((total_jobs - failed_jobs) / total_jobs * 100, 1) if total_jobs > 0 else 0,
+            'total_memory_gb': round(total_memory_gb, 2),
+            'total_core_hours': round(total_core_hours, 2),
+            'avg_memory_gb': round(total_memory_gb / total_jobs, 2) if total_jobs > 0 else 0,
+            'avg_core_hours': round(total_core_hours / total_jobs, 2) if total_jobs > 0 else 0
+        }
+
     def get_long_running_jobs(self, hours_threshold: float = 2.0) -> List[Dict[str, Any]]:
         """Find long-running applications that might be consuming resources"""
-        apps = self.get_applications(100)
+        apps = self.get_applications(100, include_resources=True)
         long_running = []
 
         for app in apps:
@@ -105,6 +293,15 @@ class SparkMonitor:
                     app['duration_hours'] = round(duration_hours, 2)
                     app['start_time_parsed'] = start_time
                     app['end_time_parsed'] = end_time if end_time_str else None
+
+                    # Add resource efficiency metrics
+                    resources = app.get('resources', {})
+                    if resources:
+                        app['memory_core_ratio'] = round(
+                            resources.get('total_memory_gb', 0) / resources.get('total_cores', 1),
+                            2
+                        )
+
                     long_running.append(app)
 
             except (KeyError, ValueError, IndexError) as e:
@@ -112,7 +309,6 @@ class SparkMonitor:
                 continue
 
         return sorted(long_running, key=lambda x: x.get('duration_hours', 0), reverse=True)
-
 
 class YARNMonitor:
     """Monitor YARN ResourceManager"""
