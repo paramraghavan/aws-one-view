@@ -1,356 +1,227 @@
-# EMR Cluster Monitor
+# EMR Monitor - Setup and Usage Guide
 
-A comprehensive Flask-based web application for monitoring Amazon EMR clusters through Spark History Server and YARN ResourceManager APIs.
+## Requirements
 
-## Features
-
-- **Real-time Monitoring**: Monitor multiple EMR clusters simultaneously
-- **Resource Tracking**: Track memory, CPU, and application usage
-- **Application Analysis**: Identify long-running, failed, and resource-heavy applications
-- **Node Health**: Monitor cluster node status and health
-- **Smart Alerts**: Get recommendations and alerts for optimization
-- **Responsive UI**: Modern, mobile-friendly dashboard
-- **Caching**: Efficient data caching to reduce API calls
-- **Authentication**: Support for basic authentication to EMR endpoints
-
-## Architecture
-
+### Python Dependencies (requirements.txt)
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Web Browser   │    │   Flask App      │    │   EMR Cluster   │
-│                 │◄──►│                  │◄──►│                 │
-│ - Dashboard     │    │ - REST APIs      │    │ - Spark History │
-│ - Auto-refresh  │    │ - Data Caching   │    │ - YARN RM       │
-│ - Cluster Select│    │ - Authentication │    │ - Node Status   │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
+Flask==2.3.3
+PyYAML==6.0.1
+requests==2.31.0
 ```
 
-## Prerequisites
-
-- Python 3.7 or higher
-- Network access to EMR cluster endpoints
-- EMR clusters with accessible Spark History Server (port 18080) and YARN ResourceManager (port 8088)
-
-## Installation
-
-### 1. Clone or Download the Project
-
-```bash
-mkdir emr-monitor
-cd emr-monitor
+## File Structure
 ```
-
-### 2. Create Project Structure
-
-```
-emr-monitor/
+emr_monitor/
 ├── app.py                 # Main Flask application
-├── emr_config.yaml       # EMR cluster configuration
-├── requirements.txt      # Python dependencies
+├── emr_config.yaml        # EMR cluster configuration
 ├── templates/
-│   └── dashboard.html    # HTML template
-├── static/              # Optional static files
-└── README.md           # This file
+│   └── index.html        # Web interface template
+├── requirements.txt      # Python dependencies
+└── README.md            # This file
+```
+
+## Installation and Setup
+
+### 1. Create Project Directory
+```bash
+mkdir emr_monitor
+cd emr_monitor
+```
+
+### 2. Create Virtual Environment (Recommended)
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
 ### 3. Install Dependencies
-
 ```bash
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-# On Linux/Mac:
-source venv/bin/activate
-# On Windows:
-venv\Scripts\activate
-
-# Install requirements
 pip install -r requirements.txt
 ```
 
-### 4. Configure EMR Clusters
-
-Create `emr_config.yaml` with your cluster details:
+### 4. Create Configuration File
+Create `emr_config.yaml` with your EMR clusters:
 
 ```yaml
 production:
   name: "Production EMR"
-  spark_url: "http://your-production-master:18080"
-  yarn_url: "http://your-production-master:8088"
+  spark_url: "http://production-master:18080"
+  yarn_url: "http://production-master:8088"
   description: "Production EMR cluster"
-  auth:
-    type: "none"  # or "basic"
-  thresholds:
-    max_long_running_hours: 4
-    max_memory_gb: 500
-    max_failed_apps: 10
-    min_healthy_nodes_percent: 90
-  tags:
-    environment: "production"
-    team: "data-engineering"
 
 dev-cluster:
   name: "Development EMR"
-  spark_url: "http://your-dev-master:18080"
-  yarn_url: "http://your-dev-master:8088"
-  description: "Development EMR cluster"
-  auth:
-    type: "basic"
-    username: "admin"
-    password: "password"
-  thresholds:
-    max_long_running_hours: 2
-    max_memory_gb: 100
-    max_failed_apps: 5
-    min_healthy_nodes_percent: 80
-  tags:
-    environment: "development"
+  spark_url: "http://dev-master:18080"
+  yarn_url: "http://dev-master:8088"
+  description: "Development EMR cluster for testing"
+
+staging:
+  name: "Staging EMR"
+  spark_url: "http://staging-master:18080"
+  yarn_url: "http://staging-master:8088"
+  description: "Staging environment for testing"
 ```
 
 ### 5. Create Templates Directory
-
 ```bash
 mkdir templates
-# Save dashboard.html in the templates directory
 ```
+Place the `index.html` file in the `templates/` directory.
 
-## Usage
-
-### Running the Application
-
+### 6. Run the Application
 ```bash
-# Start the Flask development server
 python app.py
 ```
 
-The application will be available at `http://localhost:5000`
+The application will start on `http://localhost:5000`
 
-### Using the Dashboard
+## Features
 
-1. **Select Cluster**: Choose an EMR cluster from the dropdown
-2. **Monitor Resources**: View real-time resource usage and application status
-3. **Review Alerts**: Check recommendations and alerts for optimization
-4. **Auto-refresh**: Enable automatic data refresh every 30 seconds
-5. **Application Details**: Click on applications to view detailed information
+### 🔍 **Real-time Monitoring**
+- **Cluster Overview**: View cluster state, Resource Manager version, and start time
+- **Resource Usage**: Monitor memory and CPU utilization with visual progress bars
+- **Node Status**: Track running, lost, unhealthy, and decommissioned nodes
 
-### API Endpoints
+### 🚀 **Application Monitoring**
+- **Active Applications**: View currently running YARN applications
+- **Long Running Jobs**: Identify Spark jobs running longer than 2 hours
+- **Recent Spark Applications**: Monitor recently completed and failed Spark jobs
 
-The application provides REST API endpoints for programmatic access:
+### 📊 **Key Metrics**
+- Memory usage percentage and absolute values
+- CPU core utilization
+- Application counts by state
+- Node health summary
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/clusters` | List all configured clusters |
-| `GET /api/monitor/{cluster_id}` | Get complete monitoring data |
-| `GET /api/spark/{cluster_id}` | Get Spark applications |
-| `GET /api/yarn/{cluster_id}` | Get YARN applications |
-| `GET /api/nodes/{cluster_id}` | Get cluster nodes |
-| `GET /api/health` | Application health check |
+### 🔄 **Auto-refresh**
+- Automatic data refresh every 30 seconds
+- Manual refresh button for immediate updates
+- Real-time timestamp display
 
-### Example API Usage
+## API Endpoints
 
-```bash
-# Get all clusters
-curl http://localhost:5000/api/clusters
+### Get Cluster List
+```
+GET /api/clusters
+```
 
-# Monitor specific cluster
-curl http://localhost:5000/api/monitor/production
+### Get Cluster Status
+```
+GET /api/cluster/<cluster_id>/status
+```
 
-# Get YARN applications
-curl http://localhost:5000/api/yarn/dev-cluster
+### Refresh Cluster Data
+```
+GET /api/cluster/<cluster_id>/refresh
 ```
 
 ## Configuration Options
 
-### Authentication
-
-Support for different authentication methods:
-
+### EMR Config File Format
 ```yaml
-auth:
-  type: "none"        # No authentication
-  # OR
-  type: "basic"       # Basic authentication
-  username: "admin"
-  password: "password"
+<cluster_id>:
+  name: "<Display Name>"
+  spark_url: "<Spark History Server URL>"
+  yarn_url: "<YARN ResourceManager URL>"
+  description: "<Optional Description>"
 ```
 
-### Thresholds
-
-Configure alert thresholds:
-
-```yaml
-thresholds:
-  max_long_running_hours: 4      # Alert for apps running > 4 hours
-  max_memory_gb: 500             # Alert for memory usage > 500GB
-  max_failed_apps: 10            # Alert for > 10 failed apps
-  min_healthy_nodes_percent: 90  # Alert if < 90% nodes healthy
-```
-
-### Tags
-
-Organize clusters with tags:
-
-```yaml
-tags:
-  environment: "production"
-  team: "data-engineering"
-  cost_center: "engineering"
-```
-
-## Monitoring Capabilities
-
-### Application Monitoring
-
-- **Running Applications**: Track active Spark and YARN applications
-- **Resource Usage**: Monitor memory and CPU allocation
-- **Duration Tracking**: Identify long-running applications
-- **Failure Analysis**: Track failed applications and reasons
-
-### Cluster Health
-
-- **Node Status**: Monitor RUNNING, LOST, UNHEALTHY, DECOMMISSIONED nodes
-- **Resource Utilization**: Track cluster-wide memory and CPU usage
-- **Capacity Planning**: Monitor available vs. used resources
-
-### Alerts and Recommendations
-
-- **Performance Alerts**: Long-running applications, resource bottlenecks
-- **Health Alerts**: Node failures, cluster issues
-- **Optimization Recommendations**: Resource optimization suggestions
-
-## Production Deployment
-
-### Using Gunicorn
-
-```bash
-# Install Gunicorn
-pip install gunicorn
-
-# Run with Gunicorn
-gunicorn -w 4 -b 0.0.0.0:5000 app:app
-
-# With additional options
-gunicorn -w 4 -b 0.0.0.0:5000 --timeout 120 --keep-alive 2 app:app
-```
-
-### Using Docker
-
-Create `Dockerfile`:
-
-```dockerfile
-FROM python:3.9-slim
-
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
-COPY . .
-EXPOSE 5000
-
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "app:app"]
-```
-
-Build and run:
-
-```bash
-docker build -t emr-monitor .
-docker run -p 5000:5000 -v $(pwd)/emr_config.yaml:/app/emr_config.yaml emr-monitor
-```
-
-### Nginx Configuration
-
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-
-    location / {
-        proxy_pass http://127.0.0.1:5000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-}
-```
+### URL Format Examples
+- Spark History Server: `http://master-node:18080`
+- YARN ResourceManager: `http://master-node:8088`
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Connection Timeouts**
-   - Ensure EMR cluster endpoints are accessible
-   - Check security groups and network ACLs
-   - Verify ports 18080 and 8088 are open
+1. **Connection Errors**
+   - Ensure EMR cluster URLs are accessible from the monitoring server
+   - Check firewall rules and security groups
+   - Verify Spark History Server and YARN ResourceManager are running
 
-2. **Authentication Errors**
-   - Verify username/password in configuration
-   - Check EMR cluster authentication settings
+2. **Configuration Errors**
+   - Validate YAML syntax in `emr_config.yaml`
+   - Check cluster IDs match exactly
+   - Ensure URLs don't have trailing slashes
 
-3. **Data Not Loading**
-   - Check EMR cluster status
-   - Verify Spark History Server and YARN RM are running
-   - Check application logs for errors
+3. **Performance Issues**
+   - Reduce refresh interval if monitoring multiple large clusters
+   - Limit application history depth in Spark configuration
+   - Monitor network bandwidth usage
 
-4. **Performance Issues**
-   - Increase cache duration for less frequent updates
-   - Limit number of applications fetched
-   - Use pagination for large datasets
-
-### Debugging
-
-Enable debug logging:
+### Logs and Debugging
+The application logs to console. To enable detailed logging:
 
 ```python
 import logging
 logging.basicConfig(level=logging.DEBUG)
 ```
 
-Check logs:
+## Security Considerations
 
-```bash
-tail -f /var/log/emr-monitor.log
+- **Network Access**: Ensure monitoring server has network access to EMR clusters
+- **Authentication**: Consider implementing authentication for production use
+- **HTTPS**: Use HTTPS in production environments
+- **Firewall**: Configure appropriate firewall rules
+
+## Customization
+
+### Adding New Metrics
+Extend the `get_cluster_status` method in `EMRMonitor` class to include additional metrics from Spark or YARN APIs.
+
+### UI Customization
+Modify the HTML template and CSS styles in `templates/index.html` to customize the appearance.
+
+### Alert Integration
+Add webhook or email notifications for critical thresholds:
+
+```python
+def check_alerts(self, status):
+    if status['resources']['memory']['usage_percent'] > 90:
+        self.send_alert("High memory usage detected")
 ```
 
-### Network Connectivity
+## Production Deployment
 
-Test connectivity to EMR endpoints:
-
+### Using Gunicorn
 ```bash
-# Test Spark History Server
-curl http://your-emr-master:18080/api/v1/applications
-
-# Test YARN ResourceManager
-curl http://your-emr-master:8088/ws/v1/cluster/apps
+pip install gunicorn
+gunicorn -w 4 -b 0.0.0.0:5000 app:app
 ```
+
+### Using Docker
+```dockerfile
+FROM python:3.9-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+EXPOSE 5000
+CMD ["python", "app.py"]
+```
+
+### Environment Variables
+Set environment variables for production:
+```bash
+export FLASK_ENV=production
+export EMR_CONFIG_PATH=/path/to/emr_config.yaml
+```
+
+## Monitoring Best Practices
+
+1. **Set Up Alerts**: Configure alerts for high resource usage (>80%)
+2. **Regular Maintenance**: Clean up old Spark application logs periodically
+3. **Capacity Planning**: Monitor trends to predict capacity needs
+4. **Job Optimization**: Use long-running job reports to identify optimization opportunities
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+To extend functionality:
+1. Fork the project
+2. Create feature branch
+3. Add tests for new functionality
+4. Submit pull request
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Support
-
-For support and questions:
-
-1. Check the troubleshooting section
-2. Review the logs for error messages
-3. Ensure EMR clusters are accessible
-4. Verify configuration file syntax
-
-## Roadmap
-
-- [ ] Email/Slack alerts for critical issues
-- [ ] Historical data storage and trending
-- [ ] Custom dashboard widgets
-- [ ] Export data to CSV/JSON
-- [ ] Integration with monitoring systems (Prometheus, Grafana)
-- [ ] Support for Kerberos authentication
-- [ ] Mobile app companion
+This project is open source and available under the MIT License.
