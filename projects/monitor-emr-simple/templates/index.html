@@ -19,7 +19,7 @@
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
         }
 
@@ -105,6 +105,10 @@
             transform: translateY(-5px);
         }
 
+        .card.full-width {
+            grid-column: 1 / -1;
+        }
+
         .card-title {
             font-size: 1.3em;
             color: #333;
@@ -179,11 +183,12 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 15px;
+            font-size: 0.9em;
         }
 
         .app-table th,
         .app-table td {
-            padding: 12px;
+            padding: 10px 8px;
             text-align: left;
             border-bottom: 1px solid #ddd;
         }
@@ -192,6 +197,9 @@
             background: #f8f9fa;
             font-weight: 600;
             color: #333;
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
 
         .app-table tr:hover {
@@ -203,6 +211,50 @@
         .status-submitted { color: #6f42c1; font-weight: bold; }
         .status-failed { color: #dc3545; font-weight: bold; }
         .status-succeeded { color: #28a745; font-weight: bold; }
+
+        .resource-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin: 2px;
+        }
+
+        .resource-badge.memory {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .resource-badge.cores {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+
+        .resource-badge.executors {
+            background: #f3e5f5;
+            color: #7b1fa2;
+        }
+
+        .resource-tooltip {
+            position: relative;
+            cursor: help;
+        }
+
+        .resource-tooltip:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            white-space: nowrap;
+            font-size: 0.8em;
+            z-index: 1000;
+        }
 
         .loading {
             text-align: center;
@@ -301,6 +353,13 @@
             margin-top: 5px;
         }
 
+        .no-data {
+            text-align: center;
+            padding: 20px;
+            color: #999;
+            font-style: italic;
+        }
+
         @media (max-width: 768px) {
             .dashboard {
                 grid-template-columns: 1fr;
@@ -317,6 +376,15 @@
 
             .threshold-input-group {
                 justify-content: center;
+            }
+
+            .app-table {
+                font-size: 0.8em;
+            }
+
+            .app-table th,
+            .app-table td {
+                padding: 8px 4px;
             }
         }
     </style>
@@ -348,6 +416,22 @@
                         <button class="threshold-preset" onclick="setThreshold(8)">8h</button>
                     </div>
                     <div class="threshold-help">Jobs running longer than this will be highlighted</div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; align-items: center;">
+                    <label for="limitInput" style="margin-bottom: 5px; font-weight: 600;">Applications Limit:</label>
+                    <div class="threshold-input-group">
+                        <input type="number" id="limitInput" min="10" max="500" step="10" value="50"
+                               title="Number of recent applications to fetch and analyze">
+                        <span>apps</span>
+                    </div>
+                    <div class="threshold-presets">
+                        <button class="threshold-preset" onclick="setLimit(20)">20</button>
+                        <button class="threshold-preset" onclick="setLimit(50)">50</button>
+                        <button class="threshold-preset" onclick="setLimit(100)">100</button>
+                        <button class="threshold-preset" onclick="setLimit(200)">200</button>
+                    </div>
+                    <div class="threshold-help">Number of applications to fetch from Spark History</div>
                 </div>
 
                 <button class="btn btn-primary" onclick="loadClusterData()">Monitor</button>
@@ -421,13 +505,13 @@
             </div>
 
             <!-- Running Applications -->
-            <div class="card">
+            <div class="card full-width">
                 <h3 class="card-title">🚀 Active Applications</h3>
                 <div class="metric">
                     <span class="metric-label">Running Applications:</span>
                     <span class="metric-value" id="running-count">0</span>
                 </div>
-                <div style="max-height: 300px; overflow-y: auto;">
+                <div style="max-height: 400px; overflow-y: auto;">
                     <table class="app-table" id="running-apps-table">
                         <thead>
                             <tr>
@@ -444,22 +528,25 @@
                 </div>
             </div>
 
-            <!-- Long Running Jobs -->
-            <div class="card">
-                <h3 class="card-title" id="long-running-title">⏰ Long Running Jobs</h3>
+            <!-- Long Running Jobs with Resources -->
+            <div class="card full-width">
+                <h3 class="card-title" id="long-running-title">⏰ Long Running Jobs (with Resource Details)</h3>
                 <div class="metric">
                     <span class="metric-label" id="long-running-label">Jobs Running > 2 hours:</span>
                     <span class="metric-value" id="long-running-count">0</span>
                 </div>
-                <div style="max-height: 300px; overflow-y: auto;">
+                <div style="max-height: 400px; overflow-y: auto;">
                     <table class="app-table" id="long-running-table">
                         <thead>
                             <tr>
                                 <th>Application Name</th>
-                                <th>Duration (hours)</th>
+                                <th>Duration</th>
                                 <th>Status</th>
+                                <th>Total Memory</th>
+                                <th>Total Cores</th>
+                                <th>Executors</th>
+                                <th>Driver</th>
                                 <th>Start Time</th>
-                                <th>End Time</th>
                             </tr>
                         </thead>
                         <tbody id="long-running-body">
@@ -468,18 +555,21 @@
                 </div>
             </div>
 
-            <!-- Recent Spark Applications -->
-            <div class="card">
-                <h3 class="card-title">⚡ Recent Spark Applications</h3>
-                <div style="max-height: 300px; overflow-y: auto;">
+            <!-- Recent Spark Applications with Resources -->
+            <div class="card full-width">
+                <h3 class="card-title">⚡ Recent Spark Applications (with Resource Details)</h3>
+                <div style="max-height: 400px; overflow-y: auto;">
                     <table class="app-table" id="spark-apps-table">
                         <thead>
                             <tr>
                                 <th>Application Name</th>
                                 <th>Status</th>
-                                <th>Start Time</th>
-                                <th>End Time</th>
                                 <th>Duration</th>
+                                <th>Total Memory</th>
+                                <th>Total Cores</th>
+                                <th>Executors</th>
+                                <th>Driver Resources</th>
+                                <th>Start Time</th>
                             </tr>
                         </thead>
                         <tbody id="spark-apps-body">
@@ -512,6 +602,15 @@
             }
         }
 
+        function setLimit(limit) {
+            document.getElementById('limitInput').value = limit;
+
+            // If we're currently monitoring a cluster, refresh with new limit
+            if (currentCluster) {
+                refreshData();
+            }
+        }
+
         function loadClusterData() {
             const clusterId = document.getElementById('clusterSelect').value;
             if (!clusterId) {
@@ -520,29 +619,31 @@
             }
 
             const threshold = document.getElementById('thresholdInput').value;
+            const limit = document.getElementById('limitInput').value;
             currentCluster = clusterId;
             document.getElementById('refreshBtn').style.display = 'inline-block';
-            fetchClusterStatus(clusterId, threshold);
+            fetchClusterStatus(clusterId, threshold, limit);
 
             // Auto-refresh every 30 seconds
             if (refreshInterval) clearInterval(refreshInterval);
-            refreshInterval = setInterval(() => fetchClusterStatus(clusterId, threshold), 30000);
+            refreshInterval = setInterval(() => fetchClusterStatus(clusterId, threshold, limit), 30000);
         }
 
         function refreshData() {
             if (currentCluster) {
                 const threshold = document.getElementById('thresholdInput').value;
-                fetch(`/api/cluster/${currentCluster}/refresh?threshold=${threshold}`)
+                const limit = document.getElementById('limitInput').value;
+                fetch(`/api/cluster/${currentCluster}/refresh?threshold=${threshold}&limit=${limit}`)
                     .then(response => response.json())
                     .then(data => updateDashboard(data))
                     .catch(error => showError('Error refreshing data: ' + error.message));
             }
         }
 
-        function fetchClusterStatus(clusterId, threshold = 2) {
+        function fetchClusterStatus(clusterId, threshold = 2, limit = 50) {
             showLoading();
 
-            fetch(`/api/cluster/${clusterId}/status?threshold=${threshold}`)
+            fetch(`/api/cluster/${clusterId}/status?threshold=${threshold}&limit=${limit}`)
                 .then(response => response.json())
                 .then(data => {
                     hideLoading();
@@ -609,10 +710,10 @@
             // Update running applications table
             updateRunningAppsTable(applications.running_apps || []);
 
-            // Update long running jobs table
+            // Update long running jobs table with resource details
             updateLongRunningTable(applications.long_running || []);
 
-            // Update Spark applications table
+            // Update Spark applications table with resource details
             updateSparkAppsTable(applications.spark_apps || []);
 
             // Update timestamp
@@ -633,6 +734,11 @@
             const tbody = document.getElementById('running-apps-body');
             tbody.innerHTML = '';
 
+            if (apps.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="no-data">No running applications</td></tr>';
+                return;
+            }
+
             apps.forEach(app => {
                 const row = tbody.insertRow();
                 row.innerHTML = `
@@ -645,9 +751,41 @@
             });
         }
 
+        function formatResourceBadges(resources) {
+            if (!resources || resources.error) {
+                return '<span style="color: #999; font-size: 0.85em;">No data</span>';
+            }
+
+            const memory = resources.total_memory_gb || 0;
+            const cores = resources.total_cores || 0;
+            const executors = resources.executor_count || 0;
+
+            return `
+                <span class="resource-badge memory" title="Total Memory">${memory.toFixed(1)} GB</span>
+                <span class="resource-badge cores" title="Total Cores">${cores}</span>
+                <span class="resource-badge executors" title="Executor Count">${executors}</span>
+            `;
+        }
+
+        function formatDriverInfo(resources) {
+            if (!resources || resources.error) {
+                return '<span style="color: #999; font-size: 0.85em;">-</span>';
+            }
+
+            const driverMem = resources.driver_memory_mb || 0;
+            const driverCores = resources.driver_cores || 0;
+
+            return `<span title="Driver: ${(driverMem/1024).toFixed(1)} GB, ${driverCores} cores">${(driverMem/1024).toFixed(1)} GB / ${driverCores} cores</span>`;
+        }
+
         function updateLongRunningTable(apps) {
             const tbody = document.getElementById('long-running-body');
             tbody.innerHTML = '';
+
+            if (apps.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="no-data">No long running jobs found</td></tr>';
+                return;
+            }
 
             apps.forEach(app => {
                 const row = tbody.insertRow();
@@ -655,16 +793,29 @@
                 const isRunning = app.is_running;
                 const status = isRunning ? 'Running' : 'Completed';
                 const statusClass = isRunning ? 'running' : 'succeeded';
-                const endTime = !isRunning && attempt && attempt.endTime ?
-                    new Date(attempt.endTime).toLocaleString() :
-                    (isRunning ? 'Still Running' : 'Unknown');
+                const resources = app.resources || {};
+
+                // Format memory and cores
+                const totalMemory = resources.total_memory_gb ? `${resources.total_memory_gb.toFixed(1)} GB` : '-';
+                const totalCores = resources.total_cores || '-';
+                const executorCount = resources.executor_count || '-';
+                const driverInfo = formatDriverInfo(resources);
+
+                // Add tooltip for detailed info
+                const memoryTooltip = resources.executor_memory_mb ?
+                    `Executor: ${resources.executor_memory_mb.toFixed(0)} MB, Driver: ${resources.driver_memory_mb.toFixed(0)} MB` : '';
+                const coresToolti = resources.executor_cores ?
+                    `Executor: ${resources.executor_cores.toFixed(1)} cores/exec, Driver: ${resources.driver_cores} cores` : '';
 
                 row.innerHTML = `
                     <td>${app.name || 'Unknown'}</td>
-                    <td>${app.duration_hours || 0}</td>
+                    <td>${app.duration_hours ? app.duration_hours.toFixed(2) + ' hrs' : '-'}</td>
                     <td><span class="status-${statusClass}">${status}</span></td>
+                    <td class="resource-tooltip" data-tooltip="${memoryTooltip}">${totalMemory}</td>
+                    <td class="resource-tooltip" data-tooltip="${coresToolti}">${totalCores}</td>
+                    <td>${executorCount}</td>
+                    <td>${driverInfo}</td>
                     <td>${attempt && attempt.startTime ? new Date(attempt.startTime).toLocaleString() : 'Unknown'}</td>
-                    <td>${endTime}</td>
                 `;
             });
         }
@@ -673,18 +824,40 @@
             const tbody = document.getElementById('spark-apps-body');
             tbody.innerHTML = '';
 
+            if (apps.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="no-data">No Spark applications found</td></tr>';
+                return;
+            }
+
             apps.forEach(app => {
                 const row = tbody.insertRow();
                 const attempt = app.attempts && app.attempts[0];
                 const duration = attempt && attempt.startTime && attempt.endTime ?
                     Math.round((new Date(attempt.endTime) - new Date(attempt.startTime)) / 60000) : 0;
 
+                const resources = app.resources || {};
+
+                // Format resource data
+                const totalMemory = resources.total_memory_gb ? `${resources.total_memory_gb.toFixed(1)} GB` : '-';
+                const totalCores = resources.total_cores || '-';
+                const executorCount = resources.executor_count || '-';
+                const driverInfo = formatDriverInfo(resources);
+
+                // Add tooltips
+                const memoryTooltip = resources.executor_memory_mb ?
+                    `Avg per executor: ${resources.executor_memory_mb.toFixed(0)} MB` : '';
+                const coresTooltip = resources.executor_cores ?
+                    `Avg per executor: ${resources.executor_cores.toFixed(1)} cores` : '';
+
                 row.innerHTML = `
                     <td>${app.name || 'Unknown'}</td>
                     <td><span class="status-${attempt && attempt.completed ? 'succeeded' : 'running'}">${attempt && attempt.completed ? 'Completed' : 'Running'}</span></td>
-                    <td>${attempt && attempt.startTime ? new Date(attempt.startTime).toLocaleString() : 'Unknown'}</td>
-                    <td>${attempt && attempt.endTime ? new Date(attempt.endTime).toLocaleString() : '-'}</td>
                     <td>${duration > 0 ? `${duration} min` : '-'}</td>
+                    <td class="resource-tooltip" data-tooltip="${memoryTooltip}">${totalMemory}</td>
+                    <td class="resource-tooltip" data-tooltip="${coresTooltip}">${totalCores}</td>
+                    <td>${executorCount}</td>
+                    <td>${driverInfo}</td>
+                    <td>${attempt && attempt.startTime ? new Date(attempt.startTime).toLocaleString() : 'Unknown'}</td>
                 `;
             });
         }

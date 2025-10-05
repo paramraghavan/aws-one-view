@@ -2,6 +2,7 @@
 """
 EMR Monitor - Flask application to monitor EMR clusters
 Monitors Spark jobs via History Server and YARN ResourceManager
+Enhanced with resource usage tracking for Spark jobs
 """
 
 import os
@@ -49,13 +50,13 @@ class EMRConfig:
 
 
 class SparkMonitor:
-    """Monitor Spark applications via History Server API"""
+    """Monitor Spark applications via History Server API with resource tracking"""
 
     def __init__(self, spark_url: str):
         self.spark_url = spark_url.rstrip('/')
         self.api_base = f"{self.spark_url}/api/v1/applications"
 
-    def get_applications(self, limit: int = 50, include_resources: bool = True) -> List[Dict[str, Any]]:
+    def get_applications(self, limit: int = 50, include_resources: bool = False) -> List[Dict[str, Any]]:
         """
         Get Spark applications from History Server
 
@@ -64,7 +65,7 @@ class SparkMonitor:
             include_resources: If True, fetch detailed resource usage for each app
 
         Returns:
-            List of application dictionaries with resource usage info
+            List of application dictionaries with optional resource usage info
         """
         try:
             response = requests.get(f"{self.api_base}?limit={limit}", timeout=10)
@@ -125,12 +126,7 @@ class SparkMonitor:
         Calculate total memory and cores used by a Spark application
 
         Returns:
-            Dictionary with:
-                - total_memory_mb: Total memory used across all executors
-                - total_cores: Total cores used across all executors
-                - executor_count: Number of executors
-                - driver_memory_mb: Memory allocated to driver
-                - driver_cores: Cores allocated to driver
+            Dictionary with resource usage details
         """
         try:
             executors = self.get_application_executors(app_id)
@@ -197,15 +193,6 @@ class SparkMonitor:
     def get_completed_jobs_summary(self, limit: int = 50) -> Dict[str, Any]:
         """
         Get summary of completed jobs with aggregated resource usage
-
-        Returns:
-            Dictionary with:
-                - total_jobs: Count of completed jobs
-                - failed_jobs: Count of failed jobs
-                - total_memory_gb: Sum of memory used by all jobs
-                - total_core_hours: Sum of core hours used
-                - avg_memory_gb: Average memory per job
-                - avg_cores: Average cores per job
         """
         apps = self.get_applications(limit=limit, include_resources=True)
 
@@ -263,9 +250,9 @@ class SparkMonitor:
             'avg_core_hours': round(total_core_hours / total_jobs, 2) if total_jobs > 0 else 0
         }
 
-    def get_long_running_jobs(self, hours_threshold: float = 2.0) -> List[Dict[str, Any]]:
+    def get_long_running_jobs(self, hours_threshold: float = 2.0, limit: int = 100) -> List[Dict[str, Any]]:
         """Find long-running applications that might be consuming resources"""
-        apps = self.get_applications(100, include_resources=True)
+        apps = self.get_applications(limit, include_resources=True)
         long_running = []
 
         for app in apps:
@@ -279,12 +266,10 @@ class SparkMonitor:
 
                 # Calculate duration based on whether job is completed or still running
                 if end_time_str:
-                    # Job is completed - use end time
                     end_time = datetime.strptime(end_time_str, '%Y-%m-%dT%H:%M:%S.%fZ')
                     duration_hours = (end_time - start_time).total_seconds() / 3600
                     app['is_running'] = False
                 else:
-                    # Job is still running - use current time
                     duration_hours = (datetime.utcnow() - start_time).total_seconds() / 3600
                     app['is_running'] = True
 
@@ -296,7 +281,7 @@ class SparkMonitor:
 
                     # Add resource efficiency metrics
                     resources = app.get('resources', {})
-                    if resources:
+                    if resources and resources.get('total_cores', 0) > 0:
                         app['memory_core_ratio'] = round(
                             resources.get('total_memory_gb', 0) / resources.get('total_cores', 1),
                             2
@@ -309,6 +294,7 @@ class SparkMonitor:
                 continue
 
         return sorted(long_running, key=lambda x: x.get('duration_hours', 0), reverse=True)
+
 
 class YARNMonitor:
     """Monitor YARN ResourceManager"""
@@ -403,7 +389,7 @@ class EMRMonitor:
 
         return self.monitors[cluster_id]
 
-    def get_cluster_status(self, cluster_id: str, threshold_hours: float = 2.0) -> Dict[str, Any]:
+    def get_cluster_status(self, cluster_id: str, threshold_hours: float = 2.0, limit: int = 50) -> Dict[str, Any]:
         """Get comprehensive cluster status"""
         spark_monitor, yarn_monitor = self.get_monitor(cluster_id)
         if not spark_monitor or not yarn_monitor:
@@ -415,8 +401,18 @@ class EMRMonitor:
         node_summary = yarn_monitor.get_node_summary()
 
         running_apps = yarn_monitor.get_applications(['RUNNING', 'ACCEPTED', 'SUBMITTED'])
-        spark_apps = spark_monitor.get_applications(20)
-        long_running = spark_monitor.get_long_running_jobs(threshold_hours)
+
+        # Get Spark applications WITHOUT resource details for basic listing (faster)
+        # Use the limit parameter from UI
+        spark_apps = spark_monitor.get_applications(min(limit, 20), include_resources=False)
+
+        # Get completed jobs summary WITH resource details
+        # Use the limit parameter from UI
+        completed_summary = spark_monitor.get_completed_jobs_summary(limit)
+
+        # Get long-running jobs WITH resource details
+        # Use the limit parameter from UI
+        long_running = spark_monitor.get_long_running_jobs(threshold_hours, limit)
 
         # Calculate resource usage
         total_memory = cluster_metrics.get('totalMB', 0)
@@ -446,11 +442,12 @@ class EMRMonitor:
             'nodes': node_summary,
             'applications': {
                 'running_count': len(running_apps),
-                'running_apps': running_apps[:10],  # Limit to top 10
+                'running_apps': running_apps[:10],
                 'spark_apps': spark_apps[:10],
                 'long_running_count': len(long_running),
-                'long_running': long_running[:5]  # Top 5 long running
+                'long_running': long_running[:5]
             },
+            'completed_jobs': completed_summary,
             'threshold': threshold_hours,
             'timestamp': datetime.now().isoformat()
         }
@@ -478,20 +475,53 @@ def api_clusters():
 def api_cluster_status(cluster_id):
     """API endpoint to get cluster status"""
     threshold = request.args.get('threshold', 2.0, type=float)
-    status = emr_monitor.get_cluster_status(cluster_id, threshold)
+    limit = request.args.get('limit', 50, type=int)
+    status = emr_monitor.get_cluster_status(cluster_id, threshold, limit)
     return jsonify(status)
+
+
+@app.route('/api/cluster/<cluster_id>/spark/resources')
+def api_cluster_spark_resources(cluster_id):
+    """API endpoint to get detailed Spark resource usage"""
+    spark_monitor, _ = emr_monitor.get_monitor(cluster_id)
+    if not spark_monitor:
+        return jsonify({'error': 'Cluster not found'}), 404
+
+    limit = request.args.get('limit', 20, type=int)
+    summary = spark_monitor.get_completed_jobs_summary(limit)
+
+    return jsonify(summary)
+
+
+@app.route('/api/cluster/<cluster_id>/spark/applications')
+def api_cluster_spark_applications(cluster_id):
+    """API endpoint to get Spark applications with resource details"""
+    spark_monitor, _ = emr_monitor.get_monitor(cluster_id)
+    if not spark_monitor:
+        return jsonify({'error': 'Cluster not found'}), 404
+
+    limit = request.args.get('limit', 20, type=int)
+    include_resources = request.args.get('resources', 'true').lower() == 'true'
+
+    apps = spark_monitor.get_applications(limit, include_resources)
+
+    return jsonify({
+        'count': len(apps),
+        'applications': apps
+    })
 
 
 @app.route('/api/cluster/<cluster_id>/refresh')
 def api_cluster_refresh(cluster_id):
     """API endpoint to refresh cluster data"""
     threshold = request.args.get('threshold', 2.0, type=float)
+    limit = request.args.get('limit', 50, type=int)
 
     # Clear cached monitors to force refresh
     if cluster_id in emr_monitor.monitors:
         del emr_monitor.monitors[cluster_id]
 
-    status = emr_monitor.get_cluster_status(cluster_id, threshold)
+    status = emr_monitor.get_cluster_status(cluster_id, threshold, limit)
     return jsonify(status)
 
 
@@ -499,5 +529,9 @@ if __name__ == '__main__':
     # Create templates directory if it doesn't exist
     os.makedirs('templates', exist_ok=True)
     os.makedirs('static', exist_ok=True)
+
+    logger.info("=" * 60)
+    logger.info("Starting EMR Monitor with Enhanced Resource Tracking")
+    logger.info("=" * 60)
 
     app.run(debug=True, host='0.0.0.0', port=7501)
