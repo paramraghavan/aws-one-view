@@ -6,8 +6,9 @@ python-ldap==3.4.3
 
 # app.py
 from flask import Flask, render_template, request, redirect, url_for, flash
-from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required,  current_user
 import ldap
+import logging
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'  # Change this to a secure secret key
@@ -47,6 +48,21 @@ def authenticate_ldap(username, password):
     finally:
         ldap_client.unbind()
 
+def audit_log(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        logging.info(f"Access to {f.__name__} by {current_user.id if current_user.is_authenticated else 'anonymous'}")
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+# For global audit logging across all endpoints:
+@app.before_request
+def log_request():
+    if current_user.is_authenticated:
+        logging.info(f"User {current_user.id} requested {request.endpoint}")
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -70,6 +86,7 @@ def logout():
 
 @app.route('/protected')
 @login_required
+@audit_log
 def protected():
     return render_template('protected.html')
 
