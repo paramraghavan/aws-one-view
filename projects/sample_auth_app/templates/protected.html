@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Protected Area</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+
+        /* ============================================
+           COPY THIS NAVBAR SECTION TO YOUR HTML
+           ============================================ */
+        .auth-navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .auth-navbar .title {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .auth-navbar .user-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .auth-navbar .username {
+            font-size: 14px;
+        }
+
+        .auth-navbar .logout-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid white;
+            padding: 8px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+
+        .auth-navbar .logout-btn:hover {
+            background: white;
+            color: #667eea;
+        }
+
+        /* Session timeout warning (optional) */
+        .session-info {
+            background: #fff3cd;
+            color: #856404;
+            padding: 10px 20px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        @media (max-width: 768px) {
+            .auth-navbar {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+        /* ============================================
+           END OF NAVBAR SECTION
+           ============================================ */
+
+        /* Your page content goes below */
+        .content-wrapper {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .content-card {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <!-- COPY FROM HERE -->
+    <div class="auth-navbar">
+        <div class="title">Protected Area</div>
+        <div class="user-info">
+            <span class="username">User: {{ username }}</span>
+            <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+        </div>
+    </div>
+
+    <div class="session-info">
+        Session expires after 15 minutes of inactivity
+    </div>
+    <!-- TO HERE (navbar + session info) -->
+
+    <!-- ============================================
+         REPLACE EVERYTHING BELOW WITH YOUR EXISTING HTML
+         ============================================ -->
+    <div class="content-wrapper">
+        <div class="content-card">
+            <h1>Your Protected Content Here</h1>
+            <p>Replace this entire content-wrapper div with your existing HTML.</p>
+            <p>Just keep the navbar above and add your content below it.</p>
+        </div>
+    </div>
+
+</body>
+</html>
