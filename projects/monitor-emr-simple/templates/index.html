@@ -86,6 +86,20 @@
             background: #218838;
         }
 
+        .btn-warning {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 14px;
+        }
+
         .dashboard {
             display: none;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -115,6 +129,9 @@
             margin-bottom: 20px;
             border-bottom: 2px solid #f0f0f0;
             padding-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .metric {
@@ -135,6 +152,27 @@
         .metric-value {
             font-weight: bold;
             color: #333;
+        }
+
+        .peak-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
+            color: white;
+            border-radius: 20px;
+            font-size: 0.75em;
+            font-weight: bold;
+            margin-left: 8px;
+        }
+
+        .peak-info {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 5px;
+            padding: 8px;
+            background: #fff3cd;
+            border-left: 3px solid #ffc107;
+            border-radius: 4px;
         }
 
         .progress-bar {
@@ -360,6 +398,38 @@
             font-style: italic;
         }
 
+        .peak-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .peak-stat-item {
+            padding: 15px;
+            background: linear-gradient(135deg, #fff5f5, #ffe5e5);
+            border-radius: 8px;
+            border-left: 4px solid #ff6b6b;
+        }
+
+        .peak-stat-label {
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .peak-stat-value {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #c92a2a;
+        }
+
+        .peak-stat-time {
+            font-size: 0.75em;
+            color: #868e96;
+            margin-top: 5px;
+        }
+
         @media (max-width: 768px) {
             .dashboard {
                 grid-template-columns: 1fr;
@@ -386,13 +456,17 @@
             .app-table td {
                 padding: 8px 4px;
             }
+
+            .peak-stats {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔍 EMR Cluster Monitor</h1>
+            <h1>📊 EMR Cluster Monitor</h1>
             <div class="cluster-selector">
                 <label for="clusterSelect">Choose EMR Cluster:</label>
                 <select id="clusterSelect">
@@ -478,6 +552,29 @@
                     <div class="progress-bar">
                         <div class="progress-fill" id="cpu-progress" style="width: 0%"></div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Peak Resource Usage -->
+            <div class="card full-width">
+                <h3 class="card-title">
+                    🔥 Peak Resource Usage
+                    <button class="btn btn-warning btn-sm" onclick="resetPeaks()">Reset Peaks</button>
+                </h3>
+                <div class="peak-stats">
+                    <div class="peak-stat-item">
+                        <div class="peak-stat-label">Peak Memory Usage</div>
+                        <div class="peak-stat-value" id="peak-memory">-</div>
+                        <div class="peak-stat-time" id="peak-memory-time">No data yet</div>
+                    </div>
+                    <div class="peak-stat-item">
+                        <div class="peak-stat-label">Peak CPU Usage</div>
+                        <div class="peak-stat-value" id="peak-cpu">-</div>
+                        <div class="peak-stat-time" id="peak-cpu-time">No data yet</div>
+                    </div>
+                </div>
+                <div class="peak-info" id="peak-tracking-info">
+                    Tracking started: <span id="tracking-started">-</span>
                 </div>
             </div>
 
@@ -595,8 +692,6 @@
 
         function setThreshold(hours) {
             document.getElementById('thresholdInput').value = hours;
-
-            // If we're currently monitoring a cluster, refresh with new threshold
             if (currentCluster) {
                 refreshData();
             }
@@ -604,8 +699,6 @@
 
         function setLimit(limit) {
             document.getElementById('limitInput').value = limit;
-
-            // If we're currently monitoring a cluster, refresh with new limit
             if (currentCluster) {
                 refreshData();
             }
@@ -637,6 +730,29 @@
                     .then(response => response.json())
                     .then(data => updateDashboard(data))
                     .catch(error => showError('Error refreshing data: ' + error.message));
+            }
+        }
+
+        function resetPeaks() {
+            if (!currentCluster) {
+                alert('Please select a cluster first');
+                return;
+            }
+
+            if (confirm('Are you sure you want to reset the peak values? This action cannot be undone.')) {
+                fetch(`/api/cluster/${currentCluster}/peaks/reset`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        showError(data.error);
+                    } else {
+                        alert('Peak values reset successfully!');
+                        refreshData();
+                    }
+                })
+                .catch(error => showError('Error resetting peaks: ' + error.message));
             }
         }
 
@@ -691,6 +807,10 @@
             updateProgressColor(memoryProgress, memory.usage_percent || 0);
             updateProgressColor(cpuProgress, cpu.usage_percent || 0);
 
+            // Update peak data
+            const peaks = data.peaks || {};
+            updatePeakData(peaks);
+
             // Update node status
             const nodes = data.nodes || {};
             document.getElementById('nodes-running').textContent = nodes.RUNNING || 0;
@@ -719,6 +839,35 @@
             // Update timestamp
             document.getElementById('timestamp').textContent =
                 `Last updated: ${new Date(data.timestamp).toLocaleString()}`;
+        }
+
+        function updatePeakData(peaks) {
+            const memoryPeak = peaks.memory || {};
+            const cpuPeak = peaks.cpu || {};
+
+            // Update peak memory
+            const peakMemoryPercent = memoryPeak.peak_usage_percent || 0;
+            const peakMemoryMB = memoryPeak.peak_used_mb || 0;
+            document.getElementById('peak-memory').textContent =
+                `${formatBytes(peakMemoryMB * 1024 * 1024)} (${peakMemoryPercent.toFixed(1)}%)`;
+            document.getElementById('peak-memory-time').textContent =
+                memoryPeak.peak_timestamp ?
+                `Recorded at: ${new Date(memoryPeak.peak_timestamp).toLocaleString()}` :
+                'No peak recorded yet';
+
+            // Update peak CPU
+            const peakCpuPercent = cpuPeak.peak_usage_percent || 0;
+            const peakCpuCores = cpuPeak.peak_used_cores || 0;
+            document.getElementById('peak-cpu').textContent =
+                `${peakCpuCores} cores (${peakCpuPercent.toFixed(1)}%)`;
+            document.getElementById('peak-cpu-time').textContent =
+                cpuPeak.peak_timestamp ?
+                `Recorded at: ${new Date(cpuPeak.peak_timestamp).toLocaleString()}` :
+                'No peak recorded yet';
+
+            // Update tracking started time
+            document.getElementById('tracking-started').textContent =
+                peaks.tracking_started ? new Date(peaks.tracking_started).toLocaleString() : '-';
         }
 
         function updateProgressColor(element, percentage) {
@@ -751,22 +900,6 @@
             });
         }
 
-        function formatResourceBadges(resources) {
-            if (!resources || resources.error) {
-                return '<span style="color: #999; font-size: 0.85em;">No data</span>';
-            }
-
-            const memory = resources.total_memory_gb || 0;
-            const cores = resources.total_cores || 0;
-            const executors = resources.executor_count || 0;
-
-            return `
-                <span class="resource-badge memory" title="Total Memory">${memory.toFixed(1)} GB</span>
-                <span class="resource-badge cores" title="Total Cores">${cores}</span>
-                <span class="resource-badge executors" title="Executor Count">${executors}</span>
-            `;
-        }
-
         function formatDriverInfo(resources) {
             if (!resources || resources.error) {
                 return '<span style="color: #999; font-size: 0.85em;">-</span>';
@@ -795,13 +928,11 @@
                 const statusClass = isRunning ? 'running' : 'succeeded';
                 const resources = app.resources || {};
 
-                // Format memory and cores
                 const totalMemory = resources.total_memory_gb ? `${resources.total_memory_gb.toFixed(1)} GB` : '-';
                 const totalCores = resources.total_cores || '-';
                 const executorCount = resources.executor_count || '-';
                 const driverInfo = formatDriverInfo(resources);
 
-                // Add tooltip for detailed info
                 const memoryTooltip = resources.executor_memory_mb ?
                     `Executor: ${resources.executor_memory_mb.toFixed(0)} MB, Driver: ${resources.driver_memory_mb.toFixed(0)} MB` : '';
                 const coresToolti = resources.executor_cores ?
@@ -836,14 +967,11 @@
                     Math.round((new Date(attempt.endTime) - new Date(attempt.startTime)) / 60000) : 0;
 
                 const resources = app.resources || {};
-
-                // Format resource data
                 const totalMemory = resources.total_memory_gb ? `${resources.total_memory_gb.toFixed(1)} GB` : '-';
                 const totalCores = resources.total_cores || '-';
                 const executorCount = resources.executor_count || '-';
                 const driverInfo = formatDriverInfo(resources);
 
-                // Add tooltips
                 const memoryTooltip = resources.executor_memory_mb ?
                     `Avg per executor: ${resources.executor_memory_mb.toFixed(0)} MB` : '';
                 const coresTooltip = resources.executor_cores ?
@@ -890,7 +1018,6 @@
             document.getElementById('error').style.display = 'none';
         }
 
-        // Clean up interval on page unload
         window.addEventListener('beforeunload', function() {
             if (refreshInterval) clearInterval(refreshInterval);
         });

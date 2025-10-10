@@ -2,7 +2,7 @@
 """
 EMR Monitor - Flask application to monitor EMR clusters
 Monitors Spark jobs via History Server and YARN ResourceManager
-Enhanced with resource usage tracking for Spark jobs
+Enhanced with resource usage tracking and peak memory/CPU tracking
 """
 
 import os
@@ -13,12 +13,86 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request
 from typing import Dict, List, Any, Optional
 import json
+from collections import defaultdict
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+
+class PeakTracker:
+    """Track peak resource usage for clusters"""
+
+    def __init__(self):
+        self.peaks = defaultdict(lambda: {
+            'memory': {
+                'peak_usage_percent': 0,
+                'peak_used_mb': 0,
+                'peak_timestamp': None
+            },
+            'cpu': {
+                'peak_usage_percent': 0,
+                'peak_used_cores': 0,
+                'peak_timestamp': None
+            },
+            'tracking_started': datetime.now().isoformat()
+        })
+
+    def update(self, cluster_id: str, memory_usage_pct: float, memory_used_mb: int,
+               cpu_usage_pct: float, cpu_used_cores: int) -> Dict[str, Any]:
+        """Update peak values if current values exceed previous peaks"""
+        cluster_peaks = self.peaks[cluster_id]
+        timestamp = datetime.now().isoformat()
+
+        updated = False
+
+        # Update memory peak
+        if memory_usage_pct > cluster_peaks['memory']['peak_usage_percent']:
+            cluster_peaks['memory']['peak_usage_percent'] = memory_usage_pct
+            cluster_peaks['memory']['peak_used_mb'] = memory_used_mb
+            cluster_peaks['memory']['peak_timestamp'] = timestamp
+            updated = True
+
+        # Update CPU peak
+        if cpu_usage_pct > cluster_peaks['cpu']['peak_usage_percent']:
+            cluster_peaks['cpu']['peak_usage_percent'] = cpu_usage_pct
+            cluster_peaks['cpu']['peak_used_cores'] = cpu_used_cores
+            cluster_peaks['cpu']['peak_timestamp'] = timestamp
+            updated = True
+
+        return {
+            'updated': updated,
+            'peaks': cluster_peaks
+        }
+
+    def get_peaks(self, cluster_id: str) -> Dict[str, Any]:
+        """Get peak values for a cluster"""
+        return self.peaks.get(cluster_id, None)
+
+    def reset_peaks(self, cluster_id: str) -> bool:
+        """Reset peak values for a cluster"""
+        if cluster_id in self.peaks:
+            self.peaks[cluster_id] = {
+                'memory': {
+                    'peak_usage_percent': 0,
+                    'peak_used_mb': 0,
+                    'peak_timestamp': None
+                },
+                'cpu': {
+                    'peak_usage_percent': 0,
+                    'peak_used_cores': 0,
+                    'peak_timestamp': None
+                },
+                'tracking_started': datetime.now().isoformat()
+            }
+            return True
+        return False
+
+    def get_all_peaks(self) -> Dict[str, Any]:
+        """Get peaks for all clusters"""
+        return dict(self.peaks)
 
 
 class EMRConfig:
@@ -372,8 +446,9 @@ class YARNMonitor:
 class EMRMonitor:
     """Main EMR monitoring class"""
 
-    def __init__(self, config: EMRConfig):
+    def __init__(self, config: EMRConfig, peak_tracker: PeakTracker):
         self.config = config
+        self.peak_tracker = peak_tracker
         self.monitors = {}
 
     def get_monitor(self, cluster_id: str) -> tuple:
@@ -390,7 +465,7 @@ class EMRMonitor:
         return self.monitors[cluster_id]
 
     def get_cluster_status(self, cluster_id: str, threshold_hours: float = 2.0, limit: int = 50) -> Dict[str, Any]:
-        """Get comprehensive cluster status"""
+        """Get comprehensive cluster status with peak tracking"""
         spark_monitor, yarn_monitor = self.get_monitor(cluster_id)
         if not spark_monitor or not yarn_monitor:
             return {'error': 'Cluster not found'}
@@ -403,15 +478,12 @@ class EMRMonitor:
         running_apps = yarn_monitor.get_applications(['RUNNING', 'ACCEPTED', 'SUBMITTED'])
 
         # Get Spark applications WITHOUT resource details for basic listing (faster)
-        # Use the limit parameter from UI
         spark_apps = spark_monitor.get_applications(min(limit, 20), include_resources=False)
 
         # Get completed jobs summary WITH resource details
-        # Use the limit parameter from UI
         completed_summary = spark_monitor.get_completed_jobs_summary(limit)
 
         # Get long-running jobs WITH resource details
-        # Use the limit parameter from UI
         long_running = spark_monitor.get_long_running_jobs(threshold_hours, limit)
 
         # Calculate resource usage
@@ -422,6 +494,15 @@ class EMRMonitor:
 
         memory_usage_pct = (used_memory / total_memory * 100) if total_memory > 0 else 0
         cpu_usage_pct = (used_cores / total_cores * 100) if total_cores > 0 else 0
+
+        # Update peak tracking
+        peak_result = self.peak_tracker.update(
+            cluster_id,
+            memory_usage_pct,
+            used_memory,
+            cpu_usage_pct,
+            used_cores
+        )
 
         return {
             'cluster_info': cluster_info,
@@ -439,6 +520,7 @@ class EMRMonitor:
                     'usage_percent': round(cpu_usage_pct, 1)
                 }
             },
+            'peaks': peak_result['peaks'],
             'nodes': node_summary,
             'applications': {
                 'running_count': len(running_apps),
@@ -455,7 +537,8 @@ class EMRMonitor:
 
 # Initialize
 config = EMRConfig()
-emr_monitor = EMRMonitor(config)
+peak_tracker = PeakTracker()
+emr_monitor = EMRMonitor(config, peak_tracker)
 
 
 @app.route('/')
@@ -478,6 +561,30 @@ def api_cluster_status(cluster_id):
     limit = request.args.get('limit', 50, type=int)
     status = emr_monitor.get_cluster_status(cluster_id, threshold, limit)
     return jsonify(status)
+
+
+@app.route('/api/cluster/<cluster_id>/peaks')
+def api_cluster_peaks(cluster_id):
+    """API endpoint to get peak resource usage for a cluster"""
+    peaks = peak_tracker.get_peaks(cluster_id)
+    if peaks:
+        return jsonify(peaks)
+    return jsonify({'error': 'No peak data available'}), 404
+
+
+@app.route('/api/cluster/<cluster_id>/peaks/reset', methods=['POST'])
+def api_cluster_peaks_reset(cluster_id):
+    """API endpoint to reset peak values for a cluster"""
+    success = peak_tracker.reset_peaks(cluster_id)
+    if success:
+        return jsonify({'message': 'Peak values reset successfully'})
+    return jsonify({'error': 'Cluster not found'}), 404
+
+
+@app.route('/api/peaks')
+def api_all_peaks():
+    """API endpoint to get peaks for all clusters"""
+    return jsonify(peak_tracker.get_all_peaks())
 
 
 @app.route('/api/cluster/<cluster_id>/spark/resources')
@@ -531,7 +638,7 @@ if __name__ == '__main__':
     os.makedirs('static', exist_ok=True)
 
     logger.info("=" * 60)
-    logger.info("Starting EMR Monitor with Enhanced Resource Tracking")
+    logger.info("Starting EMR Monitor with Peak Resource Tracking")
     logger.info("=" * 60)
 
     app.run(debug=True, host='0.0.0.0', port=7501)
