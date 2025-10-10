@@ -37,13 +37,14 @@
         .auth-navbar .user-info {
             display: flex;
             align-items: center;
-            gap: 20px;
+            gap: 15px;
         }
 
         .auth-navbar .username {
             font-size: 14px;
         }
 
+        .auth-navbar .about-btn,
         .auth-navbar .logout-btn {
             background: rgba(255, 255, 255, 0.2);
             color: white;
@@ -57,9 +58,79 @@
             transition: all 0.3s;
         }
 
+        .auth-navbar .about-btn:hover,
         .auth-navbar .logout-btn:hover {
             background: white;
             color: #667eea;
+        }
+
+        /* About Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.3s;
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+            animation: slideIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(-50px); }
+            to { transform: translateY(0); }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            color: #333;
+            font-size: 24px;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: #999;
+            line-height: 1;
+        }
+
+        .close-btn:hover {
+            color: #333;
+        }
+
+        .modal-body {
+            color: #666;
+            line-height: 1.6;
         }
 
         /* Session timeout warning (optional) */
@@ -75,6 +146,11 @@
             .auth-navbar {
                 flex-direction: column;
                 gap: 10px;
+            }
+
+            .auth-navbar .user-info {
+                flex-wrap: wrap;
+                justify-content: center;
             }
         }
         /* ============================================
@@ -102,6 +178,7 @@
         <div class="title">Protected Area</div>
         <div class="user-info">
             <span class="username">User: {{ username }}</span>
+            <button class="about-btn" onclick="openModal()">About</button>
             <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
         </div>
     </div>
@@ -109,7 +186,45 @@
     <div class="session-info">
         Session expires after 15 minutes of inactivity
     </div>
-    <!-- TO HERE (navbar + session info) -->
+
+    <!-- About Modal -->
+    <div id="aboutModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>About</h2>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>{{ about }}</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openModal() {
+            document.getElementById('aboutModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('aboutModal').classList.remove('active');
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('aboutModal');
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+
+        // Close modal with Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                closeModal();
+            }
+        });
+    </script>
+    <!-- TO HERE (navbar + session info + modal + script) -->
 
     <!-- ============================================
          REPLACE EVERYTHING BELOW WITH YOUR EXISTING HTML

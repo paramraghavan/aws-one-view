@@ -4,6 +4,7 @@ from functools import wraps
 from datetime import timedelta
 import ldap
 import logging
+import info
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'  # Change this to a secure secret key
@@ -101,7 +102,7 @@ def login():
         else:
             flash('Invalid username or password')
 
-    return render_template('login.html')
+    return render_template('login.html', entitlement=info.entitlement)
 
 
 @app.route('/logout')
@@ -117,7 +118,7 @@ def logout():
 @login_required
 @audit_log
 def protected():
-    return render_template('protected.html', username=current_user.id)
+    return render_template('protected.html', username=current_user.id, about=info.about)
 
 
 if __name__ == '__main__':
