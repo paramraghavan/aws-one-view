@@ -1,0 +1,25 @@
+{
+  "entity_mapping": {
+    "FHL": "FHL/stage",
+    "FNM": "FNM/stage"
+  },
+  "cleanup_hooks": {
+    "FHL_Dataset134": {
+      "type": "pass_through"
+    },
+    "FHL_Dataset135": {
+      "type": "snowflake_cleanup",
+      "strategy": "delete_entity_dataset",
+      "tables": [
+        "staging.fhl_dataset135_temp",
+        "staging.fhl_dataset135_audit"
+      ]
+    },
+    "FNM_Dataset200": {
+      "type": "snowflake_cleanup",
+      "tables": [
+        "staging.fnm_dataset200_staging"
+      ]
+    }
+  }
+}
