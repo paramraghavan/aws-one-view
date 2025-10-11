@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify, send_file
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, NoCredentialsError
 import pandas as pd
 import pickle
 import os
@@ -15,7 +15,8 @@ from env_config import (
     validate_profile_config,
     SNOWFLAKE_CONFIG,
     FLASK_CONFIG,
-    APP_SETTINGS
+    APP_SETTINGS,
+    AWS_PROFILE_CONFIG
 )
 
 app = Flask(__name__)
@@ -42,6 +43,17 @@ def save_entity_config(config):
     """Save entity mapping configuration"""
     with open(CONFIG_FILE, 'w') as f:
         json.dump(config, indent=2, fp=f)
+
+
+def check_aws_profile_exists(profile_name):
+    """Check if AWS profile exists in credentials"""
+    try:
+        session = boto3.Session(profile_name=profile_name)
+        # Try to get credentials to verify profile works
+        credentials = session.get_credentials()
+        return credentials is not None
+    except Exception:
+        return False
 
 
 def get_s3_client(profile_name):
@@ -165,28 +177,29 @@ def index():
 
 @app.route('/api/profiles')
 def get_profiles():
-    """Get available AWS profiles with their bucket configurations"""
+    """Get available AWS profiles from env_config.py with validation"""
     try:
-        # Get AWS profiles from boto3
-        session = boto3.Session()
-        aws_profiles = session.available_profiles
+        profiles_with_status = []
 
-        # Get bucket configurations from env_config
-        profile_configs = get_all_profiles()
+        # Get all profiles from env_config.py
+        for profile_name, config in AWS_PROFILE_CONFIG.items():
+            # Check if AWS profile exists in credentials
+            aws_exists = check_aws_profile_exists(profile_name)
 
-        # Merge AWS profiles with configurations
-        profiles_with_config = []
-        for profile_name in aws_profiles:
-            config = get_bucket_config(profile_name)
-            profiles_with_config.append({
+            # Check if buckets are configured
+            buckets_configured = bool(config.get('source_bucket') and config.get('destination_bucket'))
+
+            profiles_with_status.append({
                 'name': profile_name,
                 'source_bucket': config.get('source_bucket', ''),
                 'destination_bucket': config.get('destination_bucket', ''),
                 'description': config.get('description', ''),
-                'configured': bool(config.get('source_bucket') and config.get('destination_bucket'))
+                'aws_configured': aws_exists,
+                'buckets_configured': buckets_configured,
+                'fully_configured': aws_exists and buckets_configured
             })
 
-        return jsonify({'profiles': profiles_with_config})
+        return jsonify({'profiles': profiles_with_status})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -197,6 +210,7 @@ def get_profile_config(profile_name):
     try:
         config = get_bucket_config(profile_name)
         is_valid, message = validate_profile_config(profile_name)
+        aws_exists = check_aws_profile_exists(profile_name)
 
         return jsonify({
             'profile': profile_name,
@@ -204,6 +218,7 @@ def get_profile_config(profile_name):
             'destination_bucket': config.get('destination_bucket', ''),
             'description': config.get('description', ''),
             'valid': is_valid,
+            'aws_configured': aws_exists,
             'message': message
         })
     except Exception as e:
@@ -251,7 +266,7 @@ def parse_source():
     entities = list(config.get('entity_mapping', {}).keys())
 
     if not entities:
-        return jsonify({'error': 'No entities configured'}), 400
+        return jsonify({'error': 'No entities configured in entity_config.json'}), 400
 
     try:
         s3_client = get_s3_client(profile_name)
@@ -410,8 +425,9 @@ def cleanup(error=None):
 
 
 if __name__ == '__main__':
+    # flask run --port 7506
     app.run(
         debug=FLASK_CONFIG.get('DEBUG', True),
         host=FLASK_CONFIG.get('HOST', '0.0.0.0'),
-        port=FLASK_CONFIG.get('PORT', 7506)
+        port=FLASK_CONFIG.get('PORT', 5000)
     )

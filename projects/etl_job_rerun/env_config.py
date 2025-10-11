@@ -42,7 +42,7 @@ FLASK_CONFIG = {
     "SECRET_KEY": "your-secret-key-change-in-production",
     "DEBUG": True,
     "HOST": "0.0.0.0",
-    "PORT": 5000
+    "PORT": 7506
 }
 
 # Application Settings
