@@ -71,6 +71,59 @@ def parse_s3_path(s3_path):
     return bucket, prefix
 
 
+def discover_entities_from_s3(s3_client, bucket):
+    """Discover all entity names from the S3 bucket structure"""
+    entities = set()
+    paginator = s3_client.get_paginator('list_objects_v2')
+
+    try:
+        # List objects with delimiter to get top-level prefixes
+        response = s3_client.list_objects_v2(
+            Bucket=bucket,
+            Delimiter='/',
+            MaxKeys=1000
+        )
+
+        # Get common prefixes (top-level directories)
+        if 'CommonPrefixes' in response:
+            for prefix_info in response['CommonPrefixes']:
+                prefix = prefix_info['Prefix'].rstrip('/')
+                # Filter out any system directories or non-entity folders
+                # Assuming entity names don't start with underscore or dot
+                if not prefix.startswith('_') and not prefix.startswith('.'):
+                    entities.add(prefix)
+
+        # If no common prefixes, try parsing from object keys
+        if not entities and 'Contents' in response:
+            for obj in response['Contents']:
+                key_parts = obj['Key'].split('/')
+                if len(key_parts) > 0:
+                    entity = key_parts[0]
+                    if entity and not entity.startswith('_') and not entity.startswith('.'):
+                        entities.add(entity)
+
+        # Continue pagination if needed
+        while response.get('IsTruncated'):
+            response = s3_client.list_objects_v2(
+                Bucket=bucket,
+                Delimiter='/',
+                MaxKeys=1000,
+                ContinuationToken=response.get('NextContinuationToken')
+            )
+
+            if 'CommonPrefixes' in response:
+                for prefix_info in response['CommonPrefixes']:
+                    prefix = prefix_info['Prefix'].rstrip('/')
+                    if not prefix.startswith('_') and not prefix.startswith('.'):
+                        entities.add(prefix)
+
+    except ClientError as e:
+        print(f"Error discovering entities: {e}")
+        return []
+
+    return list(entities)
+
+
 def list_s3_objects(s3_client, bucket, prefix, start_date=None, end_date=None):
     """List objects in S3 bucket with optional date filtering"""
     objects = []
@@ -120,9 +173,19 @@ def parse_dataset_path(key):
     return None
 
 
-def create_pickle_file(s3_client, source_bucket, entities, start_date, end_date, profile_name):
+def create_pickle_file(s3_client, source_bucket, entities, start_date, end_date, profile_name, discover_entities=False):
     """Parse S3 bucket and create pickle file"""
     all_records = []
+
+    # If no entities provided and discovery is enabled, discover them from S3
+    if not entities and discover_entities:
+        print(f"No entities configured. Discovering entities from bucket: {source_bucket}")
+        entities = discover_entities_from_s3(s3_client, source_bucket)
+        print(f"Discovered entities: {entities}")
+
+        if not entities:
+            print("Warning: No entities discovered from S3 bucket")
+            return None, pd.DataFrame()
 
     for entity in entities:
         prefix = f"{entity}/"
@@ -265,8 +328,11 @@ def parse_source():
     config = load_entity_config()
     entities = list(config.get('entity_mapping', {}).keys())
 
+    # If no entities configured, we'll discover them from S3
+    discover_entities = False
     if not entities:
-        return jsonify({'error': 'No entities configured in entity_config.json'}), 400
+        print("No entities configured in entity_config.json. Will discover from S3 bucket.")
+        discover_entities = True
 
     try:
         s3_client = get_s3_client(profile_name)
@@ -276,16 +342,29 @@ def parse_source():
         start_date = datetime.fromisoformat(start_date_str) if start_date_str else None
         end_date = datetime.fromisoformat(end_date_str) if end_date_str else None
 
-        # Create pickle file
+        # Create pickle file (will discover entities if needed)
         pickle_file, df = create_pickle_file(
-            s3_client, bucket, entities, start_date, end_date, profile_name
+            s3_client, bucket, entities, start_date, end_date, profile_name,
+            discover_entities=discover_entities
         )
+
+        if pickle_file is None:
+            return jsonify({
+                'error': 'No data found. No entities were configured and none could be discovered from the S3 bucket.'
+            }), 404
+
+        # Get the list of entities that were actually processed
+        processed_entities = []
+        if len(df) > 0:
+            processed_entities = df['entity_name'].unique().tolist()
 
         return jsonify({
             'success': True,
             'pickle_file': os.path.basename(pickle_file),
             'record_count': len(df),
             'source_bucket': source_bucket,
+            'discovered_entities': discover_entities,
+            'processed_entities': processed_entities,
             'preview': df.head(10).to_dict('records')
         })
 
