@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, jsonify, send_file
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
-import json
+import pickle
 import io
 import csv
 import os
@@ -10,25 +10,25 @@ from collections import defaultdict
 
 app = Flask(__name__)
 
-# Path for persistent storage
-STATE_FILE = 'resource_state.json'
+# Path for persistent storage - using pickle
+STATE_FILE = 'resource_state.pkl'
 
 
 class ResourceStateManager:
-    """Manages persistent state for max resource tracking"""
+    """Manages persistent state for max resource tracking using pickle"""
     
     def __init__(self, state_file=STATE_FILE):
         self.state_file = state_file
         self.state = self.load_state()
     
     def load_state(self):
-        """Load state from file"""
+        """Load state from pickle file"""
         if os.path.exists(self.state_file):
             try:
-                with open(self.state_file, 'r') as f:
-                    return json.load(f)
+                with open(self.state_file, 'rb') as f:
+                    return pickle.load(f)
             except Exception as e:
-                print(f"Error loading state: {e}")
+                print(f"Error loading state from pickle: {e}")
         
         # Default state structure
         return {
@@ -37,12 +37,12 @@ class ResourceStateManager:
         }
     
     def save_state(self):
-        """Save state to file"""
+        """Save state to pickle file"""
         try:
-            with open(self.state_file, 'w') as f:
-                json.dump(self.state, f, indent=2)
+            with open(self.state_file, 'wb') as f:
+                pickle.dump(self.state, f, protocol=pickle.HIGHEST_PROTOCOL)
         except Exception as e:
-            print(f"Error saving state: {e}")
+            print(f"Error saving state to pickle: {e}")
     
     def update_cluster_max(self, cluster_id, memory_gb, vcores):
         """Update max resources for a cluster"""
@@ -50,8 +50,8 @@ class ResourceStateManager:
             self.state['cluster_max'][cluster_id] = {
                 'max_memory_gb': memory_gb,
                 'max_vcores': vcores,
-                'first_seen': datetime.now().isoformat(),
-                'last_updated': datetime.now().isoformat()
+                'first_seen': datetime.now(),
+                'last_updated': datetime.now()
             }
         else:
             current = self.state['cluster_max'][cluster_id]
@@ -66,7 +66,7 @@ class ResourceStateManager:
                 updated = True
             
             if updated:
-                current['last_updated'] = datetime.now().isoformat()
+                current['last_updated'] = datetime.now()
         
         self.save_state()
     
@@ -78,8 +78,8 @@ class ResourceStateManager:
                 'max_vcores': vcores,
                 'cluster_id': cluster_id,
                 'job_name': job_name or 'Unknown',
-                'first_seen': datetime.now().isoformat(),
-                'last_updated': datetime.now().isoformat()
+                'first_seen': datetime.now(),
+                'last_updated': datetime.now()
             }
         else:
             current = self.state['job_max'][job_id]
@@ -94,7 +94,11 @@ class ResourceStateManager:
                 updated = True
             
             if updated:
-                current['last_updated'] = datetime.now().isoformat()
+                current['last_updated'] = datetime.now()
+            
+            # Update job name if it was unknown before
+            if current.get('job_name') == 'Unknown' and job_name:
+                current['job_name'] = job_name
         
         self.save_state()
     
@@ -125,6 +129,38 @@ class ResourceStateManager:
         if job_id in self.state['job_max']:
             del self.state['job_max'][job_id]
             self.save_state()
+    
+    def export_state_to_json(self, filepath='resource_state_export.json'):
+        """Export state to JSON for backup/inspection"""
+        import json
+        export_data = {
+            'cluster_max': {},
+            'job_max': {}
+        }
+        
+        # Convert datetime objects to ISO format strings for JSON
+        for cluster_id, stats in self.state['cluster_max'].items():
+            export_data['cluster_max'][cluster_id] = {
+                'max_memory_gb': stats['max_memory_gb'],
+                'max_vcores': stats['max_vcores'],
+                'first_seen': stats['first_seen'].isoformat(),
+                'last_updated': stats['last_updated'].isoformat()
+            }
+        
+        for job_id, stats in self.state['job_max'].items():
+            export_data['job_max'][job_id] = {
+                'max_memory_gb': stats['max_memory_gb'],
+                'max_vcores': stats['max_vcores'],
+                'cluster_id': stats['cluster_id'],
+                'job_name': stats['job_name'],
+                'first_seen': stats['first_seen'].isoformat(),
+                'last_updated': stats['last_updated'].isoformat()
+            }
+        
+        with open(filepath, 'w') as f:
+            json.dump(export_data, f, indent=2)
+        
+        return filepath
 
 
 class JobResourceMonitor:
@@ -485,8 +521,8 @@ def cluster_max_stats():
             'Cluster ID': cluster_id,
             'Max Memory (GB)': round(stats['max_memory_gb'], 2),
             'Max vCores': stats['max_vcores'],
-            'First Seen': stats['first_seen'],
-            'Last Updated': stats['last_updated']
+            'First Seen': stats['first_seen'].isoformat(),
+            'Last Updated': stats['last_updated'].isoformat()
         })
     
     df = pd.DataFrame(data)
@@ -512,8 +548,8 @@ def job_max_stats():
             'Cluster ID': stats['cluster_id'],
             'Max Memory (GB)': round(stats['max_memory_gb'], 2),
             'Max vCores': stats['max_vcores'],
-            'First Seen': stats['first_seen'],
-            'Last Updated': stats['last_updated']
+            'First Seen': stats['first_seen'].isoformat(),
+            'Last Updated': stats['last_updated'].isoformat()
         })
     
     df = pd.DataFrame(data)
@@ -549,10 +585,19 @@ def clear_state():
     return jsonify({'success': False, 'message': 'Invalid action'})
 
 
-# ... rest of the code continues (job_summary and download_csv functions as before)
-
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+@app.route('/export_state')
+def export_state():
+    """Export pickle state to JSON for inspection"""
+    try:
+        filepath = state_manager.export_state_to_json()
+        return send_file(
+            filepath,
+            mimetype='application/json',
+            as_attachment=True,
+            download_name='resource_state_export.json'
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/job_summary')
@@ -752,8 +797,8 @@ def download_csv(data_type):
                 'Cluster ID': cluster_id,
                 'Max Memory (GB)': round(stats['max_memory_gb'], 2),
                 'Max vCores': stats['max_vcores'],
-                'First Seen': stats['first_seen'],
-                'Last Updated': stats['last_updated']
+                'First Seen': stats['first_seen'].isoformat(),
+                'Last Updated': stats['last_updated'].isoformat()
             })
         df = pd.DataFrame(data)
         filename = 'cluster_max_resources.csv'
@@ -767,8 +812,8 @@ def download_csv(data_type):
                 'Cluster ID': stats['cluster_id'],
                 'Max Memory (GB)': round(stats['max_memory_gb'], 2),
                 'Max vCores': stats['max_vcores'],
-                'First Seen': stats['first_seen'],
-                'Last Updated': stats['last_updated']
+                'First Seen': stats['first_seen'].isoformat(),
+                'Last Updated': stats['last_updated'].isoformat()
             })
         df = pd.DataFrame(data)
         filename = 'job_max_resources.csv'
@@ -794,3 +839,7 @@ def download_csv(data_type):
         as_attachment=True,
         download_name=filename
     )
+
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
