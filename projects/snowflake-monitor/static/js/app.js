@@ -89,6 +89,22 @@ function truncateText(text, maxLength = 50) {
 }
 
 // ============================================
+// Loading Overlay Functions
+// ============================================
+
+function showLoading(message = 'Loading data...') {
+    const overlay = document.getElementById('loadingOverlay');
+    const textEl = overlay.querySelector('.loading-text');
+    if (textEl) textEl.textContent = message;
+    overlay.classList.add('active');
+}
+
+function hideLoading() {
+    const overlay = document.getElementById('loadingOverlay');
+    overlay.classList.remove('active');
+}
+
+// ============================================
 // API Functions
 // ============================================
 
@@ -117,6 +133,7 @@ async function fetchAPI(endpoint, params = {}) {
 // ============================================
 
 async function loadOverview() {
+    showLoading('Loading overview metrics...');
     try {
         const [overview, costTrends, storage] = await Promise.all([
             fetchAPI('overview'),
@@ -138,13 +155,16 @@ async function loadOverview() {
         // Render storage chart
         renderStorageChart(storage);
         
+        hideLoading();
     } catch (error) {
         console.error('Error loading overview:', error);
+        hideLoading();
     }
 }
 
 async function loadCosts() {
     const days = document.getElementById('costDaysFilter').value;
+    showLoading('Loading cost analysis...');
     
     try {
         const [warehouseCosts, databaseCosts, hourlyUsage] = await Promise.all([
@@ -158,14 +178,17 @@ async function loadCosts() {
         renderHourlyUsageChart(hourlyUsage);
         renderWarehouseCostTable(warehouseCosts);
         
+        hideLoading();
     } catch (error) {
         console.error('Error loading costs:', error);
+        hideLoading();
     }
 }
 
 async function loadQueries() {
     const threshold = document.getElementById('queryThreshold').value;
     const limit = document.getElementById('queryLimit').value;
+    showLoading('Loading query performance data...');
     
     try {
         const [longRunning, expensive, queued] = await Promise.all([
@@ -182,12 +205,15 @@ async function loadQueries() {
         renderExpensiveTable(expensive);
         renderQueuedTable(queued);
         
+        hideLoading();
     } catch (error) {
         console.error('Error loading queries:', error);
+        hideLoading();
     }
 }
 
 async function loadWarehouses() {
+    showLoading('Loading warehouse configurations...');
     try {
         const [configs, clusterLoad] = await Promise.all([
             fetchAPI('warehouse-config'),
@@ -197,12 +223,15 @@ async function loadWarehouses() {
         renderWarehouseConfigTable(configs);
         renderClusterLoadChart(clusterLoad);
         
+        hideLoading();
     } catch (error) {
         console.error('Error loading warehouses:', error);
+        hideLoading();
     }
 }
 
 async function loadBottlenecks() {
+    showLoading('Analyzing bottlenecks...');
     try {
         const [bottlenecks, patterns] = await Promise.all([
             fetchAPI('bottleneck-analysis'),
@@ -213,17 +242,22 @@ async function loadBottlenecks() {
         renderQueryPatternChart(patterns.hourly);
         renderQueryTypeChart(patterns.by_type);
         
+        hideLoading();
     } catch (error) {
         console.error('Error loading bottlenecks:', error);
+        hideLoading();
     }
 }
 
 async function loadRecommendations() {
+    showLoading('Generating recommendations...');
     try {
         const recommendations = await fetchAPI('recommendations');
         renderRecommendations(recommendations);
+        hideLoading();
     } catch (error) {
         console.error('Error loading recommendations:', error);
+        hideLoading();
     }
 }
 
@@ -586,11 +620,11 @@ function renderWarehouseCostTable(data) {
     tbody.innerHTML = data.map(row => `
         <tr>
             <td><strong>${row.WAREHOUSE_NAME}</strong></td>
-            <td>${formatNumber(row.TOTAL_CREDITS)}</td>
-            <td>${formatNumber(row.COMPUTE_CREDITS)}</td>
-            <td>${formatNumber(row.CLOUD_SERVICES_CREDITS)}</td>
-            <td>${row.ACTIVE_DAYS}</td>
-            <td>${formatNumber(row.AVG_HOURLY_CREDITS, 3)}</td>
+            <td>${formatNumber(row.TOTAL_CREDITS)} <span class="unit">credits</span></td>
+            <td>${formatNumber(row.COMPUTE_CREDITS)} <span class="unit">credits</span></td>
+            <td>${formatNumber(row.CLOUD_SERVICES_CREDITS)} <span class="unit">credits</span></td>
+            <td>${row.ACTIVE_DAYS} <span class="unit">days</span></td>
+            <td>${formatNumber(row.AVG_HOURLY_CREDITS, 3)} <span class="unit">credits/hr</span></td>
         </tr>
     `).join('');
 }
@@ -603,9 +637,9 @@ function renderLongRunningTable(data) {
             <td>${row.USER_NAME || '--'}</td>
             <td>${row.WAREHOUSE_NAME || '--'}</td>
             <td>${row.DATABASE_NAME || '--'}</td>
-            <td>${formatNumber(row.ELAPSED_SECONDS, 1)}</td>
-            <td>${formatNumber(row.GB_SCANNED, 2)}</td>
-            <td>${formatNumber((row.QUEUED_OVERLOAD_SECONDS || 0) + (row.QUEUED_PROVISIONING_SECONDS || 0), 1)}</td>
+            <td>${formatNumber(row.ELAPSED_SECONDS, 1)} <span class="unit">sec</span></td>
+            <td>${formatNumber(row.GB_SCANNED, 2)} <span class="unit">GB</span></td>
+            <td>${formatNumber((row.QUEUED_OVERLOAD_SECONDS || 0) + (row.QUEUED_PROVISIONING_SECONDS || 0), 1)} <span class="unit">sec</span></td>
             <td><span class="status-badge ${(row.EXECUTION_STATUS || '').toLowerCase()}">${row.EXECUTION_STATUS || '--'}</span></td>
         </tr>
     `).join('');
@@ -621,10 +655,10 @@ function renderExpensiveTable(data) {
             <td>${row.USER_NAME || '--'}</td>
             <td>${row.WAREHOUSE_NAME || '--'}</td>
             <td>${row.DATABASE_NAME || '--'}</td>
-            <td>${formatNumber(row.ELAPSED_SECONDS, 1)}</td>
-            <td>${formatNumber(row.GB_SCANNED, 2)}</td>
-            <td>${formatNumber(row.GB_WRITTEN, 2)}</td>
-            <td>${formatNumber(row.ROWS_PRODUCED, 0)}</td>
+            <td>${formatNumber(row.ELAPSED_SECONDS, 1)} <span class="unit">sec</span></td>
+            <td>${formatNumber(row.GB_SCANNED, 2)} <span class="unit">GB</span></td>
+            <td>${formatNumber(row.GB_WRITTEN, 2)} <span class="unit">GB</span></td>
+            <td>${formatNumber(row.ROWS_PRODUCED, 0)} <span class="unit">rows</span></td>
         </tr>
     `).join('');
     
@@ -638,10 +672,10 @@ function renderQueuedTable(data) {
             <td><span class="query-id" data-query="${encodeURIComponent(row.QUERY_TEXT || '')}">${truncateText(row.QUERY_ID, 20)}</span></td>
             <td>${row.USER_NAME || '--'}</td>
             <td>${row.WAREHOUSE_NAME || '--'}</td>
-            <td>${formatNumber(row.TOTAL_SEC, 1)}</td>
-            <td>${formatNumber(row.QUEUE_SEC, 1)}</td>
-            <td>${formatNumber(row.PROVISIONING_SEC, 1)}</td>
-            <td>${formatNumber(row.EXECUTION_SEC, 1)}</td>
+            <td>${formatNumber(row.TOTAL_SEC, 1)} <span class="unit">sec</span></td>
+            <td>${formatNumber(row.QUEUE_SEC, 1)} <span class="unit">sec</span></td>
+            <td>${formatNumber(row.PROVISIONING_SEC, 1)} <span class="unit">sec</span></td>
+            <td>${formatNumber(row.EXECUTION_SEC, 1)} <span class="unit">sec</span></td>
         </tr>
     `).join('');
     
@@ -659,7 +693,7 @@ function renderWarehouseConfigTable(data) {
             <td>${row.MIN_CLUSTER_COUNT || '--'}</td>
             <td>${row.MAX_CLUSTER_COUNT || '--'}</td>
             <td>${row.SCALING_POLICY || '--'}</td>
-            <td>${row.AUTO_SUSPEND || '--'}</td>
+            <td>${row.AUTO_SUSPEND || '--'} <span class="unit">sec</span></td>
             <td>${row.AUTO_RESUME ? 'Yes' : 'No'}</td>
         </tr>
     `).join('');
