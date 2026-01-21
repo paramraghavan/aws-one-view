@@ -217,26 +217,30 @@ class SnowflakeMonitor:
     
     def get_warehouse_configurations(self) -> List[Dict]:
         """Get warehouse configurations including auto-suspend settings."""
-        query = """
-        SELECT 
-            NAME as WAREHOUSE_NAME,
-            STATE,
-            TYPE,
-            SIZE,
-            MIN_CLUSTER_COUNT,
-            MAX_CLUSTER_COUNT,
-            SCALING_POLICY,
-            AUTO_SUSPEND,
-            AUTO_RESUME,
-            RESOURCE_MONITOR,
-            CREATED_ON,
-            OWNER
-        FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSES
-        WHERE DELETED IS NULL
-        ORDER BY NAME
-        """
-        results = self.execute_query(query)
-        return self._serialize_results(results)
+        # Use SHOW WAREHOUSES command (WAREHOUSES view doesn't exist in ACCOUNT_USAGE)
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SHOW WAREHOUSES")
+            columns = [desc[0] for desc in cursor.description]
+            results = []
+            for row in cursor.fetchall():
+                row_dict = dict(zip(columns, row))
+                # Map to expected column names
+                results.append({
+                    'WAREHOUSE_NAME': row_dict.get('name'),
+                    'STATE': row_dict.get('state'),
+                    'TYPE': row_dict.get('type'),
+                    'SIZE': row_dict.get('size'),
+                    'MIN_CLUSTER_COUNT': row_dict.get('min_cluster_count'),
+                    'MAX_CLUSTER_COUNT': row_dict.get('max_cluster_count'),
+                    'SCALING_POLICY': row_dict.get('scaling_policy'),
+                    'AUTO_SUSPEND': row_dict.get('auto_suspend'),
+                    'AUTO_RESUME': row_dict.get('auto_resume'),
+                    'RESOURCE_MONITOR': row_dict.get('resource_monitor'),
+                    'CREATED_ON': row_dict.get('created_on'),
+                    'OWNER': row_dict.get('owner')
+                })
+            return self._serialize_results(results)
     
     def analyze_query_patterns(self, days: int = 7) -> Dict:
         """Analyze query patterns for potential bottlenecks."""
@@ -393,49 +397,46 @@ class SnowflakeMonitor:
         """Generate optimization recommendations based on analysis."""
         recommendations = []
         
-        # Check for warehouses that could benefit from auto-suspend
-        suspend_query = """
-        SELECT NAME, AUTO_SUSPEND, SIZE
-        FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSES
-        WHERE DELETED IS NULL
-        AND (AUTO_SUSPEND IS NULL OR AUTO_SUSPEND > 300)
-        """
-        suspend_results = self.execute_query(suspend_query)
-        for r in suspend_results:
-            recommendations.append({
-                'category': 'Cost Optimization',
-                'severity': 'Medium',
-                'title': f'Consider reducing auto-suspend for {r["NAME"]}',
-                'description': f'Warehouse {r["NAME"]} has auto-suspend of {r["AUTO_SUSPEND"]} seconds. Consider reducing to 60-120 seconds to save costs during idle periods.',
-                'warehouse': r['NAME']
-            })
-        
-        # Check for oversized warehouses
-        oversize_query = """
-        SELECT 
-            wh.NAME,
-            wh.SIZE,
-            AVG(wl.AVG_RUNNING) as AVG_CONCURRENT
-        FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSES wh
-        LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_LOAD_HISTORY wl 
-            ON wh.NAME = wl.WAREHOUSE_NAME
-            AND wl.START_TIME >= DATEADD(day, -7, CURRENT_TIMESTAMP())
-        WHERE wh.DELETED IS NULL
-        GROUP BY wh.NAME, wh.SIZE
-        HAVING AVG_CONCURRENT < 0.2
-        """
+        # Get warehouse configurations using SHOW WAREHOUSES
         try:
+            warehouse_configs = self.get_warehouse_configurations()
+            
+            # Check for warehouses that could benefit from auto-suspend
+            for wh in warehouse_configs:
+                auto_suspend = wh.get('AUTO_SUSPEND')
+                if auto_suspend is None or (isinstance(auto_suspend, (int, float)) and auto_suspend > 300):
+                    recommendations.append({
+                        'category': 'Cost Optimization',
+                        'severity': 'Medium',
+                        'title': f'Consider reducing auto-suspend for {wh["WAREHOUSE_NAME"]}',
+                        'description': f'Warehouse {wh["WAREHOUSE_NAME"]} has auto-suspend of {auto_suspend} seconds. Consider reducing to 60-120 seconds to save costs during idle periods.',
+                        'warehouse': wh['WAREHOUSE_NAME']
+                    })
+        except Exception:
+            pass
+        
+        # Check for oversized warehouses using WAREHOUSE_LOAD_HISTORY
+        try:
+            oversize_query = """
+            SELECT 
+                WAREHOUSE_NAME,
+                AVG(AVG_RUNNING) as AVG_CONCURRENT
+            FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_LOAD_HISTORY
+            WHERE START_TIME >= DATEADD(day, -7, CURRENT_TIMESTAMP())
+            GROUP BY WAREHOUSE_NAME
+            HAVING AVG_CONCURRENT < 0.2
+            """
             oversize_results = self.execute_query(oversize_query)
             for r in oversize_results:
                 if r.get('AVG_CONCURRENT') is not None:
                     recommendations.append({
                         'category': 'Right-sizing',
                         'severity': 'High',
-                        'title': f'Warehouse {r["NAME"]} may be oversized',
-                        'description': f'Warehouse {r["NAME"]} (size: {r["SIZE"]}) has low average concurrency ({r["AVG_CONCURRENT"]:.2f}). Consider downsizing.',
-                        'warehouse': r['NAME']
+                        'title': f'Warehouse {r["WAREHOUSE_NAME"]} may be oversized',
+                        'description': f'Warehouse {r["WAREHOUSE_NAME"]} has low average concurrency ({r["AVG_CONCURRENT"]:.2f}). Consider downsizing.',
+                        'warehouse': r['WAREHOUSE_NAME']
                     })
-        except:
+        except Exception:
             pass
         
         # Check for high queue times
@@ -451,15 +452,18 @@ class SnowflakeMonitor:
         HAVING AFFECTED_QUERIES > 10
         ORDER BY AVG_QUEUE_SEC DESC
         """
-        queue_results = self.execute_query(queue_query)
-        for r in queue_results:
-            recommendations.append({
-                'category': 'Performance',
-                'severity': 'High',
-                'title': f'High queue times on {r["WAREHOUSE_NAME"]}',
-                'description': f'{r["AFFECTED_QUERIES"]} queries experienced avg queue time of {r["AVG_QUEUE_SEC"]:.1f}s. Consider increasing cluster count or warehouse size.',
-                'warehouse': r['WAREHOUSE_NAME']
-            })
+        try:
+            queue_results = self.execute_query(queue_query)
+            for r in queue_results:
+                recommendations.append({
+                    'category': 'Performance',
+                    'severity': 'High',
+                    'title': f'High queue times on {r["WAREHOUSE_NAME"]}',
+                    'description': f'{r["AFFECTED_QUERIES"]} queries experienced avg queue time of {r["AVG_QUEUE_SEC"]:.1f}s. Consider increasing cluster count or warehouse size.',
+                    'warehouse': r['WAREHOUSE_NAME']
+                })
+        except Exception:
+            pass
         
         # Check for spilling
         spill_query = """
@@ -472,15 +476,18 @@ class SnowflakeMonitor:
         GROUP BY WAREHOUSE_NAME
         HAVING SPILLING_QUERIES > 5
         """
-        spill_results = self.execute_query(spill_query)
-        for r in spill_results:
-            recommendations.append({
-                'category': 'Performance',
-                'severity': 'Medium',
-                'title': f'Query spilling detected on {r["WAREHOUSE_NAME"]}',
-                'description': f'{r["SPILLING_QUERIES"]} queries spilled to disk. Consider increasing warehouse size for memory-intensive queries.',
-                'warehouse': r['WAREHOUSE_NAME']
-            })
+        try:
+            spill_results = self.execute_query(spill_query)
+            for r in spill_results:
+                recommendations.append({
+                    'category': 'Performance',
+                    'severity': 'Medium',
+                    'title': f'Query spilling detected on {r["WAREHOUSE_NAME"]}',
+                    'description': f'{r["SPILLING_QUERIES"]} queries spilled to disk. Consider increasing warehouse size for memory-intensive queries.',
+                    'warehouse': r['WAREHOUSE_NAME']
+                })
+        except Exception:
+            pass
         
         return recommendations
     

@@ -7,9 +7,21 @@ performance bottlenecks, and resource utilization.
 from flask import Flask, render_template, jsonify, request
 from datetime import datetime, timedelta
 import os
-from snowflake_connector import SnowflakeMonitor
 
 app = Flask(__name__)
+
+# ============================================================
+# MOCK MODE - Set to True to use fake data (no Snowflake needed)
+# ============================================================
+USE_MOCK = os.environ.get('USE_MOCK', 'false').lower() == 'true'
+
+# Import the appropriate connector based on mode
+if USE_MOCK:
+    from mock_connector import MockSnowflakeMonitor as SnowflakeMonitor
+    print("🔶 Running in MOCK MODE - using simulated data")
+else:
+    from snowflake_connector import SnowflakeMonitor
+    print("🔷 Running in LIVE MODE - connecting to Snowflake")
 
 # Configuration - Set these environment variables or modify directly
 SNOWFLAKE_CONFIG = {
