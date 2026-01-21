@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWS Resource Monitor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>AWS Resource Monitor</h1>
+            <p>Monitor resources, analyze costs, and detect bottlenecks</p>
+        </header>
+
+        <!-- Background Monitoring Control -->
+        <section class="card monitoring-card">
+            <h2>🔔 Background Monitoring</h2>
+            <div class="monitoring-status">
+                <div class="status-indicator" id="monitoringStatus">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Loading...</span>
+                </div>
+                <div class="monitoring-controls">
+                    <button id="startMonitoring" class="btn btn-success" style="display:none;">Start Monitoring</button>
+                    <button id="stopMonitoring" class="btn btn-warning" style="display:none;">Stop Monitoring</button>
+                    <button id="testAlert" class="btn btn-secondary">Send Test Alert</button>
+                </div>
+            </div>
+            <div id="monitoredResourcesList" class="monitored-list">
+                <p class="info-text">No resources being monitored</p>
+            </div>
+        </section>
+
+        <!-- Region Selection -->
+        <section class="card">
+            <h2>1. Select Regions</h2>
+            <div id="regionSelector" class="region-grid">
+                <div class="loading">Loading regions...</div>
+            </div>
+            <button id="loadResources" class="btn btn-primary">Load Resources</button>
+        </section>
+
+        <!-- Resource Display -->
+        <section class="card">
+            <h2>2. Browse Resources</h2>
+            
+            <!-- Resource Type Tabs -->
+            <div class="tabs">
+                <button class="tab-btn active" data-type="ec2">EC2</button>
+                <button class="tab-btn" data-type="rds">RDS</button>
+                <button class="tab-btn" data-type="s3">S3</button>
+                <button class="tab-btn" data-type="lambda">Lambda</button>
+                <button class="tab-btn" data-type="ebs">EBS</button>
+            </div>
+            
+            <!-- Resource List -->
+            <div id="resourceList" class="resource-list">
+                <p class="info-text">Select regions and click "Load Resources"</p>
+            </div>
+            
+            <!-- Add to Monitoring Button -->
+            <div id="monitoringActions" style="display:none; margin-top: 15px;">
+                <button id="addToMonitoring" class="btn btn-success">Add Selected to Background Monitoring</button>
+            </div>
+        </section>
+
+        <!-- Metrics Visualization -->
+        <section class="card" id="metricsSection" style="display: none;">
+            <h2>3. Performance Metrics</h2>
+            <div class="metric-controls">
+                <label>
+                    Time Range:
+                    <select id="metricHours">
+                        <option value="6">Last 6 Hours</option>
+                        <option value="24" selected>Last 24 Hours</option>
+                        <option value="72">Last 3 Days</option>
+                    </select>
+                </label>
+                <button id="loadMetrics" class="btn btn-secondary">Load Metrics</button>
+            </div>
+            <canvas id="metricsChart"></canvas>
+        </section>
+
+        <!-- Cost Analysis -->
+        <section class="card">
+            <h2>4. Cost Analysis</h2>
+            <div class="cost-controls">
+                <label>
+                    Period:
+                    <select id="costDays">
+                        <option value="7">Last 7 Days</option>
+                        <option value="30" selected>Last 30 Days</option>
+                        <option value="90">Last 90 Days</option>
+                    </select>
+                </label>
+                <button id="loadCosts" class="btn btn-secondary">Load Costs</button>
+            </div>
+            <div id="costDisplay">
+                <p class="info-text">Click "Load Costs" to view spending analysis</p>
+            </div>
+            <canvas id="costChart" style="display: none;"></canvas>
+        </section>
+
+        <!-- Bottleneck Detection -->
+        <section class="card">
+            <h2>5. Bottleneck Detection</h2>
+            <button id="detectBottlenecks" class="btn btn-warning">Scan for Issues</button>
+            <div id="bottleneckDisplay">
+                <p class="info-text">Click "Scan for Issues" to analyze resource utilization</p>
+            </div>
+        </section>
+    </div>
+
+    <!-- External Libraries -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Application JavaScript -->
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
