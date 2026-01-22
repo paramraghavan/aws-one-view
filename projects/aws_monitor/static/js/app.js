@@ -157,6 +157,7 @@ function displayResources() {
     const columns = getColumnsForResourceType(currentResourceType);
     table += '<th><input type="checkbox" id="selectAll"></th>';
     columns.forEach(col => table += '<th>' + col + '</th>');
+    table += '<th>Actions</th>';  // Add actions column
     table += '</tr></thead><tbody>';
     
     // Add rows
@@ -164,6 +165,8 @@ function displayResources() {
         table += '<tr>';
         table += '<td><input type="checkbox" class="resource-checkbox" data-id="' + resource.id + '" data-region="' + resource.region + '"></td>';
         table += getRowContentForResource(currentResourceType, resource);
+        // Add view details button
+        table += '<td><button class="btn-details" data-id="' + resource.id + '" data-region="' + resource.region + '" data-type="' + currentResourceType + '">📋 Details</button></td>';
         table += '</tr>';
     });
     
@@ -172,6 +175,262 @@ function displayResources() {
     
     // Setup checkbox handlers
     setupResourceCheckboxes();
+    
+    // Setup detail button handlers
+    $('.btn-details').click(function() {
+        const resourceId = $(this).data('id');
+        const region = $(this).data('region');
+        const type = $(this).data('type');
+        showResourceDetails(resourceId, type, region);
+    });
+}
+
+// ----------------------------------------------------------------------------
+// RESOURCE DETAILS
+// ----------------------------------------------------------------------------
+function showResourceDetails(resourceId, resourceType, region) {
+    // Show loading
+    showDetailModal('Loading...', '<div class="loading">Fetching resource details</div>');
+    
+    $.ajax({
+        url: '/api/resource/details',
+        method: 'GET',
+        data: {
+            resource_id: resourceId,
+            resource_type: resourceType,
+            region: region
+        },
+        success: function(response) {
+            if (response.success) {
+                displayResourceDetails(response.data, resourceType);
+            } else {
+                showDetailModal('Error', '<div class="alert alert-error">' + response.error + '</div>');
+            }
+        },
+        error: function() {
+            showDetailModal('Error', '<div class="alert alert-error">Failed to load resource details</div>');
+        }
+    });
+}
+
+function displayResourceDetails(details, resourceType) {
+    let html = '<div class="resource-details">';
+    
+    // Format details based on resource type
+    if (resourceType === 'ec2') {
+        html += `
+            <div class="detail-section">
+                <h4>📊 Current Status</h4>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <label>State</label>
+                        <span class="status-badge status-${details.state}">${details.state}</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Current CPU</label>
+                        <span class="metric-value">${details.current_cpu}%</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Type</label>
+                        <span>${details.type}</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Availability Zone</label>
+                        <span>${details.az}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="detail-section">
+                <h4>🌐 Network</h4>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <label>Private IP</label>
+                        <span>${details.private_ip}</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Public IP</label>
+                        <span>${details.public_ip}</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>VPC</label>
+                        <span>${details.vpc_id}</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Subnet</label>
+                        <span>${details.subnet_id}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="detail-section">
+                <h4>🔒 Security</h4>
+                <div class="detail-item">
+                    <label>Security Groups</label>
+                    <span>${details.security_groups.join(', ')}</span>
+                </div>
+            </div>
+            
+            <div class="detail-section">
+                <h4>ℹ️ Info</h4>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <label>Launch Time</label>
+                        <span>${new Date(details.launch_time).toLocaleString()}</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Platform</label>
+                        <span>${details.platform}</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Monitoring</label>
+                        <span>${details.monitoring}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Tags
+        if (Object.keys(details.tags).length > 0) {
+            html += '<div class="detail-section"><h4>🏷️ Tags</h4><div class="tags">';
+            Object.entries(details.tags).forEach(([key, value]) => {
+                html += `<span class="tag"><strong>${key}:</strong> ${value}</span>`;
+            });
+            html += '</div></div>';
+        }
+    } else if (resourceType === 'rds') {
+        html += `
+            <div class="detail-section">
+                <h4>📊 Current Status</h4>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <label>Status</label>
+                        <span class="status-badge status-${details.status}">${details.status}</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Current CPU</label>
+                        <span class="metric-value">${details.current_cpu}%</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Class</label>
+                        <span>${details.class}</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Multi-AZ</label>
+                        <span>${details.multi_az ? 'Yes' : 'No'}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="detail-section">
+                <h4>🗄️ Database</h4>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <label>Engine</label>
+                        <span>${details.engine} ${details.engine_version}</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Endpoint</label>
+                        <span>${details.endpoint}:${details.port}</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Storage</label>
+                        <span>${details.storage_gb} GB (${details.storage_type})</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Backup Retention</label>
+                        <span>${details.backup_retention} days</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    } else if (resourceType === 'lambda') {
+        html += `
+            <div class="detail-section">
+                <h4>⚡ Function Configuration</h4>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <label>Runtime</label>
+                        <span>${details.runtime}</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Memory</label>
+                        <span>${details.memory_mb} MB</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Timeout</label>
+                        <span>${details.timeout_sec} seconds</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Code Size</label>
+                        <span>${(details.code_size_bytes / 1024 / 1024).toFixed(2)} MB</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="detail-section">
+                <h4>📈 Usage (Last 24h)</h4>
+                <div class="detail-item">
+                    <label>Invocations</label>
+                    <span class="metric-value">${details.invocations_24h.toLocaleString()}</span>
+                </div>
+            </div>
+            
+            <div class="detail-section">
+                <h4>ℹ️ Info</h4>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <label>Handler</label>
+                        <span>${details.handler}</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Last Modified</label>
+                        <span>${details.last_modified}</span>
+                    </div>
+                    <div class="detail-item">
+                        <label>Layers</label>
+                        <span>${details.layers}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    html += '</div>';
+    
+    showDetailModal(details.id, html);
+}
+
+function showDetailModal(title, content) {
+    // Create modal if it doesn't exist
+    if ($('#detailModal').length === 0) {
+        $('body').append(`
+            <div id="detailModal" class="modal">
+                <div class="modal-content">
+                    <span class="modal-close">&times;</span>
+                    <h2 id="modalTitle"></h2>
+                    <div id="modalBody"></div>
+                </div>
+            </div>
+        `);
+        
+        // Close button handler
+        $('.modal-close').click(function() {
+            $('#detailModal').hide();
+        });
+        
+        // Click outside to close
+        $('#detailModal').click(function(e) {
+            if (e.target.id === 'detailModal') {
+                $(this).hide();
+            }
+        });
+    }
+    
+    // Set content and show
+    $('#modalTitle').text(title);
+    $('#modalBody').html(content);
+    $('#detailModal').show();
 }
 
 function getColumnsForResourceType(type) {
@@ -391,15 +650,47 @@ function loadCosts() {
 function displayCosts(costData) {
     const container = $('#costDisplay');
     
+    if (costData.error) {
+        container.html(`<div class="alert alert-error">${costData.error}</div>`);
+        return;
+    }
+    
     // Display total cost
-    const html = `
+    let html = `
         <div class="cost-summary">
             <div class="cost-card">
                 <h4>Total Cost (${costData.period_days} days)</h4>
                 <div class="amount">$${costData.total.toFixed(2)}</div>
             </div>
+            <div class="cost-card">
+                <h4>Services</h4>
+                <div class="amount">${costData.service_count}</div>
+            </div>
         </div>
     `;
+    
+    // Display breakdown by service
+    if (costData.by_service && Object.keys(costData.by_service).length > 0) {
+        html += '<h3 style="margin-top: 20px;">Cost Breakdown by Service</h3>';
+        html += '<div class="service-costs">';
+        
+        // Sort and display all services
+        Object.entries(costData.by_service).forEach(([service, data]) => {
+            const color = data.total > 0 ? '#28a745' : '#999';
+            html += `
+                <div class="service-cost-item">
+                    <div class="service-name">${service}</div>
+                    <div class="service-cost" style="color: ${color};">
+                        $${data.total.toFixed(2)} 
+                        <span class="cost-percentage">(${data.percentage}%)</span>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+    }
+    
     container.html(html);
     
     // Show chart
@@ -414,10 +705,24 @@ function displayCostChart(serviceData) {
         costChart.destroy();
     }
     
-    // Calculate totals by service
-    const labels = Object.keys(serviceData);
-    const data = labels.map(service => {
-        return serviceData[service].reduce((sum, item) => sum + item.cost, 0);
+    // Extract services and their totals
+    const labels = [];
+    const data = [];
+    const colors = [];
+    
+    Object.entries(serviceData).forEach(([service, info]) => {
+        if (info.total > 0) {  // Only show services with costs
+            labels.push(service);
+            data.push(info.total);
+            // Color code by amount
+            if (info.total > 1000) {
+                colors.push('rgba(220, 53, 69, 0.6)');  // Red for expensive
+            } else if (info.total > 100) {
+                colors.push('rgba(255, 193, 7, 0.6)');  // Yellow for moderate
+            } else {
+                colors.push('rgba(40, 167, 69, 0.6)');  // Green for cheap
+            }
+        }
     });
     
     costChart = new Chart(ctx, {
@@ -427,8 +732,8 @@ function displayCostChart(serviceData) {
             datasets: [{
                 label: 'Cost ($)',
                 data: data,
-                backgroundColor: 'rgba(102, 126, 234, 0.6)',
-                borderColor: '#667eea',
+                backgroundColor: colors,
+                borderColor: colors.map(c => c.replace('0.6', '1')),
                 borderWidth: 2
             }]
         },
@@ -438,11 +743,28 @@ function displayCostChart(serviceData) {
             plugins: {
                 legend: {
                     display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const service = context.label;
+                            const info = serviceData[service];
+                            return [
+                                `Total: $${context.parsed.y.toFixed(2)}`,
+                                `Percentage: ${info.percentage}%`
+                            ];
+                        }
+                    }
                 }
             },
             scales: {
                 y: {
-                    beginAtZero: true
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toFixed(2);
+                        }
+                    }
                 }
             }
         }

@@ -441,7 +441,7 @@ class AWSClient:
             
             # Calculate total and organize by service
             total_cost = 0.0
-            by_service = defaultdict(list)
+            by_service = defaultdict(lambda: {'daily': [], 'total': 0.0})
             
             for result in response['ResultsByTime']:
                 date = result['TimePeriod']['Start']
@@ -449,14 +449,37 @@ class AWSClient:
                     service = group['Keys'][0]
                     cost = float(group['Metrics']['UnblendedCost']['Amount'])
                     total_cost += cost
-                    by_service[service].append({'date': date, 'cost': cost})
+                    
+                    # Store daily cost
+                    by_service[service]['daily'].append({'date': date, 'cost': cost})
+                    # Accumulate total
+                    by_service[service]['total'] += cost
+            
+            # Convert to regular dict and sort by total cost
+            services_dict = {}
+            for service, data in by_service.items():
+                services_dict[service] = {
+                    'total': round(data['total'], 2),
+                    'daily': data['daily'],
+                    'percentage': round((data['total'] / total_cost * 100) if total_cost > 0 else 0, 2)
+                }
+            
+            # Sort by total cost (highest first)
+            sorted_services = dict(sorted(services_dict.items(), key=lambda x: x[1]['total'], reverse=True))
             
             logger.info(f"Successfully retrieved cost data: ${total_cost:.2f} over {days} days")
+            logger.info(f"Cost breakdown: {len(sorted_services)} services")
+            
+            # Log services with costs (even small ones)
+            for service, data in sorted_services.items():
+                if data['total'] > 0:
+                    logger.info(f"  {service}: ${data['total']:.2f} ({data['percentage']}%)")
             
             return {
                 'total': round(total_cost, 2),
-                'by_service': dict(by_service),
-                'period_days': days
+                'by_service': sorted_services,
+                'period_days': days,
+                'service_count': len(sorted_services)
             }
         
         except ClientError as e:
@@ -554,6 +577,230 @@ class AWSClient:
                     continue
         
         return bottlenecks
+    
+    # ============================================================================
+    # RESOURCE DETAILS
+    # ============================================================================
+    
+    def get_resource_details(self, resource_id: str, resource_type: str, region: str) -> Dict[str, Any]:
+        """
+        Get detailed information about a specific resource.
+        
+        Args:
+            resource_id: Resource identifier
+            resource_type: Type of resource (ec2, rds, lambda, etc.)
+            region: AWS region
+        
+        Returns:
+            Dictionary with detailed resource information
+        """
+        try:
+            if resource_type == 'ec2':
+                return self._get_ec2_details(resource_id, region)
+            elif resource_type == 'rds':
+                return self._get_rds_details(resource_id, region)
+            elif resource_type == 'lambda':
+                return self._get_lambda_details(resource_id, region)
+            elif resource_type == 's3':
+                return self._get_s3_details(resource_id)
+            elif resource_type == 'ebs':
+                return self._get_ebs_details(resource_id, region)
+            else:
+                return {'error': f'Unsupported resource type: {resource_type}'}
+        except Exception as e:
+            logger.error(f"Error getting details for {resource_id}: {e}")
+            return {'error': str(e)}
+    
+    def _get_ec2_details(self, instance_id: str, region: str) -> Dict[str, Any]:
+        """Get detailed EC2 instance information."""
+        ec2 = self.session.client('ec2', region_name=region)
+        
+        # Get instance details
+        response = ec2.describe_instances(InstanceIds=[instance_id])
+        instance = response['Reservations'][0]['Instances'][0]
+        
+        # Get recent CPU metrics (last 6 hours)
+        cloudwatch = self.session.client('cloudwatch', region_name=region)
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(hours=6)
+        
+        cpu_data = cloudwatch.get_metric_statistics(
+            Namespace='AWS/EC2',
+            MetricName='CPUUtilization',
+            Dimensions=[{'Name': 'InstanceId', 'Value': instance_id}],
+            StartTime=start_time,
+            EndTime=end_time,
+            Period=900,  # 15 minutes
+            Statistics=['Average', 'Maximum']
+        )
+        
+        # Calculate current CPU
+        current_cpu = None
+        if cpu_data['Datapoints']:
+            sorted_points = sorted(cpu_data['Datapoints'], key=lambda x: x['Timestamp'], reverse=True)
+            current_cpu = sorted_points[0]['Average']
+        
+        return {
+            'id': instance_id,
+            'type': instance['InstanceType'],
+            'state': instance['State']['Name'],
+            'az': instance['Placement']['AvailabilityZone'],
+            'launch_time': instance['LaunchTime'].isoformat(),
+            'private_ip': instance.get('PrivateIpAddress', 'N/A'),
+            'public_ip': instance.get('PublicIpAddress', 'N/A'),
+            'vpc_id': instance.get('VpcId', 'N/A'),
+            'subnet_id': instance.get('SubnetId', 'N/A'),
+            'security_groups': [sg['GroupName'] for sg in instance.get('SecurityGroups', [])],
+            'tags': self._extract_tags(instance.get('Tags', [])),
+            'monitoring': instance['Monitoring']['State'],
+            'current_cpu': round(current_cpu, 2) if current_cpu else 'N/A',
+            'platform': instance.get('Platform', 'Linux'),
+            'architecture': instance.get('Architecture', 'x86_64')
+        }
+    
+    def _get_rds_details(self, db_id: str, region: str) -> Dict[str, Any]:
+        """Get detailed RDS instance information."""
+        rds = self.session.client('rds', region_name=region)
+        
+        response = rds.describe_db_instances(DBInstanceIdentifier=db_id)
+        db = response['DBInstances'][0]
+        
+        # Get recent CPU metrics
+        cloudwatch = self.session.client('cloudwatch', region_name=region)
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(hours=6)
+        
+        cpu_data = cloudwatch.get_metric_statistics(
+            Namespace='AWS/RDS',
+            MetricName='CPUUtilization',
+            Dimensions=[{'Name': 'DBInstanceIdentifier', 'Value': db_id}],
+            StartTime=start_time,
+            EndTime=end_time,
+            Period=900,
+            Statistics=['Average']
+        )
+        
+        current_cpu = None
+        if cpu_data['Datapoints']:
+            sorted_points = sorted(cpu_data['Datapoints'], key=lambda x: x['Timestamp'], reverse=True)
+            current_cpu = sorted_points[0]['Average']
+        
+        return {
+            'id': db_id,
+            'class': db['DBInstanceClass'],
+            'engine': db['Engine'],
+            'engine_version': db['EngineVersion'],
+            'status': db['DBInstanceStatus'],
+            'az': db.get('AvailabilityZone', 'N/A'),
+            'multi_az': db['MultiAZ'],
+            'storage_gb': db['AllocatedStorage'],
+            'storage_type': db['StorageType'],
+            'iops': db.get('Iops', 'N/A'),
+            'endpoint': db['Endpoint']['Address'] if 'Endpoint' in db else 'N/A',
+            'port': db['Endpoint']['Port'] if 'Endpoint' in db else 'N/A',
+            'vpc_id': db.get('DBSubnetGroup', {}).get('VpcId', 'N/A'),
+            'backup_retention': db['BackupRetentionPeriod'],
+            'current_cpu': round(current_cpu, 2) if current_cpu else 'N/A',
+            'publicly_accessible': db['PubliclyAccessible']
+        }
+    
+    def _get_lambda_details(self, function_name: str, region: str) -> Dict[str, Any]:
+        """Get detailed Lambda function information."""
+        lambda_client = self.session.client('lambda', region_name=region)
+        
+        response = lambda_client.get_function(FunctionName=function_name)
+        config = response['Configuration']
+        
+        # Get recent invocation count
+        cloudwatch = self.session.client('cloudwatch', region_name=region)
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(hours=24)
+        
+        invocations = cloudwatch.get_metric_statistics(
+            Namespace='AWS/Lambda',
+            MetricName='Invocations',
+            Dimensions=[{'Name': 'FunctionName', 'Value': function_name}],
+            StartTime=start_time,
+            EndTime=end_time,
+            Period=86400,  # 1 day
+            Statistics=['Sum']
+        )
+        
+        total_invocations = 0
+        if invocations['Datapoints']:
+            total_invocations = invocations['Datapoints'][0]['Sum']
+        
+        return {
+            'id': function_name,
+            'runtime': config['Runtime'],
+            'handler': config['Handler'],
+            'memory_mb': config['MemorySize'],
+            'timeout_sec': config['Timeout'],
+            'code_size_bytes': config['CodeSize'],
+            'last_modified': config['LastModified'],
+            'role': config['Role'].split('/')[-1],
+            'vpc_id': config.get('VpcConfig', {}).get('VpcId', 'N/A'),
+            'environment': list(config.get('Environment', {}).get('Variables', {}).keys()),
+            'invocations_24h': int(total_invocations),
+            'layers': len(config.get('Layers', []))
+        }
+    
+    def _get_s3_details(self, bucket_name: str) -> Dict[str, Any]:
+        """Get detailed S3 bucket information."""
+        s3 = self.session.client('s3')
+        
+        # Get bucket location
+        try:
+            location = s3.get_bucket_location(Bucket=bucket_name)
+            region = location['LocationConstraint'] or 'us-east-1'
+        except:
+            region = 'unknown'
+        
+        # Get bucket size (this requires CloudWatch metrics or S3 API calls)
+        # For now, we'll return basic info
+        try:
+            versioning = s3.get_bucket_versioning(Bucket=bucket_name)
+            versioning_status = versioning.get('Status', 'Disabled')
+        except:
+            versioning_status = 'Unknown'
+        
+        try:
+            encryption = s3.get_bucket_encryption(Bucket=bucket_name)
+            encrypted = True
+        except:
+            encrypted = False
+        
+        return {
+            'id': bucket_name,
+            'region': region,
+            'versioning': versioning_status,
+            'encrypted': encrypted,
+            'public_access': 'Check AWS Console'  # Requires additional API calls
+        }
+    
+    def _get_ebs_details(self, volume_id: str, region: str) -> Dict[str, Any]:
+        """Get detailed EBS volume information."""
+        ec2 = self.session.client('ec2', region_name=region)
+        
+        response = ec2.describe_volumes(VolumeIds=[volume_id])
+        volume = response['Volumes'][0]
+        
+        attachment = volume['Attachments'][0] if volume['Attachments'] else None
+        
+        return {
+            'id': volume_id,
+            'size_gb': volume['Size'],
+            'type': volume['VolumeType'],
+            'iops': volume.get('Iops', 'N/A'),
+            'throughput': volume.get('Throughput', 'N/A'),
+            'state': volume['State'],
+            'az': volume['AvailabilityZone'],
+            'encrypted': volume['Encrypted'],
+            'created': volume['CreateTime'].isoformat(),
+            'attached_to': attachment['InstanceId'] if attachment else 'Not attached',
+            'device': attachment['Device'] if attachment else 'N/A',
+            'snapshot_id': volume.get('SnapshotId', 'N/A')
+        }
     
     # ============================================================================
     # UTILITY METHODS

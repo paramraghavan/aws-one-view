@@ -156,6 +156,44 @@ def get_costs() -> Dict[str, Any]:
         }), 500
 
 
+@app.route('/api/resource/details', methods=['GET'])
+def get_resource_details() -> Dict[str, Any]:
+    """
+    Get detailed information about a specific resource.
+    
+    Query Parameters:
+        resource_id: Resource identifier
+        resource_type: Type of resource (ec2, rds, lambda, s3, ebs)
+        region: AWS region
+    
+    Returns:
+        JSON response with detailed resource information
+    """
+    try:
+        resource_id = request.args.get('resource_id')
+        resource_type = request.args.get('resource_type')
+        region = request.args.get('region', Config.DEFAULT_REGION)
+        
+        if not resource_id or not resource_type:
+            return jsonify({
+                'success': False,
+                'error': 'Missing required parameters: resource_id, resource_type'
+            }), 400
+        
+        details = aws_client.get_resource_details(resource_id, resource_type, region)
+        
+        return jsonify({
+            'success': True,
+            'data': details
+        })
+    except Exception as e:
+        logger.error(f"Error getting resource details: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/api/bottlenecks', methods=['GET'])
 def detect_bottlenecks() -> Dict[str, Any]:
     """
