@@ -340,6 +340,10 @@ docker run -p 5000:5000 \
 3. Make your changes
 4. Submit a pull request
 
+## 📝 License
+
+MIT License - feel free to use and modify for your needs.
+
 ## 🆘 Troubleshooting
 
 ### Common Issues

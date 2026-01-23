@@ -103,12 +103,103 @@
             <canvas id="costChart" style="display: none;"></canvas>
         </section>
 
+        <!-- Cost Reports -->
+        <section class="card">
+            <h2>📊 Cost Reports</h2>
+            
+            <!-- Manual Report Generation -->
+            <div class="report-section">
+                <h3>Generate Manual Report</h3>
+                <p class="info-text">Select resources above and generate a cost report</p>
+                
+                <div class="report-controls">
+                    <label>
+                        Report Period:
+                        <select id="reportPeriod">
+                            <option value="daily">Daily (Yesterday)</option>
+                            <option value="weekly" selected>Weekly (Last 7 Days)</option>
+                            <option value="monthly">Monthly (This Month)</option>
+                        </select>
+                    </label>
+                    
+                    <label>
+                        <input type="checkbox" id="emailReport" checked> Email Report
+                    </label>
+                    
+                    <button id="generateReport" class="btn btn-success">Generate Report</button>
+                </div>
+                
+                <div id="reportResult" style="display:none; margin-top: 15px;"></div>
+            </div>
+            
+            <!-- Scheduled Reports -->
+            <div class="report-section">
+                <h3>Scheduled Reports</h3>
+                <p class="info-text">Schedule automatic cost reports for selected resources</p>
+                
+                <div class="report-controls">
+                    <input type="text" id="reportName" placeholder="Report Name (e.g., 'Weekly EC2 Costs')" style="width: 300px;">
+                    
+                    <label>
+                        Period:
+                        <select id="scheduledPeriod">
+                            <option value="daily">Daily</option>
+                            <option value="weekly" selected>Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </label>
+                    
+                    <label>
+                        Schedule:
+                        <select id="reportSchedule">
+                            <option value="daily">Every Day at 9 AM</option>
+                            <option value="weekly_monday" selected>Every Monday at 9 AM</option>
+                            <option value="weekly_friday">Every Friday at 9 AM</option>
+                            <option value="monthly_1st">1st of Month at 9 AM</option>
+                            <option value="custom_06:00">Every Day at 6 AM</option>
+                            <option value="custom_18:00">Every Day at 6 PM</option>
+                        </select>
+                    </label>
+                    
+                    <button id="scheduleReport" class="btn btn-primary">Schedule Report</button>
+                </div>
+                
+                <!-- List of Scheduled Reports -->
+                <div id="scheduledReportsList" style="margin-top: 20px;">
+                    <h4>Active Scheduled Reports</h4>
+                    <div id="scheduledReportsContent">
+                        <p class="info-text">No scheduled reports</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Bottleneck Detection -->
         <section class="card">
-            <h2>5. Bottleneck Detection</h2>
+            <h2>6. Bottleneck Detection</h2>
             <button id="detectBottlenecks" class="btn btn-warning">Scan for Issues</button>
             <div id="bottleneckDisplay">
                 <p class="info-text">Click "Scan for Issues" to analyze resource utilization</p>
+            </div>
+        </section>
+
+        <!-- Cost Optimization -->
+        <section class="card">
+            <h2>7. Cost Optimization 💰</h2>
+            <p class="info-text">Find opportunities to reduce AWS spending automatically</p>
+            <button id="analyzeCosts" class="btn btn-success">Find Savings Opportunities</button>
+            <div id="optimizationDisplay">
+                <p class="info-text">Click "Find Savings Opportunities" to discover ways to save money</p>
+            </div>
+        </section>
+
+        <!-- Security Audit -->
+        <section class="card">
+            <h2>8. Security Audit 🔒</h2>
+            <p class="info-text">Scan for security vulnerabilities and compliance issues</p>
+            <button id="runSecurityAudit" class="btn btn-danger">Run Security Audit</button>
+            <div id="securityDisplay">
+                <p class="info-text">Click "Run Security Audit" to check for security issues</p>
             </div>
         </section>
     </div>

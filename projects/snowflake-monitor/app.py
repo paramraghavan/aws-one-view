@@ -223,5 +223,226 @@ def api_credit_usage_hourly():
         return jsonify({'success': False, 'error': str(e)})
 
 
+# ================================================================
+# NEW API ENDPOINTS - User Analytics, Forecasting, Security, etc.
+# ================================================================
+
+@app.route('/api/user-analytics')
+def api_user_analytics():
+    """Get user-level analytics: top users, activity trends, role usage."""
+    days = request.args.get('days', 30, type=int)
+    try:
+        monitor = get_monitor()
+        data = monitor.get_user_analytics(days)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/cost-forecast')
+def api_cost_forecast():
+    """Get cost forecast and projections based on historical trends."""
+    days = request.args.get('days', 30, type=int)
+    forecast_days = request.args.get('forecast_days', 30, type=int)
+    try:
+        monitor = get_monitor()
+        data = monitor.get_cost_forecast(days, forecast_days)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/query-fingerprints')
+def api_query_fingerprints():
+    """Get query fingerprints - grouped similar queries for optimization."""
+    days = request.args.get('days', 7, type=int)
+    min_count = request.args.get('min_count', 5, type=int)
+    try:
+        monitor = get_monitor()
+        data = monitor.get_query_fingerprints(days, min_count)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/data-freshness')
+def api_data_freshness():
+    """Get data freshness monitoring - when tables were last updated."""
+    try:
+        monitor = get_monitor()
+        data = monitor.get_data_freshness()
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/unused-objects')
+def api_unused_objects():
+    """Get unused warehouses and tables for cost optimization."""
+    days = request.args.get('days', 30, type=int)
+    try:
+        monitor = get_monitor()
+        data = monitor.get_unused_objects(days)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/login-history')
+def api_login_history():
+    """Get user login history and security monitoring."""
+    days = request.args.get('days', 7, type=int)
+    try:
+        monitor = get_monitor()
+        data = monitor.get_login_history(days)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/table-storage')
+def api_table_storage():
+    """Get detailed table-level storage breakdown."""
+    try:
+        monitor = get_monitor()
+        data = monitor.get_table_storage_details()
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/week-over-week')
+def api_week_over_week():
+    """Get week-over-week comparison of key metrics."""
+    try:
+        monitor = get_monitor()
+        data = monitor.get_week_over_week_comparison()
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/optimization-opportunities')
+def api_optimization_opportunities():
+    """Get query optimization opportunities (full scans, spilling, SELECT *)."""
+    try:
+        monitor = get_monitor()
+        data = monitor.get_query_optimization_opportunities()
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+# ================================================================
+# DATABASE-SPECIFIC MONITORING ENDPOINTS
+# ================================================================
+
+@app.route('/api/databases')
+def api_database_list():
+    """Get list of all databases."""
+    try:
+        monitor = get_monitor()
+        data = monitor.get_database_list()
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/database/<database_name>/overview')
+def api_database_overview(database_name):
+    """Get comprehensive overview for a specific database."""
+    days = request.args.get('days', 30, type=int)
+    try:
+        monitor = get_monitor()
+        data = monitor.get_database_overview(database_name, days)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/database/<database_name>/cost-analysis')
+def api_database_cost_analysis(database_name):
+    """Get cost analysis for a specific database."""
+    days = request.args.get('days', 30, type=int)
+    try:
+        monitor = get_monitor()
+        data = monitor.get_database_cost_analysis(database_name, days)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/database/<database_name>/slow-queries')
+def api_database_slow_queries(database_name):
+    """Get slow queries for a specific database."""
+    days = request.args.get('days', 7, type=int)
+    threshold = request.args.get('threshold', 30, type=int)
+    try:
+        monitor = get_monitor()
+        data = monitor.get_database_slow_queries(database_name, days, threshold)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/database/<database_name>/bottlenecks')
+def api_database_bottlenecks(database_name):
+    """Get bottleneck analysis for a specific database."""
+    days = request.args.get('days', 7, type=int)
+    try:
+        monitor = get_monitor()
+        data = monitor.get_database_bottlenecks(database_name, days)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/database/<database_name>/tables')
+def api_database_tables(database_name):
+    """Get table analysis for a specific database."""
+    try:
+        monitor = get_monitor()
+        data = monitor.get_database_table_analysis(database_name)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/database/<database_name>/query-patterns')
+def api_database_query_patterns(database_name):
+    """Get query patterns for a specific database."""
+    days = request.args.get('days', 7, type=int)
+    try:
+        monitor = get_monitor()
+        data = monitor.get_database_query_patterns(database_name, days)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/database/<database_name>/optimization')
+def api_database_optimization(database_name):
+    """Get optimization opportunities for a specific database."""
+    days = request.args.get('days', 7, type=int)
+    try:
+        monitor = get_monitor()
+        data = monitor.get_database_optimization_opportunities(database_name, days)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/database/<database_name>/recommendations')
+def api_database_recommendations(database_name):
+    """Get recommendations for a specific database."""
+    days = request.args.get('days', 30, type=int)
+    try:
+        monitor = get_monitor()
+        data = monitor.get_database_recommendations(database_name, days)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

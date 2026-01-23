@@ -34,6 +34,16 @@
                 </svg>
                 <span>Overview</span>
             </li>
+            <li class="nav-item highlight" data-section="database">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                    <circle cx="17" cy="17" r="4" fill="currentColor" stroke="none"/>
+                    <path d="M17 15v4M15 17h4" stroke-width="1.5"/>
+                </svg>
+                <span>Database Deep Dive</span>
+            </li>
             <li class="nav-item" data-section="costs">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="12" y1="1" x2="12" y2="23"/>
@@ -41,11 +51,26 @@
                 </svg>
                 <span>Cost Analysis</span>
             </li>
+            <li class="nav-item" data-section="forecast">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 21H4.6c-.56 0-.84 0-1.05-.11a1 1 0 01-.44-.44C3 20.24 3 19.96 3 19.4V3"/>
+                    <path d="M7 14l4-4 4 4 6-6"/>
+                    <path d="M17 8h4v4"/>
+                </svg>
+                <span>Cost Forecast</span>
+            </li>
             <li class="nav-item" data-section="queries">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
                 </svg>
                 <span>Query Performance</span>
+            </li>
+            <li class="nav-item" data-section="optimization">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+                </svg>
+                <span>Optimization</span>
             </li>
             <li class="nav-item" data-section="warehouses">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -61,6 +86,29 @@
                     <line x1="1" y1="14" x2="4" y2="14"/>
                 </svg>
                 <span>Warehouses</span>
+            </li>
+            <li class="nav-item" data-section="users">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 00-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 010 7.75"/>
+                </svg>
+                <span>User Analytics</span>
+            </li>
+            <li class="nav-item" data-section="storage">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                </svg>
+                <span>Storage & Data</span>
+            </li>
+            <li class="nav-item" data-section="security">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+                <span>Security</span>
             </li>
             <li class="nav-item" data-section="bottlenecks">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -208,6 +256,323 @@
                         <canvas id="storageChart"></canvas>
                     </div>
                 </div>
+            </div>
+        </section>
+
+        <!-- Database Deep Dive Section -->
+        <section id="database" class="content-section">
+            <div class="section-header">
+                <h1>Database Deep Dive</h1>
+                <p class="section-subtitle">Comprehensive analysis of a specific database - costs, performance, bottlenecks, and optimization</p>
+            </div>
+            
+            <div class="database-selector-bar">
+                <div class="selector-group">
+                    <label for="databaseSelect">Select Database:</label>
+                    <select id="databaseSelect" class="filter-select database-select">
+                        <option value="">Loading databases...</option>
+                    </select>
+                </div>
+                <div class="selector-group">
+                    <label for="dbDaysFilter">Time Period:</label>
+                    <select id="dbDaysFilter" class="filter-select">
+                        <option value="7">Last 7 days</option>
+                        <option value="14">Last 14 days</option>
+                        <option value="30" selected>Last 30 days</option>
+                        <option value="60">Last 60 days</option>
+                    </select>
+                </div>
+                <button id="loadDatabaseBtn" class="btn-primary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                        <polyline points="23 4 23 10 17 10"/>
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                    </svg>
+                    Analyze Database
+                </button>
+            </div>
+            
+            <!-- Database Overview Cards -->
+            <div class="db-overview-section" id="dbOverviewSection" style="display: none;">
+                <h3 class="subsection-title">Database Overview: <span id="selectedDbName">--</span></h3>
+                
+                <div class="metrics-grid metrics-grid-6">
+                    <div class="metric-card">
+                        <div class="metric-content">
+                            <span class="metric-label">Total Queries</span>
+                            <span class="metric-value" id="dbTotalQueries">--</span>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-content">
+                            <span class="metric-label">Active Users</span>
+                            <span class="metric-value" id="dbActiveUsers">--</span>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-content">
+                            <span class="metric-label">Avg Query Time</span>
+                            <span class="metric-value" id="dbAvgQueryTime">--</span>
+                            <span class="metric-unit">sec</span>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-content">
+                            <span class="metric-label">TB Scanned</span>
+                            <span class="metric-value" id="dbTbScanned">--</span>
+                            <span class="metric-unit">TB</span>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-content">
+                            <span class="metric-label">Storage</span>
+                            <span class="metric-value" id="dbStorage">--</span>
+                            <span class="metric-unit">TB</span>
+                        </div>
+                    </div>
+                    <div class="metric-card alert">
+                        <div class="metric-content">
+                            <span class="metric-label">Failed Queries</span>
+                            <span class="metric-value" id="dbFailedQueries">--</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Database Tabs -->
+                <div class="db-tabs">
+                    <button class="db-tab-btn active" data-tab="db-cost">Cost Analysis</button>
+                    <button class="db-tab-btn" data-tab="db-performance">Performance</button>
+                    <button class="db-tab-btn" data-tab="db-bottlenecks">Bottlenecks</button>
+                    <button class="db-tab-btn" data-tab="db-tables">Tables</button>
+                    <button class="db-tab-btn" data-tab="db-recommendations">Recommendations</button>
+                </div>
+                
+                <!-- Cost Analysis Tab -->
+                <div class="db-tab-content active" id="db-cost">
+                    <div class="charts-row">
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3>Daily Query Volume & Cost</h3>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="dbDailyVolumeChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3>Usage by Warehouse</h3>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="dbWarehouseChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="data-table-section">
+                        <h3>Top Users by Resource Consumption</h3>
+                        <div class="table-container">
+                            <table class="data-table" id="dbUserCostTable">
+                                <thead>
+                                    <tr>
+                                        <th>User</th>
+                                        <th>Queries</th>
+                                        <th>Total Hours</th>
+                                        <th>Avg Query Time</th>
+                                        <th>TB Scanned</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="5" class="loading">Select a database to view data</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Performance Tab -->
+                <div class="db-tab-content" id="db-performance">
+                    <div class="charts-row">
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3>Query Volume by Hour</h3>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="dbHourlyChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3>Query Types Distribution</h3>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="dbQueryTypeChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="data-table-section">
+                        <h3>Slow Queries (>30 seconds)</h3>
+                        <div class="table-container">
+                            <table class="data-table" id="dbSlowQueriesTable">
+                                <thead>
+                                    <tr>
+                                        <th>Query ID</th>
+                                        <th>User</th>
+                                        <th>Warehouse</th>
+                                        <th>Type</th>
+                                        <th>Duration</th>
+                                        <th>GB Scanned</th>
+                                        <th>Queue Time</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="8" class="loading">Select a database to view data</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Bottlenecks Tab -->
+                <div class="db-tab-content" id="db-bottlenecks">
+                    <div class="bottleneck-grid" id="dbBottleneckGrid">
+                        <div class="bottleneck-card">
+                            <div class="bottleneck-header">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <polyline points="12 6 12 12 16 14"/>
+                                </svg>
+                                <h4>Queue Time Issues</h4>
+                            </div>
+                            <div class="bottleneck-content" id="dbQueueIssues">
+                                <p class="loading">Loading...</p>
+                            </div>
+                        </div>
+                        
+                        <div class="bottleneck-card">
+                            <div class="bottleneck-header">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                                    <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/>
+                                    <path d="M12 12v9"/>
+                                    <path d="m8 17 4 4 4-4"/>
+                                </svg>
+                                <h4>Memory Spilling</h4>
+                            </div>
+                            <div class="bottleneck-content" id="dbSpillIssues">
+                                <p class="loading">Loading...</p>
+                            </div>
+                        </div>
+                        
+                        <div class="bottleneck-card">
+                            <div class="bottleneck-header">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                                </svg>
+                                <h4>Full Table Scans</h4>
+                            </div>
+                            <div class="bottleneck-content" id="dbScanIssues">
+                                <p class="loading">Loading...</p>
+                            </div>
+                        </div>
+                        
+                        <div class="bottleneck-card">
+                            <div class="bottleneck-header">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <line x1="15" y1="9" x2="9" y2="15"/>
+                                    <line x1="9" y1="9" x2="15" y2="15"/>
+                                </svg>
+                                <h4>Query Failures</h4>
+                            </div>
+                            <div class="bottleneck-content" id="dbFailureIssues">
+                                <p class="loading">Loading...</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="data-table-section">
+                        <h3>Optimization Opportunities</h3>
+                        <div class="table-container">
+                            <table class="data-table" id="dbOptimizationTable">
+                                <thead>
+                                    <tr>
+                                        <th>Query ID</th>
+                                        <th>Issue Type</th>
+                                        <th>User</th>
+                                        <th>Warehouse</th>
+                                        <th>Duration</th>
+                                        <th>Recommendation</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="6" class="loading">Select a database to view data</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tables Tab -->
+                <div class="db-tab-content" id="db-tables">
+                    <div class="charts-row">
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3>Queries by Schema</h3>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="dbSchemaChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3>Table Size Distribution</h3>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="dbTableSizeChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="data-table-section">
+                        <h3>Tables Analysis</h3>
+                        <div class="table-container">
+                            <table class="data-table" id="dbTablesTable">
+                                <thead>
+                                    <tr>
+                                        <th>Schema</th>
+                                        <th>Table</th>
+                                        <th>Rows</th>
+                                        <th>Size (GB)</th>
+                                        <th>Clustering</th>
+                                        <th>Last Updated</th>
+                                        <th>Freshness</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="7" class="loading">Select a database to view data</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Recommendations Tab -->
+                <div class="db-tab-content" id="db-recommendations">
+                    <div class="db-recommendations-container" id="dbRecommendationsContainer">
+                        <p class="loading">Select a database to view recommendations</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Empty state when no database selected -->
+            <div class="empty-state" id="dbEmptyState">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="64" height="64">
+                    <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                </svg>
+                <h3>Select a Database to Analyze</h3>
+                <p>Choose a database from the dropdown above to view comprehensive cost, performance, and optimization analysis.</p>
             </div>
         </section>
 
@@ -522,6 +887,302 @@
             
             <div class="recommendations-container" id="recommendationsContainer">
                 <p class="loading">Analyzing your environment...</p>
+            </div>
+        </section>
+
+        <!-- Cost Forecast Section -->
+        <section id="forecast" class="content-section">
+            <div class="section-header">
+                <h1>Cost Forecast</h1>
+                <p class="section-subtitle">Projected costs and spending trends</p>
+            </div>
+            
+            <div class="metrics-grid metrics-grid-4">
+                <div class="metric-card">
+                    <div class="metric-icon credits">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 21H4.6c-.56 0-.84 0-1.05-.11a1 1 0 01-.44-.44C3 20.24 3 19.96 3 19.4V3"/>
+                            <path d="M7 14l4-4 4 4 6-6"/>
+                        </svg>
+                    </div>
+                    <div class="metric-content">
+                        <span class="metric-label">Avg Daily</span>
+                        <span class="metric-value" id="avgDailyCredits">--</span>
+                        <span class="metric-unit">credits/day</span>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon storage">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M12 6v6l4 2"/>
+                        </svg>
+                    </div>
+                    <div class="metric-content">
+                        <span class="metric-label">30-Day Projection</span>
+                        <span class="metric-value" id="projectedCredits">--</span>
+                        <span class="metric-unit">credits</span>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon queries">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+                            <polyline points="17 6 23 6 23 12"/>
+                        </svg>
+                    </div>
+                    <div class="metric-content">
+                        <span class="metric-label">Trend</span>
+                        <span class="metric-value" id="trendDirection">--</span>
+                        <span class="metric-unit" id="trendFactor"></span>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon warehouses">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/>
+                            <path d="M3 9h18"/>
+                            <path d="M9 21V9"/>
+                        </svg>
+                    </div>
+                    <div class="metric-content">
+                        <span class="metric-label">Week Change</span>
+                        <span class="metric-value" id="weekChangeCredits">--</span>
+                        <span class="metric-unit">%</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="charts-row">
+                <div class="chart-card full-width">
+                    <div class="chart-header">
+                        <h3>Daily Credit Usage (30 days)</h3>
+                    </div>
+                    <div class="chart-container large">
+                        <canvas id="dailyCreditsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="comparison-section">
+                <h3>Week-over-Week Comparison</h3>
+                <div class="comparison-grid" id="weekComparisonGrid">
+                    <p class="loading">Loading comparison data...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- User Analytics Section -->
+        <section id="users" class="content-section">
+            <div class="section-header">
+                <h1>User Analytics</h1>
+                <p class="section-subtitle">User activity, role usage, and resource consumption</p>
+            </div>
+            
+            <div class="charts-row">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3>Active Users Trend</h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="userActivityChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3>Queries by Role</h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="roleUsageChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="data-table-section">
+                <h3>Top Users by Resource Usage</h3>
+                <div class="table-container">
+                    <table class="data-table" id="topUsersTable">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Queries</th>
+                                <th>Total Hours</th>
+                                <th>Avg Query Time</th>
+                                <th>TB Scanned</th>
+                                <th>Failed</th>
+                                <th>Warehouses</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="7" class="loading">Loading user data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Optimization Section -->
+        <section id="optimization" class="content-section">
+            <div class="section-header">
+                <h1>Query Optimization</h1>
+                <p class="section-subtitle">Query fingerprints and optimization opportunities</p>
+            </div>
+            
+            <div class="data-table-section">
+                <h3>Query Fingerprints (Similar Query Patterns)</h3>
+                <p class="section-info">Queries grouped by pattern - optimize the most impactful ones first</p>
+                <div class="table-container">
+                    <table class="data-table" id="fingerprintsTable">
+                        <thead>
+                            <tr>
+                                <th>Pattern</th>
+                                <th>Executions</th>
+                                <th>Avg Duration</th>
+                                <th>Total Hours</th>
+                                <th>Total GB Scanned</th>
+                                <th>Users</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="6" class="loading">Loading fingerprints...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="data-table-section">
+                <h3>Optimization Opportunities</h3>
+                <p class="section-info">Queries with performance issues that can be improved</p>
+                <div class="table-container">
+                    <table class="data-table" id="optimizationTable">
+                        <thead>
+                            <tr>
+                                <th>Query ID</th>
+                                <th>Issue Type</th>
+                                <th>User</th>
+                                <th>Warehouse</th>
+                                <th>Duration</th>
+                                <th>Recommendation</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="6" class="loading">Analyzing queries...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Storage & Data Section -->
+        <section id="storage" class="content-section">
+            <div class="section-header">
+                <h1>Storage & Data Freshness</h1>
+                <p class="section-subtitle">Table storage breakdown and data update monitoring</p>
+            </div>
+            
+            <div class="data-table-section">
+                <h3>Table Storage Breakdown</h3>
+                <div class="table-container">
+                    <table class="data-table" id="tableStorageTable">
+                        <thead>
+                            <tr>
+                                <th>Database</th>
+                                <th>Schema</th>
+                                <th>Table</th>
+                                <th>Rows</th>
+                                <th>Size (GB)</th>
+                                <th>Active</th>
+                                <th>Time Travel</th>
+                                <th>Failsafe</th>
+                                <th>Clustering</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="9" class="loading">Loading storage data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="data-table-section">
+                <h3>Data Freshness Monitor</h3>
+                <p class="section-info">Track when tables were last updated</p>
+                <div class="table-container">
+                    <table class="data-table" id="freshnessTable">
+                        <thead>
+                            <tr>
+                                <th>Database</th>
+                                <th>Schema</th>
+                                <th>Table</th>
+                                <th>Rows</th>
+                                <th>Size (GB)</th>
+                                <th>Last Updated</th>
+                                <th>Hours Ago</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="8" class="loading">Loading freshness data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="data-table-section">
+                <h3>Unused Objects</h3>
+                <p class="section-info">Warehouses and tables not accessed in the last 30 days</p>
+                <div class="unused-objects-grid" id="unusedObjectsGrid">
+                    <p class="loading">Scanning for unused objects...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Security Section -->
+        <section id="security" class="content-section">
+            <div class="section-header">
+                <h1>Security & Login History</h1>
+                <p class="section-subtitle">User login patterns and security monitoring</p>
+            </div>
+            
+            <div class="charts-row">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3>Login Activity by Hour</h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="loginPatternChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="chart-card alert-card">
+                    <div class="chart-header">
+                        <h3>Failed Login Attempts</h3>
+                    </div>
+                    <div class="failed-logins-list" id="failedLoginsList">
+                        <p class="loading">Loading security data...</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="data-table-section">
+                <h3>User Login Summary</h3>
+                <div class="table-container">
+                    <table class="data-table" id="loginSummaryTable">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Login Count</th>
+                                <th>Unique IPs</th>
+                                <th>Last Login</th>
+                                <th>Failed Attempts</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="5" class="loading">Loading login data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </section>
     </main>

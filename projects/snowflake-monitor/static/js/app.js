@@ -864,17 +864,35 @@ function loadSectionData(sectionId) {
         case 'costs':
             loadCosts();
             break;
+        case 'forecast':
+            loadForecast();
+            break;
         case 'queries':
             loadQueries();
             break;
+        case 'optimization':
+            loadOptimization();
+            break;
         case 'warehouses':
             loadWarehouses();
+            break;
+        case 'users':
+            loadUsers();
+            break;
+        case 'storage':
+            loadStorage();
+            break;
+        case 'security':
+            loadSecurity();
             break;
         case 'bottlenecks':
             loadBottlenecks();
             break;
         case 'recommendations':
             loadRecommendations();
+            break;
+        case 'database':
+            loadDatabaseList();
             break;
     }
 }
@@ -934,6 +952,840 @@ function initEventListeners() {
             hideQueryModal();
         }
     });
+    
+    // Database Deep Dive - Load button
+    document.getElementById('loadDatabaseBtn').addEventListener('click', loadDatabaseAnalysis);
+    
+    // Database tabs
+    document.querySelectorAll('.db-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.db-tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.db-tab-content').forEach(c => c.classList.remove('active'));
+            
+            btn.classList.add('active');
+            document.getElementById(btn.dataset.tab).classList.add('active');
+        });
+    });
+}
+
+// ============================================
+// NEW FEATURE: Cost Forecast
+// ============================================
+
+async function loadForecast() {
+    showLoading('Loading cost forecast...');
+    try {
+        const [forecast, weekComparison] = await Promise.all([
+            fetchAPI('cost-forecast', { days: 30 }),
+            fetchAPI('week-over-week')
+        ]);
+        
+        // Update metrics
+        document.getElementById('avgDailyCredits').textContent = formatNumber(forecast.forecast.avg_daily_credits, 1);
+        document.getElementById('projectedCredits').textContent = formatNumber(forecast.forecast.projected_30_day, 0);
+        document.getElementById('trendDirection').textContent = forecast.forecast.trend_direction.charAt(0).toUpperCase() + forecast.forecast.trend_direction.slice(1);
+        document.getElementById('trendFactor').textContent = `(${formatNumber((forecast.forecast.trend_factor - 1) * 100, 1)}%)`;
+        document.getElementById('weekChangeCredits').textContent = formatNumber(weekComparison.credit_change_pct, 1);
+        
+        // Render daily credits chart
+        renderDailyCreditsChart(forecast.daily_data);
+        
+        // Render week comparison
+        renderWeekComparison(weekComparison);
+        
+        hideLoading();
+    } catch (error) {
+        console.error('Error loading forecast:', error);
+        hideLoading();
+    }
+}
+
+function renderDailyCreditsChart(data) {
+    const ctx = document.getElementById('dailyCreditsChart').getContext('2d');
+    
+    if (state.charts.dailyCredits) {
+        state.charts.dailyCredits.destroy();
+    }
+    
+    state.charts.dailyCredits = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.map(d => d.DATE),
+            datasets: [
+                {
+                    label: 'Total Credits',
+                    data: data.map(d => d.DAILY_CREDITS),
+                    borderColor: chartColors.cyan,
+                    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                },
+                {
+                    label: 'Compute',
+                    data: data.map(d => d.COMPUTE_CREDITS),
+                    borderColor: chartColors.blue,
+                    backgroundColor: 'transparent',
+                    borderDash: [5, 5],
+                    tension: 0.4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top' }
+            },
+            scales: {
+                y: { beginAtZero: true, title: { display: true, text: 'Credits' } }
+            }
+        }
+    });
+}
+
+function renderWeekComparison(data) {
+    const container = document.getElementById('weekComparisonGrid');
+    
+    const thisWeek = data.queries.find(q => q.PERIOD === 'This Week') || {};
+    const lastWeek = data.queries.find(q => q.PERIOD === 'Last Week') || {};
+    
+    const calcChange = (current, previous) => {
+        if (!previous || previous === 0) return 0;
+        return ((current - previous) / previous) * 100;
+    };
+    
+    const formatChange = (pct) => {
+        const sign = pct >= 0 ? '+' : '';
+        const color = pct > 5 ? 'var(--accent-red)' : (pct < -5 ? 'var(--accent-green)' : 'var(--text-secondary)');
+        return `<span style="color: ${color}">${sign}${formatNumber(pct, 1)}%</span>`;
+    };
+    
+    container.innerHTML = `
+        <div class="comparison-card">
+            <h4>Credits</h4>
+            <div class="comparison-values">
+                <div class="this-week">
+                    <span class="label">This Week</span>
+                    <span class="value">${formatNumber(data.credits[0]?.THIS_WEEK_CREDITS, 0)}</span>
+                </div>
+                <div class="change">${formatChange(data.credit_change_pct)}</div>
+                <div class="last-week">
+                    <span class="label">Last Week</span>
+                    <span class="value">${formatNumber(data.credits[0]?.LAST_WEEK_CREDITS, 0)}</span>
+                </div>
+            </div>
+        </div>
+        <div class="comparison-card">
+            <h4>Queries</h4>
+            <div class="comparison-values">
+                <div class="this-week">
+                    <span class="label">This Week</span>
+                    <span class="value">${formatNumber(thisWeek.QUERY_COUNT, 0)}</span>
+                </div>
+                <div class="change">${formatChange(calcChange(thisWeek.QUERY_COUNT, lastWeek.QUERY_COUNT))}</div>
+                <div class="last-week">
+                    <span class="label">Last Week</span>
+                    <span class="value">${formatNumber(lastWeek.QUERY_COUNT, 0)}</span>
+                </div>
+            </div>
+        </div>
+        <div class="comparison-card">
+            <h4>Avg Duration</h4>
+            <div class="comparison-values">
+                <div class="this-week">
+                    <span class="label">This Week</span>
+                    <span class="value">${formatNumber(thisWeek.AVG_DURATION_SEC, 1)}s</span>
+                </div>
+                <div class="change">${formatChange(calcChange(thisWeek.AVG_DURATION_SEC, lastWeek.AVG_DURATION_SEC))}</div>
+                <div class="last-week">
+                    <span class="label">Last Week</span>
+                    <span class="value">${formatNumber(lastWeek.AVG_DURATION_SEC, 1)}s</span>
+                </div>
+            </div>
+        </div>
+        <div class="comparison-card">
+            <h4>Active Users</h4>
+            <div class="comparison-values">
+                <div class="this-week">
+                    <span class="label">This Week</span>
+                    <span class="value">${data.users[0]?.THIS_WEEK_USERS || '--'}</span>
+                </div>
+                <div class="change">${formatChange(calcChange(data.users[0]?.THIS_WEEK_USERS, data.users[0]?.LAST_WEEK_USERS))}</div>
+                <div class="last-week">
+                    <span class="label">Last Week</span>
+                    <span class="value">${data.users[0]?.LAST_WEEK_USERS || '--'}</span>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// ============================================
+// NEW FEATURE: User Analytics
+// ============================================
+
+async function loadUsers() {
+    showLoading('Loading user analytics...');
+    try {
+        const data = await fetchAPI('user-analytics', { days: 30 });
+        
+        renderUserActivityChart(data.activity_trend);
+        renderRoleUsageChart(data.role_usage);
+        renderTopUsersTable(data.top_users);
+        
+        hideLoading();
+    } catch (error) {
+        console.error('Error loading users:', error);
+        hideLoading();
+    }
+}
+
+function renderUserActivityChart(data) {
+    const ctx = document.getElementById('userActivityChart').getContext('2d');
+    
+    if (state.charts.userActivity) {
+        state.charts.userActivity.destroy();
+    }
+    
+    state.charts.userActivity = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.map(d => d.DATE),
+            datasets: [
+                {
+                    label: 'Active Users',
+                    data: data.map(d => d.ACTIVE_USERS),
+                    borderColor: chartColors.cyan,
+                    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                    fill: true,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Total Queries',
+                    data: data.map(d => d.TOTAL_QUERIES),
+                    borderColor: chartColors.purple,
+                    backgroundColor: 'transparent',
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { type: 'linear', position: 'left', title: { display: true, text: 'Users' } },
+                y1: { type: 'linear', position: 'right', title: { display: true, text: 'Queries' }, grid: { drawOnChartArea: false } }
+            }
+        }
+    });
+}
+
+function renderRoleUsageChart(data) {
+    const ctx = document.getElementById('roleUsageChart').getContext('2d');
+    
+    if (state.charts.roleUsage) {
+        state.charts.roleUsage.destroy();
+    }
+    
+    state.charts.roleUsage = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: data.map(d => d.ROLE_NAME),
+            datasets: [{
+                data: data.map(d => d.QUERY_COUNT),
+                backgroundColor: chartColorPalette
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'right' }
+            }
+        }
+    });
+}
+
+function renderTopUsersTable(data) {
+    const tbody = document.querySelector('#topUsersTable tbody');
+    tbody.innerHTML = data.map(row => `
+        <tr>
+            <td><strong>${row.USER_NAME}</strong></td>
+            <td>${formatNumber(row.QUERY_COUNT, 0)} <span class="unit">queries</span></td>
+            <td>${formatNumber(row.TOTAL_HOURS, 1)} <span class="unit">hrs</span></td>
+            <td>${formatNumber(row.AVG_QUERY_SEC, 1)} <span class="unit">sec</span></td>
+            <td>${formatNumber(row.TB_SCANNED, 2)} <span class="unit">TB</span></td>
+            <td>${formatNumber(row.FAILED_QUERIES, 0)}</td>
+            <td>${row.WAREHOUSES_USED}</td>
+        </tr>
+    `).join('');
+}
+
+// ============================================
+// NEW FEATURE: Optimization
+// ============================================
+
+async function loadOptimization() {
+    showLoading('Analyzing query patterns...');
+    try {
+        const [fingerprints, opportunities] = await Promise.all([
+            fetchAPI('query-fingerprints', { days: 7 }),
+            fetchAPI('optimization-opportunities')
+        ]);
+        
+        renderFingerprintsTable(fingerprints);
+        renderOptimizationTable(opportunities);
+        
+        hideLoading();
+    } catch (error) {
+        console.error('Error loading optimization:', error);
+        hideLoading();
+    }
+}
+
+function renderFingerprintsTable(data) {
+    const tbody = document.querySelector('#fingerprintsTable tbody');
+    tbody.innerHTML = data.map(row => `
+        <tr>
+            <td><code class="query-pattern">${truncateText(row.SAMPLE_QUERY, 60)}</code></td>
+            <td>${formatNumber(row.EXECUTION_COUNT, 0)} <span class="unit">times</span></td>
+            <td>${formatNumber(row.AVG_DURATION_SEC, 1)} <span class="unit">sec</span></td>
+            <td>${formatNumber(row.TOTAL_HOURS, 1)} <span class="unit">hrs</span></td>
+            <td>${formatNumber(row.TOTAL_GB_SCANNED, 1)} <span class="unit">GB</span></td>
+            <td>${row.UNIQUE_USERS}</td>
+        </tr>
+    `).join('');
+}
+
+function renderOptimizationTable(data) {
+    const tbody = document.querySelector('#optimizationTable tbody');
+    tbody.innerHTML = data.map(row => `
+        <tr>
+            <td><span class="query-id">${truncateText(row.QUERY_ID, 15)}</span></td>
+            <td><span class="issue-badge ${row.ISSUE_TYPE.toLowerCase().replace(/\s+/g, '-')}">${row.ISSUE_TYPE}</span></td>
+            <td>${row.USER_NAME || '--'}</td>
+            <td>${row.WAREHOUSE_NAME || '--'}</td>
+            <td>${formatNumber(row.ELAPSED_SEC, 1)} <span class="unit">sec</span></td>
+            <td class="recommendation-cell">${row.RECOMMENDATION}</td>
+        </tr>
+    `).join('');
+}
+
+// ============================================
+// NEW FEATURE: Storage & Data Freshness
+// ============================================
+
+async function loadStorage() {
+    showLoading('Loading storage data...');
+    try {
+        const [tableStorage, freshness, unused] = await Promise.all([
+            fetchAPI('table-storage'),
+            fetchAPI('data-freshness'),
+            fetchAPI('unused-objects', { days: 30 })
+        ]);
+        
+        renderTableStorageTable(tableStorage);
+        renderFreshnessTable(freshness);
+        renderUnusedObjects(unused);
+        
+        hideLoading();
+    } catch (error) {
+        console.error('Error loading storage:', error);
+        hideLoading();
+    }
+}
+
+function renderTableStorageTable(data) {
+    const tbody = document.querySelector('#tableStorageTable tbody');
+    tbody.innerHTML = data.slice(0, 30).map(row => `
+        <tr>
+            <td>${row.DATABASE_NAME}</td>
+            <td>${row.SCHEMA_NAME}</td>
+            <td><strong>${row.TABLE_NAME}</strong></td>
+            <td>${formatNumber(row.ROW_COUNT, 0)}</td>
+            <td>${formatNumber(row.SIZE_GB, 2)} <span class="unit">GB</span></td>
+            <td>${formatNumber(row.ACTIVE_GB, 2)} <span class="unit">GB</span></td>
+            <td>${formatNumber(row.TIME_TRAVEL_GB, 2)} <span class="unit">GB</span></td>
+            <td>${formatNumber(row.FAILSAFE_GB, 2)} <span class="unit">GB</span></td>
+            <td><code>${row.CLUSTERING_KEY || 'None'}</code></td>
+        </tr>
+    `).join('');
+}
+
+function renderFreshnessTable(data) {
+    const tbody = document.querySelector('#freshnessTable tbody');
+    tbody.innerHTML = data.slice(0, 30).map(row => `
+        <tr>
+            <td>${row.DATABASE_NAME}</td>
+            <td>${row.SCHEMA_NAME}</td>
+            <td><strong>${row.TABLE_NAME}</strong></td>
+            <td>${formatNumber(row.ROW_COUNT, 0)}</td>
+            <td>${formatNumber(row.SIZE_GB, 2)} <span class="unit">GB</span></td>
+            <td>${formatDate(row.LAST_ALTERED)}</td>
+            <td>${formatNumber(row.HOURS_SINCE_UPDATE, 0)} <span class="unit">hrs</span></td>
+            <td><span class="freshness-badge ${row.FRESHNESS_STATUS.toLowerCase().replace(' ', '-')}">${row.FRESHNESS_STATUS}</span></td>
+        </tr>
+    `).join('');
+}
+
+function renderUnusedObjects(data) {
+    const container = document.getElementById('unusedObjectsGrid');
+    
+    let html = '<div class="unused-section">';
+    html += '<h4>Unused Warehouses</h4>';
+    if (data.unused_warehouses && data.unused_warehouses.length > 0) {
+        html += '<ul class="unused-list">';
+        data.unused_warehouses.forEach(wh => {
+            html += `<li><strong>${wh.WAREHOUSE_NAME}</strong> (${wh.SIZE})</li>`;
+        });
+        html += '</ul>';
+    } else {
+        html += '<p class="no-data">No unused warehouses found</p>';
+    }
+    html += '</div>';
+    
+    html += '<div class="unused-section">';
+    html += '<h4>Unused Tables (>1GB, >30 days)</h4>';
+    if (data.unused_tables && data.unused_tables.length > 0) {
+        html += '<ul class="unused-list">';
+        data.unused_tables.slice(0, 10).forEach(tbl => {
+            html += `<li><strong>${tbl.DATABASE_NAME}.${tbl.SCHEMA_NAME}.${tbl.TABLE_NAME}</strong> - ${formatNumber(tbl.SIZE_GB, 1)} GB, ${tbl.DAYS_SINCE_ALTERED} days old</li>`;
+        });
+        html += '</ul>';
+    } else {
+        html += '<p class="no-data">No unused tables found</p>';
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+// ============================================
+// NEW FEATURE: Security
+// ============================================
+
+async function loadSecurity() {
+    showLoading('Loading security data...');
+    try {
+        const data = await fetchAPI('login-history', { days: 7 });
+        
+        renderLoginPatternChart(data.hourly_pattern);
+        renderFailedLogins(data.failed_logins);
+        renderLoginSummaryTable(data.summary);
+        
+        hideLoading();
+    } catch (error) {
+        console.error('Error loading security:', error);
+        hideLoading();
+    }
+}
+
+function renderLoginPatternChart(data) {
+    const ctx = document.getElementById('loginPatternChart').getContext('2d');
+    
+    if (state.charts.loginPattern) {
+        state.charts.loginPattern.destroy();
+    }
+    
+    state.charts.loginPattern = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(d => `${d.HOUR_OF_DAY}:00`),
+            datasets: [{
+                label: 'Login Count',
+                data: data.map(d => d.LOGIN_COUNT),
+                backgroundColor: chartColors.cyan,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+}
+
+function renderFailedLogins(data) {
+    const container = document.getElementById('failedLoginsList');
+    
+    if (!data || data.length === 0) {
+        container.innerHTML = '<p class="no-data">No failed login attempts in the last 7 days</p>';
+        return;
+    }
+    
+    container.innerHTML = data.slice(0, 10).map(login => `
+        <div class="failed-login-item">
+            <div class="login-info">
+                <strong>${login.USER_NAME}</strong>
+                <span class="ip">${login.CLIENT_IP}</span>
+            </div>
+            <div class="login-details">
+                <span class="time">${formatDate(login.EVENT_TIMESTAMP)}</span>
+                <span class="error">${login.ERROR_MESSAGE || 'Unknown error'}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderLoginSummaryTable(data) {
+    const tbody = document.querySelector('#loginSummaryTable tbody');
+    tbody.innerHTML = data.map(row => `
+        <tr>
+            <td><strong>${row.USER_NAME}</strong></td>
+            <td>${row.LOGIN_COUNT}</td>
+            <td>${row.UNIQUE_IPS}</td>
+            <td>${formatDate(row.LAST_LOGIN)}</td>
+            <td><span class="${row.FAILED_LOGINS > 0 ? 'alert-text' : ''}">${row.FAILED_LOGINS}</span></td>
+        </tr>
+    `).join('');
+}
+
+// ============================================
+// DATABASE DEEP DIVE
+// ============================================
+
+// Store selected database
+let selectedDatabase = null;
+
+async function loadDatabaseList() {
+    try {
+        const databases = await fetchAPI('databases');
+        const select = document.getElementById('databaseSelect');
+        
+        select.innerHTML = '<option value="">-- Select a Database --</option>' +
+            databases.map(db => `<option value="${db.DATABASE_NAME}">${db.DATABASE_NAME}</option>`).join('');
+        
+    } catch (error) {
+        console.error('Error loading database list:', error);
+    }
+}
+
+async function loadDatabaseAnalysis() {
+    const dbName = document.getElementById('databaseSelect').value;
+    const days = document.getElementById('dbDaysFilter').value;
+    
+    if (!dbName) {
+        showToast('Please select a database', 'error');
+        return;
+    }
+    
+    selectedDatabase = dbName;
+    showLoading(`Analyzing database: ${dbName}...`);
+    
+    try {
+        // Load all data in parallel
+        const [overview, costAnalysis, slowQueries, bottlenecks, tables, patterns, optimization, recommendations] = await Promise.all([
+            fetchAPI(`database/${dbName}/overview`, { days }),
+            fetchAPI(`database/${dbName}/cost-analysis`, { days }),
+            fetchAPI(`database/${dbName}/slow-queries`, { days: 7, threshold: 30 }),
+            fetchAPI(`database/${dbName}/bottlenecks`, { days: 7 }),
+            fetchAPI(`database/${dbName}/tables`),
+            fetchAPI(`database/${dbName}/query-patterns`, { days: 7 }),
+            fetchAPI(`database/${dbName}/optimization`, { days: 7 }),
+            fetchAPI(`database/${dbName}/recommendations`, { days })
+        ]);
+        
+        // Show the overview section, hide empty state
+        document.getElementById('dbOverviewSection').style.display = 'block';
+        document.getElementById('dbEmptyState').style.display = 'none';
+        document.getElementById('selectedDbName').textContent = dbName;
+        
+        // Update overview metrics
+        const qm = overview.query_metrics || {};
+        const st = overview.storage || {};
+        const ob = overview.objects || {};
+        
+        document.getElementById('dbTotalQueries').textContent = formatNumber(qm.TOTAL_QUERIES, 0);
+        document.getElementById('dbActiveUsers').textContent = qm.UNIQUE_USERS || '--';
+        document.getElementById('dbAvgQueryTime').textContent = formatNumber(qm.AVG_QUERY_SEC, 1);
+        document.getElementById('dbTbScanned').textContent = formatNumber(qm.TB_SCANNED, 2);
+        document.getElementById('dbStorage').textContent = formatNumber(st.STORAGE_TB, 2);
+        document.getElementById('dbFailedQueries').textContent = formatNumber(qm.FAILED_QUERIES, 0);
+        
+        // Render all tabs
+        renderDbCostTab(costAnalysis);
+        renderDbPerformanceTab(patterns, slowQueries);
+        renderDbBottlenecksTab(bottlenecks, optimization);
+        renderDbTablesTab(tables, patterns.by_schema);
+        renderDbRecommendations(recommendations);
+        
+        hideLoading();
+        showToast(`Loaded analysis for ${dbName}`);
+        
+    } catch (error) {
+        console.error('Error loading database analysis:', error);
+        hideLoading();
+    }
+}
+
+function renderDbCostTab(costAnalysis) {
+    // Daily volume chart
+    const dailyCtx = document.getElementById('dbDailyVolumeChart').getContext('2d');
+    if (state.charts.dbDailyVolume) state.charts.dbDailyVolume.destroy();
+    
+    state.charts.dbDailyVolume = new Chart(dailyCtx, {
+        type: 'line',
+        data: {
+            labels: costAnalysis.daily_volume.map(d => d.DATE),
+            datasets: [
+                {
+                    label: 'Queries',
+                    data: costAnalysis.daily_volume.map(d => d.QUERY_COUNT),
+                    borderColor: chartColors.cyan,
+                    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                    fill: true,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Compute Hours',
+                    data: costAnalysis.daily_volume.map(d => d.TOTAL_HOURS),
+                    borderColor: chartColors.orange,
+                    backgroundColor: 'transparent',
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { type: 'linear', position: 'left', title: { display: true, text: 'Queries' } },
+                y1: { type: 'linear', position: 'right', title: { display: true, text: 'Hours' }, grid: { drawOnChartArea: false } }
+            }
+        }
+    });
+    
+    // Warehouse chart
+    const whCtx = document.getElementById('dbWarehouseChart').getContext('2d');
+    if (state.charts.dbWarehouse) state.charts.dbWarehouse.destroy();
+    
+    state.charts.dbWarehouse = new Chart(whCtx, {
+        type: 'bar',
+        data: {
+            labels: costAnalysis.by_warehouse.map(d => d.WAREHOUSE_NAME),
+            datasets: [{
+                label: 'Compute Hours',
+                data: costAnalysis.by_warehouse.map(d => d.TOTAL_HOURS),
+                backgroundColor: chartColorPalette
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y'
+        }
+    });
+    
+    // User cost table
+    const tbody = document.querySelector('#dbUserCostTable tbody');
+    tbody.innerHTML = costAnalysis.by_user.map(row => `
+        <tr>
+            <td><strong>${row.USER_NAME}</strong></td>
+            <td>${formatNumber(row.QUERY_COUNT, 0)} <span class="unit">queries</span></td>
+            <td>${formatNumber(row.TOTAL_HOURS, 1)} <span class="unit">hrs</span></td>
+            <td>${formatNumber(row.AVG_QUERY_SEC, 1)} <span class="unit">sec</span></td>
+            <td>${formatNumber(row.TB_SCANNED, 2)} <span class="unit">TB</span></td>
+        </tr>
+    `).join('');
+}
+
+function renderDbPerformanceTab(patterns, slowQueries) {
+    // Hourly chart
+    const hourlyCtx = document.getElementById('dbHourlyChart').getContext('2d');
+    if (state.charts.dbHourly) state.charts.dbHourly.destroy();
+    
+    state.charts.dbHourly = new Chart(hourlyCtx, {
+        type: 'bar',
+        data: {
+            labels: patterns.hourly.map(d => `${d.HOUR_OF_DAY}:00`),
+            datasets: [{
+                label: 'Query Count',
+                data: patterns.hourly.map(d => d.QUERY_COUNT),
+                backgroundColor: chartColors.cyan,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+    
+    // Query type chart
+    const typeCtx = document.getElementById('dbQueryTypeChart').getContext('2d');
+    if (state.charts.dbQueryType) state.charts.dbQueryType.destroy();
+    
+    state.charts.dbQueryType = new Chart(typeCtx, {
+        type: 'doughnut',
+        data: {
+            labels: patterns.by_type.map(d => d.QUERY_TYPE),
+            datasets: [{
+                data: patterns.by_type.map(d => d.QUERY_COUNT),
+                backgroundColor: chartColorPalette
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'right' } }
+        }
+    });
+    
+    // Slow queries table
+    const tbody = document.querySelector('#dbSlowQueriesTable tbody');
+    tbody.innerHTML = slowQueries.slice(0, 30).map(row => `
+        <tr>
+            <td><span class="query-id">${truncateText(row.QUERY_ID, 15)}</span></td>
+            <td>${row.USER_NAME || '--'}</td>
+            <td>${row.WAREHOUSE_NAME || '--'}</td>
+            <td>${row.QUERY_TYPE || '--'}</td>
+            <td>${formatNumber(row.ELAPSED_SEC, 1)} <span class="unit">sec</span></td>
+            <td>${formatNumber(row.GB_SCANNED, 2)} <span class="unit">GB</span></td>
+            <td>${formatNumber(row.QUEUE_SEC, 1)} <span class="unit">sec</span></td>
+            <td><span class="status-badge ${(row.EXECUTION_STATUS || '').toLowerCase()}">${row.EXECUTION_STATUS || '--'}</span></td>
+        </tr>
+    `).join('');
+}
+
+function renderDbBottlenecksTab(bottlenecks, optimization) {
+    // Queue issues
+    const queueHtml = bottlenecks.queuing.length > 0 ? bottlenecks.queuing.map(item => `
+        <div class="bottleneck-item">
+            <span class="label">${item.WAREHOUSE_NAME}</span>
+            <span class="value ${item.AVG_QUEUE_SEC > 10 ? 'danger' : (item.AVG_QUEUE_SEC > 5 ? 'warning' : '')}">${formatNumber(item.QUEUED_QUERIES, 0)} queued, avg ${formatNumber(item.AVG_QUEUE_SEC, 1)}s</span>
+        </div>
+    `).join('') : '<p class="no-data">No significant queue issues</p>';
+    document.getElementById('dbQueueIssues').innerHTML = queueHtml;
+    
+    // Spill issues
+    const spillHtml = bottlenecks.spilling.length > 0 ? bottlenecks.spilling.map(item => `
+        <div class="bottleneck-item">
+            <span class="label">${item.WAREHOUSE_NAME}</span>
+            <span class="value ${item.REMOTE_SPILL_GB > 5 ? 'danger' : 'warning'}">${formatNumber(item.LOCAL_SPILL_GB, 1)} GB local, ${formatNumber(item.REMOTE_SPILL_GB, 1)} GB remote</span>
+        </div>
+    `).join('') : '<p class="no-data">No significant spilling</p>';
+    document.getElementById('dbSpillIssues').innerHTML = spillHtml;
+    
+    // Full scan issues
+    const scanData = bottlenecks.full_scans[0] || {};
+    const scanHtml = scanData.FULL_SCAN_COUNT > 0 ? `
+        <div class="bottleneck-item">
+            <span class="label">Full Table Scans</span>
+            <span class="value ${scanData.FULL_SCAN_COUNT > 100 ? 'danger' : 'warning'}">${formatNumber(scanData.FULL_SCAN_COUNT, 0)} queries</span>
+        </div>
+        <div class="bottleneck-item">
+            <span class="label">Total Data Scanned</span>
+            <span class="value">${formatNumber(scanData.TOTAL_TB_SCANNED, 2)} TB</span>
+        </div>
+    ` : '<p class="no-data">No significant full table scans</p>';
+    document.getElementById('dbScanIssues').innerHTML = scanHtml;
+    
+    // Failure issues
+    const failHtml = bottlenecks.failures.length > 0 ? bottlenecks.failures.slice(0, 3).map(item => `
+        <div class="bottleneck-item">
+            <span class="label">${truncateText(item.ERROR_MESSAGE, 40)}</span>
+            <span class="value danger">${item.FAILURE_COUNT} failures</span>
+        </div>
+    `).join('') : '<p class="no-data">No query failures</p>';
+    document.getElementById('dbFailureIssues').innerHTML = failHtml;
+    
+    // Optimization table
+    const tbody = document.querySelector('#dbOptimizationTable tbody');
+    tbody.innerHTML = optimization.slice(0, 20).map(row => `
+        <tr>
+            <td><span class="query-id">${truncateText(row.QUERY_ID, 15)}</span></td>
+            <td><span class="issue-badge ${row.ISSUE_TYPE.toLowerCase().replace(/\s+/g, '-')}">${row.ISSUE_TYPE}</span></td>
+            <td>${row.USER_NAME || '--'}</td>
+            <td>${row.WAREHOUSE_NAME || '--'}</td>
+            <td>${formatNumber(row.ELAPSED_SEC, 1)} <span class="unit">sec</span></td>
+            <td class="recommendation-cell">${row.RECOMMENDATION}</td>
+        </tr>
+    `).join('');
+}
+
+function renderDbTablesTab(tables, bySchema) {
+    // Schema chart
+    const schemaCtx = document.getElementById('dbSchemaChart').getContext('2d');
+    if (state.charts.dbSchema) state.charts.dbSchema.destroy();
+    
+    state.charts.dbSchema = new Chart(schemaCtx, {
+        type: 'bar',
+        data: {
+            labels: bySchema.map(d => d.SCHEMA_NAME),
+            datasets: [{
+                label: 'Query Count',
+                data: bySchema.map(d => d.QUERY_COUNT),
+                backgroundColor: chartColorPalette
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y'
+        }
+    });
+    
+    // Table size chart (top 10)
+    const topTables = tables.slice(0, 10);
+    const sizeCtx = document.getElementById('dbTableSizeChart').getContext('2d');
+    if (state.charts.dbTableSize) state.charts.dbTableSize.destroy();
+    
+    state.charts.dbTableSize = new Chart(sizeCtx, {
+        type: 'bar',
+        data: {
+            labels: topTables.map(d => d.TABLE_NAME),
+            datasets: [{
+                label: 'Size (GB)',
+                data: topTables.map(d => d.SIZE_GB),
+                backgroundColor: chartColors.cyan
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y'
+        }
+    });
+    
+    // Tables table
+    const tbody = document.querySelector('#dbTablesTable tbody');
+    tbody.innerHTML = tables.slice(0, 30).map(row => `
+        <tr>
+            <td>${row.TABLE_SCHEMA}</td>
+            <td><strong>${row.TABLE_NAME}</strong></td>
+            <td>${formatNumber(row.ROW_COUNT, 0)}</td>
+            <td>${formatNumber(row.SIZE_GB, 2)} <span class="unit">GB</span></td>
+            <td><code>${row.CLUSTERING_KEY || 'None'}</code></td>
+            <td>${formatDate(row.LAST_ALTERED)}</td>
+            <td><span class="freshness-badge ${row.FRESHNESS.toLowerCase().replace(' ', '-')}">${row.FRESHNESS}</span></td>
+        </tr>
+    `).join('');
+}
+
+function renderDbRecommendations(recommendations) {
+    const container = document.getElementById('dbRecommendationsContainer');
+    
+    if (!recommendations || recommendations.length === 0) {
+        container.innerHTML = '<p class="no-data">No recommendations - this database is performing well!</p>';
+        return;
+    }
+    
+    container.innerHTML = recommendations.map(rec => `
+        <div class="db-recommendation-card ${rec.severity.toLowerCase()}">
+            <div class="db-recommendation-header">
+                <h4>${rec.title}</h4>
+                <span class="category">${rec.category}</span>
+            </div>
+            <p>${rec.description}</p>
+            <span class="metric">${rec.metric}</span>
+        </div>
+    `).join('');
 }
 
 // ============================================

@@ -201,9 +201,6 @@ This project uses:
 - **Chart.js** for visualizations
 - **jQuery** for DOM manipulation
 
-## License
-
-MIT License - See LICENSE file for details
 
 ## Support
 

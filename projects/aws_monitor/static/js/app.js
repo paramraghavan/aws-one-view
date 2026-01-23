@@ -24,6 +24,7 @@ function initializeApp() {
     console.log('Initializing AWS Resource Monitor...');
     loadRegions();
     loadMonitoringStatus();
+    loadScheduledReports();
 }
 
 // ----------------------------------------------------------------------------
@@ -55,6 +56,16 @@ function setupEventHandlers() {
     $('#stopMonitoring').click(stopMonitoring);
     $('#addToMonitoring').click(addSelectedToMonitoring);
     $('#testAlert').click(sendTestAlert);
+    
+    // Cost report controls
+    $('#generateReport').click(generateCostReport);
+    $('#scheduleReport').click(scheduleCostReport);
+    
+    // Cost optimization
+    $('#analyzeCosts').click(analyzeCostOptimization);
+    
+    // Security audit
+    $('#runSecurityAudit').click(runSecurityAudit);
 }
 
 // ----------------------------------------------------------------------------
@@ -1049,4 +1060,445 @@ function sendTestAlert() {
             alert('Error sending test alert: ' + error);
         }
     });
+}
+
+// ----------------------------------------------------------------------------
+// COST REPORTS
+// ----------------------------------------------------------------------------
+function generateCostReport() {
+    if (selectedResources.length === 0) {
+        alert('Please select resources first');
+        return;
+    }
+    
+    const period = $('#reportPeriod').val();
+    const sendEmail = $('#emailReport').is(':checked');
+    
+    // Prepare resources with names
+    const resources = selectedResources.map(r => ({
+        id: r.id,
+        type: r.type,
+        region: r.region,
+        name: r.id  // Could get name from tags if available
+    }));
+    
+    // Show loading
+    $('#reportResult').html('<div class="loading">Generating cost report...</div>').show();
+    
+    $.ajax({
+        url: '/api/reports/generate',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            resources: resources,
+            period: period,
+            send_email: sendEmail
+        }),
+        success: function(response) {
+            if (response.success) {
+                displayReportResult(response.data, sendEmail);
+            } else {
+                $('#reportResult').html(`<div class="alert alert-error">${response.error}</div>`);
+            }
+        },
+        error: function(xhr) {
+            const error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
+            $('#reportResult').html(`<div class="alert alert-error">Error: ${error}</div>`);
+        }
+    });
+}
+
+function displayReportResult(report, emailSent) {
+    let html = `
+        <div class="report-result">
+            <h4>${report.title}</h4>
+            <div class="report-summary">
+                <div class="report-stat">
+                    <label>Total Cost</label>
+                    <span class="cost-value">$${report.total_cost.toFixed(2)}</span>
+                </div>
+                <div class="report-stat">
+                    <label>Resources</label>
+                    <span>${report.resource_count}</span>
+                </div>
+                <div class="report-stat">
+                    <label>Period</label>
+                    <span>${report.start_date} to ${report.end_date}</span>
+                </div>
+            </div>
+    `;
+    
+    if (emailSent) {
+        html += '<div class="alert alert-success">✅ Report sent via email!</div>';
+    }
+    
+    html += '<h5>Cost Breakdown:</h5><div class="report-breakdown">';
+    
+    report.resources.forEach(resource => {
+        const statusText = resource.estimated ? ' (estimated)' : '';
+        const errorText = resource.error ? ` - Error: ${resource.error}` : '';
+        html += `
+            <div class="report-item">
+                <div class="report-item-name">${resource.name}</div>
+                <div class="report-item-cost">$${resource.cost.toFixed(2)}${statusText}${errorText}</div>
+            </div>
+        `;
+    });
+    
+    html += '</div></div>';
+    
+    $('#reportResult').html(html).show();
+}
+
+function scheduleCostReport() {
+    if (selectedResources.length === 0) {
+        alert('Please select resources first');
+        return;
+    }
+    
+    const name = $('#reportName').val().trim();
+    if (!name) {
+        alert('Please enter a report name');
+        return;
+    }
+    
+    const period = $('#scheduledPeriod').val();
+    const schedule = $('#reportSchedule').val();
+    
+    // Prepare resources
+    const resources = selectedResources.map(r => ({
+        id: r.id,
+        type: r.type,
+        region: r.region,
+        name: r.id
+    }));
+    
+    $.ajax({
+        url: '/api/reports/schedule',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            name: name,
+            resources: resources,
+            period: period,
+            schedule: schedule
+        }),
+        success: function(response) {
+            if (response.success) {
+                alert('Report scheduled successfully!');
+                $('#reportName').val('');
+                loadScheduledReports();
+            } else {
+                alert('Error: ' + response.error);
+            }
+        },
+        error: function(xhr) {
+            const error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
+            alert('Error scheduling report: ' + error);
+        }
+    });
+}
+
+function loadScheduledReports() {
+    $.ajax({
+        url: '/api/reports/scheduled',
+        method: 'GET',
+        success: function(response) {
+            if (response.success) {
+                displayScheduledReports(response.data);
+            }
+        },
+        error: function() {
+            console.error('Error loading scheduled reports');
+        }
+    });
+}
+
+function displayScheduledReports(reports) {
+    const container = $('#scheduledReportsContent');
+    
+    if (!reports || reports.length === 0) {
+        container.html('<p class="info-text">No scheduled reports</p>');
+        return;
+    }
+    
+    let html = '';
+    
+    reports.forEach(report => {
+        html += `
+            <div class="scheduled-report-item">
+                <div class="report-info">
+                    <strong>${report.name}</strong>
+                    <div class="report-details">
+                        ${report.period} report • ${report.schedule} • ${report.resources.length} resources
+                    </div>
+                </div>
+                <button class="btn-remove" onclick="removeScheduledReport('${report.name}')">Remove</button>
+            </div>
+        `;
+    });
+    
+    container.html(html);
+}
+
+function removeScheduledReport(name) {
+    if (!confirm(`Remove scheduled report "${name}"?`)) {
+        return;
+    }
+    
+    $.ajax({
+        url: '/api/reports/scheduled/' + encodeURIComponent(name),
+        method: 'DELETE',
+        success: function(response) {
+            if (response.success) {
+                loadScheduledReports();
+            } else {
+                alert('Error: ' + response.error);
+            }
+        },
+        error: function() {
+            alert('Error removing scheduled report');
+        }
+    });
+}
+
+// ----------------------------------------------------------------------------
+// COST OPTIMIZATION
+// ----------------------------------------------------------------------------
+function analyzeCostOptimization() {
+    const regions = $('#regionSelect').val() || [];
+    
+    if (regions.length === 0) {
+        alert('Please select at least one region first');
+        return;
+    }
+    
+    $('#optimizationDisplay').html('<div class="loading">Analyzing cost savings opportunities...</div>');
+    
+    $.ajax({
+        url: '/api/optimization/analyze',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ regions: regions }),
+        success: function(response) {
+            if (response.success) {
+                displayOptimizationResults(response.data);
+            } else {
+                $('#optimizationDisplay').html(`<div class="alert alert-error">${response.error}</div>`);
+            }
+        },
+        error: function(xhr) {
+            const error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
+            $('#optimizationDisplay').html(`<div class="alert alert-error">Error: ${error}</div>`);
+        }
+    });
+}
+
+function displayOptimizationResults(data) {
+    let html = `
+        <div class="optimization-results">
+            <div class="optimization-summary">
+                <div class="savings-card">
+                    <h3>💰 Potential Monthly Savings</h3>
+                    <div class="savings-amount">$${data.total_monthly_savings.toFixed(2)}</div>
+                    <div class="savings-annual">$${(data.total_monthly_savings * 12).toFixed(2)}/year</div>
+                </div>
+            </div>
+    `;
+    
+    // Quick Wins
+    if (data.quick_wins && data.quick_wins.length > 0) {
+        html += '<div class="quick-wins"><h3>⚡ Quick Wins (Easy to Implement)</h3>';
+        data.quick_wins.forEach(item => {
+            html += `
+                <div class="optimization-item ${item.severity}">
+                    <div class="opt-header">
+                        <span class="opt-resource">${item.resource_id}</span>
+                        <span class="opt-savings">Save $${item.monthly_savings.toFixed(2)}/month</span>
+                    </div>
+                    <div class="opt-recommendation">${item.recommendation}</div>
+                </div>
+            `;
+        });
+        html += '</div>';
+    }
+    
+    // Idle Instances
+    if (data.idle_instances && data.idle_instances.length > 0) {
+        html += `<div class="optimization-category"><h4>🛑 Idle Instances (${data.idle_instances.length})</h4>`;
+        data.idle_instances.slice(0, 5).forEach(item => {
+            html += `
+                <div class="optimization-item">
+                    <strong>${item.resource_id}</strong> - ${item.instance_type} - Avg CPU: ${item.avg_cpu_7d}%
+                    <div class="opt-savings">Save $${item.monthly_savings.toFixed(2)}/month</div>
+                </div>
+            `;
+        });
+        if (data.idle_instances.length > 5) {
+            html += `<div class="more-items">...and ${data.idle_instances.length - 5} more</div>`;
+        }
+        html += '</div>';
+    }
+    
+    // Right-Sizing
+    if (data.underutilized_instances && data.underutilized_instances.length > 0) {
+        html += `<div class="optimization-category"><h4>📉 Right-Sizing Opportunities (${data.underutilized_instances.length})</h4>`;
+        data.underutilized_instances.slice(0, 5).forEach(item => {
+            html += `
+                <div class="optimization-item">
+                    <strong>${item.resource_id}</strong>: ${item.current_type} → ${item.suggested_type}
+                    <div class="opt-savings">Save $${item.monthly_savings.toFixed(2)}/month</div>
+                </div>
+            `;
+        });
+        html += '</div>';
+    }
+    
+    // Unattached Volumes
+    if (data.unattached_volumes && data.unattached_volumes.length > 0) {
+        html += `<div class="optimization-category"><h4>💾 Unattached Volumes (${data.unattached_volumes.length})</h4>`;
+        data.unattached_volumes.slice(0, 5).forEach(item => {
+            html += `
+                <div class="optimization-item">
+                    <strong>${item.resource_id}</strong> - ${item.size_gb}GB - ${item.age_days} days old
+                    <div class="opt-savings">Save $${item.monthly_savings.toFixed(2)}/month</div>
+                </div>
+            `;
+        });
+        html += '</div>';
+    }
+    
+    // Reserved Instances
+    if (data.reserved_instance_opportunities && data.reserved_instance_opportunities.length > 0) {
+        html += `<div class="optimization-category"><h4>📅 Reserved Instance Opportunities (${data.reserved_instance_opportunities.length})</h4>`;
+        data.reserved_instance_opportunities.slice(0, 3).forEach(item => {
+            html += `
+                <div class="optimization-item">
+                    <strong>${item.resource_id}</strong> - ${item.instance_type} - Running ${item.running_days} days
+                    <div class="opt-savings">Save $${item.monthly_savings.toFixed(2)}/month ($${item.annual_savings.toFixed(2)}/year)</div>
+                </div>
+            `;
+        });
+        html += '</div>';
+    }
+    
+    html += '</div>';
+    $('#optimizationDisplay').html(html);
+}
+
+// ----------------------------------------------------------------------------
+// SECURITY AUDIT
+// ----------------------------------------------------------------------------
+function runSecurityAudit() {
+    const regions = $('#regionSelect').val() || [];
+    
+    if (regions.length === 0) {
+        alert('Please select at least one region first');
+        return;
+    }
+    
+    $('#securityDisplay').html('<div class="loading">Running security audit...</div>');
+    
+    $.ajax({
+        url: '/api/security/audit',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ regions: regions }),
+        success: function(response) {
+            if (response.success) {
+                displaySecurityResults(response.data);
+            } else {
+                $('#securityDisplay').html(`<div class="alert alert-error">${response.error}</div>`);
+            }
+        },
+        error: function(xhr) {
+            const error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
+            $('#securityDisplay').html(`<div class="alert alert-error">Error: ${error}</div>`);
+        }
+    });
+}
+
+function displaySecurityResults(data) {
+    const score = data.security_score;
+    const scoreClass = score >= 80 ? 'good' : score >= 60 ? 'medium' : 'poor';
+    
+    let html = `
+        <div class="security-results">
+            <div class="security-score-card ${scoreClass}">
+                <h3>🔒 Security Score</h3>
+                <div class="score-display">${score}/100</div>
+                <div class="score-details">${data.passed_checks} of ${data.total_checks} checks passed</div>
+            </div>
+    `;
+    
+    // Critical Issues
+    if (data.critical && data.critical.length > 0) {
+        html += `<div class="security-category critical"><h4>🔴 Critical Issues (${data.critical.length})</h4>`;
+        data.critical.forEach(finding => {
+            html += `
+                <div class="security-finding">
+                    <div class="finding-header">
+                        <strong>${finding.resource_id || finding.resource_type}</strong>
+                        <span class="finding-severity critical">CRITICAL</span>
+                    </div>
+                    <div class="finding-issue">${finding.issue}</div>
+                    <div class="finding-recommendation">💡 ${finding.recommendation}</div>
+                </div>
+            `;
+        });
+        html += '</div>';
+    }
+    
+    // High Priority
+    if (data.high && data.high.length > 0) {
+        html += `<div class="security-category high"><h4>⚠️ High Priority (${data.high.length})</h4>`;
+        data.high.slice(0, 5).forEach(finding => {
+            html += `
+                <div class="security-finding">
+                    <div class="finding-header">
+                        <strong>${finding.resource_id || finding.resource_type}</strong>
+                        <span class="finding-severity high">HIGH</span>
+                    </div>
+                    <div class="finding-issue">${finding.issue}</div>
+                    <div class="finding-recommendation">💡 ${finding.recommendation}</div>
+                </div>
+            `;
+        });
+        if (data.high.length > 5) {
+            html += `<div class="more-items">...and ${data.high.length - 5} more high priority issues</div>`;
+        }
+        html += '</div>';
+    }
+    
+    // Medium Priority
+    if (data.medium && data.medium.length > 0) {
+        html += `<div class="security-category medium"><h4>⚡ Medium Priority (${data.medium.length})</h4>`;
+        data.medium.slice(0, 3).forEach(finding => {
+            html += `
+                <div class="security-finding">
+                    <div class="finding-header">
+                        <strong>${finding.resource_id || finding.resource_type}</strong>
+                        <span class="finding-severity medium">MEDIUM</span>
+                    </div>
+                    <div class="finding-issue">${finding.issue}</div>
+                </div>
+            `;
+        });
+        if (data.medium.length > 3) {
+            html += `<div class="more-items">...and ${data.medium.length - 3} more medium priority issues</div>`;
+        }
+        html += '</div>';
+    }
+    
+    // Success summary
+    if (score >= 80) {
+        html += '<div class="alert alert-success">✅ Good security posture! Address the remaining issues to improve further.</div>';
+    } else if (score >= 60) {
+        html += '<div class="alert alert-warning">⚠️ Moderate security. Focus on critical and high priority issues first.</div>';
+    } else {
+        html += '<div class="alert alert-error">🔴 Security needs immediate attention. Address critical issues now!</div>';
+    }
+    
+    html += '</div>';
+    $('#securityDisplay').html(html);
 }

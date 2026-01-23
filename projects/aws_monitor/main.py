@@ -352,9 +352,202 @@ def test_alert() -> Dict[str, Any]:
         }), 500
 
 
+# ============================================================================
+# COST REPORT ENDPOINTS
+# ============================================================================
+
+@app.route('/api/reports/generate', methods=['POST'])
+def generate_cost_report() -> Dict[str, Any]:
+    """
+    Generate a cost report for selected resources.
+    
+    Request Body:
+        {
+            "resources": [
+                {"id": "i-123", "type": "ec2", "region": "us-east-1", "name": "Web Server"}
+            ],
+            "period": "daily",  // or "weekly", "monthly"
+            "send_email": true
+        }
+    """
+    try:
+        from app.cost_reports import report_generator
+        
+        data = request.get_json()
+        resources = data.get('resources', [])
+        period = data.get('period', 'daily')
+        send_email = data.get('send_email', False)
+        
+        if not resources:
+            return jsonify({
+                'success': False,
+                'error': 'No resources specified'
+            }), 400
+        
+        if period not in ['daily', 'weekly', 'monthly']:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid period. Must be daily, weekly, or monthly'
+            }), 400
+        
+        # Generate report
+        report = report_generator.generate_report(
+            resources=resources,
+            period=period,
+            send_email=send_email
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': report,
+            'message': f'Report generated: ${report["total_cost"]:.2f}'
+        })
+    
+    except Exception as e:
+        logger.error(f"Error generating cost report: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/reports/schedule', methods=['POST'])
+def schedule_cost_report() -> Dict[str, Any]:
+    """
+    Schedule a recurring cost report.
+    
+    Request Body:
+        {
+            "name": "Weekly EC2 Report",
+            "resources": [...],
+            "period": "weekly",
+            "schedule": "weekly_monday"  // or "daily", "monthly_1st", "custom_06:00"
+        }
+    """
+    try:
+        data = request.get_json()
+        name = data.get('name')
+        resources = data.get('resources', [])
+        period = data.get('period', 'weekly')
+        schedule = data.get('schedule', 'weekly_monday')
+        
+        if not name:
+            return jsonify({
+                'success': False,
+                'error': 'Report name is required'
+            }), 400
+        
+        if not resources:
+            return jsonify({
+                'success': False,
+                'error': 'No resources specified'
+            }), 400
+        
+        # Add to scheduler
+        monitor.add_scheduled_report(
+            name=name,
+            resources=resources,
+            period=period,
+            schedule=schedule
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': f'Scheduled report: {name}'
+        })
+    
+    except Exception as e:
+        logger.error(f"Error scheduling cost report: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/reports/scheduled', methods=['GET'])
+def get_scheduled_reports() -> Dict[str, Any]:
+    """Get list of scheduled cost reports."""
+    try:
+        reports = monitor.get_scheduled_reports()
+        
+        return jsonify({
+            'success': True,
+            'data': reports
+        })
+    except Exception as e:
+        logger.error(f"Error getting scheduled reports: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/reports/scheduled/<name>', methods=['DELETE'])
+def remove_scheduled_report(name: str) -> Dict[str, Any]:
+    """Remove a scheduled cost report."""
+    try:
+        monitor.remove_scheduled_report(name)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Removed scheduled report: {name}'
+        })
+    except Exception as e:
+        logger.error(f"Error removing scheduled report: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 if __name__ == '__main__':
     app.run(
         host='0.0.0.0',
         port=5000,
         debug=Config.DEBUG
     )
+
+# ============================================================================
+# COST OPTIMIZATION ENDPOINTS
+# ============================================================================
+
+@app.route('/api/optimization/analyze', methods=['POST'])
+def analyze_cost_optimization():
+    """Analyze resources for cost optimization opportunities."""
+    try:
+        from app.cost_optimizer import cost_optimizer
+        
+        data = request.get_json()
+        regions = data.get('regions', [Config.DEFAULT_REGION])
+        
+        if not regions:
+            return jsonify({'success': False, 'error': 'No regions specified'}), 400
+        
+        recommendations = cost_optimizer.analyze_all(regions)
+        return jsonify({'success': True, 'data': recommendations})
+    except Exception as e:
+        logger.error(f"Error analyzing cost optimization: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# SECURITY AUDIT ENDPOINTS
+# ============================================================================
+
+@app.route('/api/security/audit', methods=['POST'])
+def security_audit():
+    """Run security audit across specified regions."""
+    try:
+        from app.security_auditor import security_auditor
+        
+        data = request.get_json()
+        regions = data.get('regions', [Config.DEFAULT_REGION])
+        
+        if not regions:
+            return jsonify({'success': False, 'error': 'No regions specified'}), 400
+        
+        findings = security_auditor.audit_all(regions)
+        return jsonify({'success': True, 'data': findings})
+    except Exception as e:
+        logger.error(f"Error running security audit: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
