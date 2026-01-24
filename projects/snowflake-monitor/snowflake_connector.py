@@ -1084,7 +1084,7 @@ class SnowflakeMonitor:
         cost_by_warehouse = f"""
         SELECT 
             WAREHOUSE_NAME,
-            WAREHOUSE_SIZE,
+            MAX(WAREHOUSE_SIZE) as WAREHOUSE_SIZE,
             COUNT(*) as QUERY_COUNT,
             SUM(TOTAL_ELAPSED_TIME) / 1000 / 3600 as TOTAL_HOURS,
             AVG(TOTAL_ELAPSED_TIME) / 1000 as AVG_QUERY_SEC,
@@ -1093,7 +1093,7 @@ class SnowflakeMonitor:
         WHERE DATABASE_NAME = '{database_name}'
         AND START_TIME >= DATEADD(day, -{days}, CURRENT_TIMESTAMP())
         AND WAREHOUSE_NAME IS NOT NULL
-        GROUP BY WAREHOUSE_NAME, WAREHOUSE_SIZE
+        GROUP BY WAREHOUSE_NAME
         ORDER BY TOTAL_HOURS DESC
         """
         
