@@ -663,19 +663,22 @@ class MockSnowflakeMonitor:
         """Analyze costs for a specific database."""
         warehouses = ['ANALYTICS_WH', 'REPORTING_WH', 'ETL_WH', 'DEV_WH']
         sizes = ['X-Small', 'Small', 'Medium', 'Large']
+        size_credits = {'X-Small': 1, 'Small': 2, 'Medium': 4, 'Large': 8}
         users = ['analyst_1', 'analyst_2', 'etl_service', 'bi_tool', 'data_scientist']
         
-        by_warehouse = [
-            {
+        by_warehouse = []
+        for wh in warehouses[:random.randint(2, 4)]:
+            size = random.choice(sizes)
+            hours = random.uniform(10, 100)
+            by_warehouse.append({
                 'WAREHOUSE_NAME': wh,
-                'WAREHOUSE_SIZE': random.choice(sizes),
+                'WAREHOUSE_SIZE': size,
                 'QUERY_COUNT': random.randint(5000, 50000),
-                'TOTAL_HOURS': random.uniform(10, 100),
+                'TOTAL_HOURS': hours,
                 'AVG_QUERY_SEC': random.uniform(1, 20),
-                'TB_SCANNED': random.uniform(1, 20)
-            }
-            for wh in warehouses[:random.randint(2, 4)]
-        ]
+                'TB_SCANNED': random.uniform(1, 20),
+                'ESTIMATED_CREDITS': hours * size_credits.get(size, 4)
+            })
         
         daily_volume = [
             {
@@ -792,12 +795,64 @@ class MockSnowflakeMonitor:
             'TOTAL_TB_SCANNED': random.uniform(1, 10)
         }]
         
+        # Full scan details with suggested clustering columns
+        tables_for_scan = ['fact_sales', 'fact_orders', 'events_log', 'transactions', 'user_activity']
+        full_scan_details = [
+            {
+                'QUERY_ID': f'01scan{i:04d}-{random.randint(1000,9999)}',
+                'QUERY_TEXT': f'SELECT customer_id, SUM(amount) FROM {database_name}.PUBLIC.{tables_for_scan[i % len(tables_for_scan)]} WHERE created_date >= \'2024-01-01\' GROUP BY customer_id',
+                'USER_NAME': random.choice(['analyst_1', 'bi_tool', 'etl_service']),
+                'WAREHOUSE_NAME': random.choice(warehouses),
+                'ELAPSED_SEC': random.uniform(60, 300),
+                'GB_SCANNED': random.uniform(20, 200),
+                'PARTITIONS_SCANNED': random.randint(900, 1000),
+                'PARTITIONS_TOTAL': 1000,
+                'SCAN_PCT': random.uniform(90, 100),
+                'TABLE_NAME': tables_for_scan[i % len(tables_for_scan)],
+                'SUGGESTED_COLUMNS': random.choice([
+                    'CREATED_DATE, CUSTOMER_ID',
+                    'ORDER_DATE, REGION',
+                    'EVENT_TIMESTAMP, USER_ID',
+                    'TRANSACTION_DATE, ACCOUNT_ID'
+                ])
+            }
+            for i in range(10)
+        ]
+        
+        # Unclustered large tables
+        unclustered_tables = [
+            {
+                'TABLE_SCHEMA': 'PUBLIC',
+                'TABLE_NAME': table,
+                'ROW_COUNT': random.randint(10000000, 100000000),
+                'SIZE_GB': random.uniform(5, 50)
+            }
+            for table in ['events_log', 'raw_transactions', 'audit_trail', 'user_sessions']
+        ]
+        
+        # Queued queries with details
+        queued_queries = [
+            {
+                'QUERY_ID': f'01queue{i:04d}-{random.randint(1000,9999)}',
+                'QUERY_TEXT': f'SELECT * FROM {database_name}.MARTS.report_table_{i} WHERE date_key >= CURRENT_DATE - 30',
+                'USER_NAME': random.choice(['analyst_1', 'bi_tool', 'report_user']),
+                'WAREHOUSE_NAME': random.choice(warehouses),
+                'ELAPSED_SEC': random.uniform(30, 180),
+                'QUEUE_SEC': random.uniform(10, 60),
+                'GB_SCANNED': random.uniform(5, 50)
+            }
+            for i in range(8)
+        ]
+        
         return {
             'queuing': queuing,
             'spilling': spilling,
             'compilation': compilation,
             'failures': failures,
-            'full_scans': full_scans
+            'full_scans': full_scans,
+            'full_scan_details': full_scan_details,
+            'unclustered_tables': unclustered_tables,
+            'queued_queries': queued_queries
         }
     
     def get_database_table_analysis(self, database_name: str) -> List[Dict]:
@@ -870,23 +925,32 @@ class MockSnowflakeMonitor:
         users = ['analyst_1', 'etl_service', 'bi_tool', 'data_scientist']
         warehouses = ['ANALYTICS_WH', 'REPORTING_WH', 'ETL_WH']
         schemas = ['PUBLIC', 'STAGING', 'MARTS']
+        tables = ['fact_sales', 'fact_orders', 'dim_customer', 'events_log', 'transactions', 'user_activity']
+        
+        # Issues with specific recommendations including suggested columns
         issues = [
-            ('Full Table Scan', 'Add clustering keys or filters on partition columns'),
-            ('Remote Spilling', 'Use larger warehouse or optimize query to reduce memory'),
-            ('Heavy Local Spilling', 'Consider warehouse size upgrade or query optimization'),
-            ('SELECT * on Large Table', 'Select only required columns to reduce data scanned'),
-            ('High Compilation Time', 'Simplify query or break into smaller parts')
+            ('Full Table Scan', 'fact_sales', 'Table fact_sales has no clustering key. Consider clustering on: ORDER_DATE, CUSTOMER_ID'),
+            ('Full Table Scan', 'events_log', 'Add clustering key on events_log. Suggested columns: EVENT_TIMESTAMP, USER_ID'),
+            ('Full Table Scan', 'transactions', 'Table transactions scans 95% of partitions. Cluster on: TRANSACTION_DATE, ACCOUNT_ID'),
+            ('Remote Spilling', 'fact_orders', 'Use larger warehouse (costs more credits) or optimize query. Check for large JOINs on fact_orders.'),
+            ('Heavy Local Spilling', 'dim_customer', 'Consider warehouse size upgrade or break query into smaller parts. Review ORDER BY on dim_customer.'),
+            ('SELECT * on Large Table', 'fact_sales', 'Select only required columns from fact_sales. This reduces data scanned and credits used.'),
+            ('High Compilation Time', None, 'Simplify query - reduce subqueries, CTEs, or UNION operations. Consider creating views for complex logic.')
         ]
         
         results = []
         for i in range(25):
-            issue_type, recommendation = random.choice(issues)
+            issue_type, table_name, recommendation = random.choice(issues)
+            actual_table = table_name if table_name else random.choice(tables)
+            schema = random.choice(schemas)
+            
             results.append({
                 'QUERY_ID': f'01opt{i:04d}-{random.randint(1000,9999)}',
-                'QUERY_TEXT': f'SELECT ... FROM {database_name}.{random.choice(schemas)}.table_{i} ...',
+                'QUERY_TEXT': f'SELECT {"*" if "SELECT *" in issue_type else "col1, col2, ..."} FROM {database_name}.{schema}.{actual_table} WHERE date_col >= ... {"GROUP BY customer_id ORDER BY total DESC" if "Spill" in issue_type else ""}',
                 'USER_NAME': random.choice(users),
                 'WAREHOUSE_NAME': random.choice(warehouses),
-                'SCHEMA_NAME': random.choice(schemas),
+                'SCHEMA_NAME': schema,
+                'TABLE_NAME': actual_table,
                 'ELAPSED_SEC': random.uniform(30, 600),
                 'GB_SCANNED': random.uniform(5, 200),
                 'PARTITIONS_SCANNED': random.randint(500, 5000),

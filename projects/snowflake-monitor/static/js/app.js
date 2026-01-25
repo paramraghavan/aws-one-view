@@ -836,6 +836,163 @@ function attachQueryIdListeners() {
 }
 
 // ============================================
+// NEEDS ATTENTION (Combined: Bottlenecks + Optimization + Recommendations)
+// ============================================
+
+async function loadAttention() {
+    showLoading('Loading issues...');
+    try {
+        const [bottlenecks, recommendations, optimization] = await Promise.all([
+            fetchAPI('bottlenecks'),
+            fetchAPI('recommendations'),
+            fetchAPI('optimization-opportunities')
+        ]);
+        
+        // Categorize issues
+        const critical = [];
+        const warnings = [];
+        const optimizations = [];
+        
+        // Process bottlenecks
+        if (bottlenecks.queuing) {
+            bottlenecks.queuing.forEach(q => {
+                if (q.AVG_QUEUE_SEC > 30) {
+                    critical.push({
+                        text: `${q.WAREHOUSE_NAME}: High queue time (avg ${formatNumber(q.AVG_QUEUE_SEC, 1)}s)`,
+                        metric: `${formatNumber(q.QUEUED_QUERIES, 0)} queries queued`
+                    });
+                } else if (q.AVG_QUEUE_SEC > 10) {
+                    warnings.push({
+                        text: `${q.WAREHOUSE_NAME}: Moderate queue time (avg ${formatNumber(q.AVG_QUEUE_SEC, 1)}s)`,
+                        metric: `${formatNumber(q.QUEUED_QUERIES, 0)} queries queued`
+                    });
+                }
+            });
+        }
+        
+        if (bottlenecks.spilling) {
+            bottlenecks.spilling.forEach(s => {
+                if (s.REMOTE_SPILL_GB > 10) {
+                    critical.push({
+                        text: `${s.WAREHOUSE_NAME}: Heavy remote spilling (expensive!)`,
+                        metric: `${formatNumber(s.REMOTE_SPILL_GB, 1)} GB remote spill`
+                    });
+                } else if (s.LOCAL_SPILL_GB > 50) {
+                    warnings.push({
+                        text: `${s.WAREHOUSE_NAME}: High local spilling`,
+                        metric: `${formatNumber(s.LOCAL_SPILL_GB, 1)} GB local spill`
+                    });
+                }
+            });
+        }
+        
+        if (bottlenecks.failures && bottlenecks.failures.length > 0) {
+            bottlenecks.failures.forEach(f => {
+                if (f.FAILURE_COUNT > 100) {
+                    critical.push({
+                        text: `Query failures: ${truncateText(f.ERROR_MESSAGE, 50)}`,
+                        metric: `${formatNumber(f.FAILURE_COUNT, 0)} failures`
+                    });
+                } else if (f.FAILURE_COUNT > 20) {
+                    warnings.push({
+                        text: `Query failures: ${truncateText(f.ERROR_MESSAGE, 50)}`,
+                        metric: `${formatNumber(f.FAILURE_COUNT, 0)} failures`
+                    });
+                }
+            });
+        }
+        
+        // Process recommendations
+        recommendations.forEach(rec => {
+            if (rec.severity === 'High') {
+                critical.push({
+                    text: rec.title + ': ' + truncateText(rec.description, 80),
+                    metric: rec.warehouse || rec.category
+                });
+            } else if (rec.severity === 'Medium') {
+                warnings.push({
+                    text: rec.title + ': ' + truncateText(rec.description, 80),
+                    metric: rec.warehouse || rec.category
+                });
+            } else {
+                optimizations.push({
+                    text: rec.title + ': ' + truncateText(rec.description, 80),
+                    metric: rec.warehouse || rec.category
+                });
+            }
+        });
+        
+        // Add optimization opportunities summary
+        const issueTypes = {};
+        optimization.forEach(opt => {
+            const type = opt.ISSUE_TYPE;
+            if (!issueTypes[type]) {
+                issueTypes[type] = { count: 0, totalSec: 0 };
+            }
+            issueTypes[type].count++;
+            issueTypes[type].totalSec += opt.ELAPSED_SEC || 0;
+        });
+        
+        Object.entries(issueTypes).forEach(([type, data]) => {
+            optimizations.push({
+                text: `${type}: ${data.count} queries could be optimized`,
+                metric: `${formatNumber(data.totalSec / 60, 0)} min total`
+            });
+        });
+        
+        // Render sections
+        renderAttentionList('criticalIssues', critical, 'critical');
+        renderAttentionList('warningIssues', warnings, 'warning');
+        renderAttentionList('optimizationIssues', optimizations, '');
+        
+        // Render top queries to fix
+        renderAttentionQueriesTable(optimization.slice(0, 10));
+        
+        hideLoading();
+    } catch (error) {
+        console.error('Error loading attention:', error);
+        hideLoading();
+    }
+}
+
+function renderAttentionList(containerId, items, className) {
+    const container = document.getElementById(containerId);
+    
+    if (!items || items.length === 0) {
+        container.innerHTML = '<p class="no-data">No issues found ✓</p>';
+        return;
+    }
+    
+    container.innerHTML = items.map(item => `
+        <div class="attention-item ${className}">
+            <span class="issue-text">${item.text}</span>
+            <span class="issue-metric">${item.metric}</span>
+        </div>
+    `).join('');
+}
+
+function renderAttentionQueriesTable(queries) {
+    const tbody = document.querySelector('#attentionQueriesTable tbody');
+    
+    if (!queries || queries.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="no-data">No problematic queries found</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = queries.map(q => `
+        <tr>
+            <td><span class="query-id clickable-query" data-query="${encodeURIComponent(q.QUERY_TEXT || '')}">${truncateText(q.QUERY_ID, 15)}</span></td>
+            <td><span class="issue-badge ${q.ISSUE_TYPE.toLowerCase().replace(/\s+/g, '-')}">${q.ISSUE_TYPE}</span></td>
+            <td>${q.USER_NAME || '--'}</td>
+            <td>${formatNumber(q.ELAPSED_SEC, 0)} <span class="unit">sec</span></td>
+            <td class="recommendation-cell">${q.RECOMMENDATION || 'Review query'}</td>
+        </tr>
+    `).join('');
+    
+    attachQueryIdListeners();
+}
+
+// ============================================
 // Navigation Functions
 // ============================================
 
@@ -861,38 +1018,17 @@ function loadSectionData(sectionId) {
         case 'overview':
             loadOverview();
             break;
-        case 'costs':
-            loadCosts();
+        case 'attention':
+            loadAttention();
             break;
-        case 'forecast':
-            loadForecast();
-            break;
-        case 'queries':
-            loadQueries();
-            break;
-        case 'optimization':
-            loadOptimization();
+        case 'database':
+            loadDatabaseList();
             break;
         case 'warehouses':
             loadWarehouses();
             break;
         case 'users':
-            loadUsers();
-            break;
-        case 'storage':
-            loadStorage();
-            break;
-        case 'security':
-            loadSecurity();
-            break;
-        case 'bottlenecks':
-            loadBottlenecks();
-            break;
-        case 'recommendations':
-            loadRecommendations();
-            break;
-        case 'database':
-            loadDatabaseList();
+            loadUsersAndSecurity();
             break;
     }
 }
@@ -1124,20 +1260,34 @@ function renderWeekComparison(data) {
 // NEW FEATURE: User Analytics
 // ============================================
 
-async function loadUsers() {
-    showLoading('Loading user analytics...');
+async function loadUsersAndSecurity() {
+    showLoading('Loading users & security...');
     try {
-        const data = await fetchAPI('user-analytics', { days: 30 });
+        const [userData, securityData] = await Promise.all([
+            fetchAPI('user-analytics', { days: 30 }),
+            fetchAPI('login-history', { days: 7 })
+        ]);
         
-        renderUserActivityChart(data.activity_trend);
-        renderRoleUsageChart(data.role_usage);
-        renderTopUsersTable(data.top_users);
+        // User analytics
+        renderUserActivityChart(userData.activity_trend);
+        renderRoleUsageChart(userData.role_usage);
+        renderTopUsersTable(userData.top_users);
+        
+        // Security (merged in)
+        renderLoginPatternChart(securityData.hourly_pattern);
+        renderFailedLogins(securityData.failed_logins);
+        renderLoginSummaryTable(securityData.user_summary);
         
         hideLoading();
     } catch (error) {
-        console.error('Error loading users:', error);
+        console.error('Error loading users & security:', error);
         hideLoading();
     }
+}
+
+// Keep old function name for backwards compatibility
+async function loadUsers() {
+    return loadUsersAndSecurity();
 }
 
 function renderUserActivityChart(data) {
@@ -1561,14 +1711,23 @@ function renderDbCostTab(costAnalysis) {
         }
     });
     
-    // Warehouse chart
+    // Warehouse chart - show hours with credits/hour rate
     const whCtx = document.getElementById('dbWarehouseChart').getContext('2d');
     if (state.charts.dbWarehouse) state.charts.dbWarehouse.destroy();
+    
+    // Credit rates by warehouse size
+    const creditRates = {
+        'X-Small': 1, 'Small': 2, 'Medium': 4, 'Large': 8,
+        'X-Large': 16, '2X-Large': 32, '3X-Large': 64, '4X-Large': 128
+    };
     
     state.charts.dbWarehouse = new Chart(whCtx, {
         type: 'bar',
         data: {
-            labels: costAnalysis.by_warehouse.map(d => d.WAREHOUSE_NAME),
+            labels: costAnalysis.by_warehouse.map(d => {
+                const rate = creditRates[d.WAREHOUSE_SIZE] || '?';
+                return `${d.WAREHOUSE_NAME} (${d.WAREHOUSE_SIZE} = ${rate} cr/hr)`;
+            }),
             datasets: [{
                 label: 'Compute Hours',
                 data: costAnalysis.by_warehouse.map(d => d.TOTAL_HOURS),
@@ -1578,7 +1737,22 @@ function renderDbCostTab(costAnalysis) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            indexAxis: 'y'
+            indexAxis: 'y',
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        afterLabel: function(context) {
+                            const data = costAnalysis.by_warehouse[context.dataIndex];
+                            const rate = creditRates[data.WAREHOUSE_SIZE] || 4;
+                            const estCredits = data.TOTAL_HOURS * rate;
+                            return `≈ ${formatNumber(estCredits, 0)} credits\nQueries: ${formatNumber(data.QUERY_COUNT, 0)}\nTB Scanned: ${formatNumber(data.TB_SCANNED, 2)}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { title: { display: true, text: 'Hours' } }
+            }
         }
     });
     
@@ -1637,11 +1811,11 @@ function renderDbPerformanceTab(patterns, slowQueries) {
         }
     });
     
-    // Slow queries table
+    // Slow queries table - clickable query IDs
     const tbody = document.querySelector('#dbSlowQueriesTable tbody');
     tbody.innerHTML = slowQueries.slice(0, 30).map(row => `
         <tr>
-            <td><span class="query-id">${truncateText(row.QUERY_ID, 15)}</span></td>
+            <td><span class="query-id clickable-query" data-query="${encodeURIComponent(row.QUERY_TEXT || '')}">${truncateText(row.QUERY_ID, 15)}</span></td>
             <td>${row.USER_NAME || '--'}</td>
             <td>${row.WAREHOUSE_NAME || '--'}</td>
             <td>${row.QUERY_TYPE || '--'}</td>
@@ -1651,39 +1825,86 @@ function renderDbPerformanceTab(patterns, slowQueries) {
             <td><span class="status-badge ${(row.EXECUTION_STATUS || '').toLowerCase()}">${row.EXECUTION_STATUS || '--'}</span></td>
         </tr>
     `).join('');
+    
+    // Attach click handlers for query IDs
+    attachQueryIdListeners();
 }
 
 function renderDbBottlenecksTab(bottlenecks, optimization) {
-    // Queue issues
-    const queueHtml = bottlenecks.queuing.length > 0 ? bottlenecks.queuing.map(item => `
-        <div class="bottleneck-item">
-            <span class="label">${item.WAREHOUSE_NAME}</span>
-            <span class="value ${item.AVG_QUEUE_SEC > 10 ? 'danger' : (item.AVG_QUEUE_SEC > 5 ? 'warning' : '')}">${formatNumber(item.QUEUED_QUERIES, 0)} queued, avg ${formatNumber(item.AVG_QUEUE_SEC, 1)}s</span>
-        </div>
-    `).join('') : '<p class="no-data">No significant queue issues</p>';
+    // Queue issues - show summary AND list of queued queries
+    let queueHtml = '';
+    if (bottlenecks.queuing.length > 0) {
+        queueHtml = bottlenecks.queuing.map(item => `
+            <div class="bottleneck-item">
+                <span class="label">${item.WAREHOUSE_NAME}</span>
+                <span class="value ${item.AVG_QUEUE_SEC > 10 ? 'danger' : (item.AVG_QUEUE_SEC > 5 ? 'warning' : '')}">${formatNumber(item.QUEUED_QUERIES, 0)} queued, avg ${formatNumber(item.AVG_QUEUE_SEC, 1)}s</span>
+            </div>
+        `).join('');
+        
+        // Add clickable queued queries list
+        if (bottlenecks.queued_queries && bottlenecks.queued_queries.length > 0) {
+            queueHtml += '<div class="bottleneck-queries-list"><h5>Top Queued Queries:</h5>';
+            queueHtml += bottlenecks.queued_queries.slice(0, 5).map(q => `
+                <div class="query-row clickable-query" data-query="${encodeURIComponent(q.QUERY_TEXT || '')}">
+                    <span class="query-id-link">${truncateText(q.QUERY_ID, 20)}</span>
+                    <span class="queue-time">${formatNumber(q.QUEUE_SEC, 1)}s queue</span>
+                </div>
+            `).join('');
+            queueHtml += '</div>';
+        }
+    } else {
+        queueHtml = '<p class="no-data">No significant queue issues</p>';
+    }
     document.getElementById('dbQueueIssues').innerHTML = queueHtml;
     
     // Spill issues
     const spillHtml = bottlenecks.spilling.length > 0 ? bottlenecks.spilling.map(item => `
         <div class="bottleneck-item">
             <span class="label">${item.WAREHOUSE_NAME}</span>
-            <span class="value ${item.REMOTE_SPILL_GB > 5 ? 'danger' : 'warning'}">${formatNumber(item.LOCAL_SPILL_GB, 1)} GB local, ${formatNumber(item.REMOTE_SPILL_GB, 1)} GB remote</span>
+            <span class="value ${item.REMOTE_SPILL_GB > 5 ? 'danger' : 'warning'}">${formatNumber(item.LOCAL_SPILL_GB, 1)} <span class="unit">GB</span> local, ${formatNumber(item.REMOTE_SPILL_GB, 1)} <span class="unit">GB</span> remote</span>
         </div>
     `).join('') : '<p class="no-data">No significant spilling</p>';
     document.getElementById('dbSpillIssues').innerHTML = spillHtml;
     
-    // Full scan issues
+    // Full scan issues - show summary AND detailed list with suggested columns
     const scanData = bottlenecks.full_scans[0] || {};
-    const scanHtml = scanData.FULL_SCAN_COUNT > 0 ? `
-        <div class="bottleneck-item">
-            <span class="label">Full Table Scans</span>
-            <span class="value ${scanData.FULL_SCAN_COUNT > 100 ? 'danger' : 'warning'}">${formatNumber(scanData.FULL_SCAN_COUNT, 0)} queries</span>
-        </div>
-        <div class="bottleneck-item">
-            <span class="label">Total Data Scanned</span>
-            <span class="value">${formatNumber(scanData.TOTAL_TB_SCANNED, 2)} TB</span>
-        </div>
-    ` : '<p class="no-data">No significant full table scans</p>';
+    let scanHtml = '';
+    
+    if (scanData.FULL_SCAN_COUNT > 0) {
+        scanHtml = `
+            <div class="bottleneck-item">
+                <span class="label">Full Table Scans</span>
+                <span class="value ${scanData.FULL_SCAN_COUNT > 100 ? 'danger' : 'warning'}">${formatNumber(scanData.FULL_SCAN_COUNT, 0)} queries</span>
+            </div>
+            <div class="bottleneck-item">
+                <span class="label">Total Data Scanned</span>
+                <span class="value">${formatNumber(scanData.TOTAL_TB_SCANNED, 2)} <span class="unit">TB</span></span>
+            </div>
+        `;
+        
+        // Add detailed full scan list with suggested clustering columns
+        if (bottlenecks.full_scan_details && bottlenecks.full_scan_details.length > 0) {
+            scanHtml += '<div class="bottleneck-queries-list"><h5>Tables to Cluster:</h5>';
+            scanHtml += bottlenecks.full_scan_details.slice(0, 5).map(scan => `
+                <div class="scan-suggestion clickable-query" data-query="${encodeURIComponent(scan.QUERY_TEXT || '')}">
+                    <div class="scan-table"><strong>${scan.TABLE_NAME || 'Unknown'}</strong> - ${formatNumber(scan.GB_SCANNED, 1)} GB scanned</div>
+                    <div class="scan-columns">Cluster on: <code>${scan.SUGGESTED_COLUMNS || 'date/timestamp columns'}</code></div>
+                </div>
+            `).join('');
+            scanHtml += '</div>';
+        }
+        
+        // Add unclustered tables recommendation
+        if (bottlenecks.unclustered_tables && bottlenecks.unclustered_tables.length > 0) {
+            scanHtml += '<div class="unclustered-alert"><h5>⚠️ Large Tables Without Clustering:</h5>';
+            scanHtml += bottlenecks.unclustered_tables.slice(0, 3).map(t => `
+                <div class="unclustered-table">${t.TABLE_SCHEMA}.${t.TABLE_NAME} (${formatNumber(t.SIZE_GB, 1)} GB)</div>
+            `).join('');
+            scanHtml += '</div>';
+        }
+    } else {
+        scanHtml = '<p class="no-data">No significant full table scans</p>';
+    }
     document.getElementById('dbScanIssues').innerHTML = scanHtml;
     
     // Failure issues
@@ -1699,14 +1920,19 @@ function renderDbBottlenecksTab(bottlenecks, optimization) {
     const tbody = document.querySelector('#dbOptimizationTable tbody');
     tbody.innerHTML = optimization.slice(0, 20).map(row => `
         <tr>
-            <td><span class="query-id">${truncateText(row.QUERY_ID, 15)}</span></td>
+            <td><span class="query-id clickable-query" data-query="${encodeURIComponent(row.QUERY_TEXT || '')}">${truncateText(row.QUERY_ID, 15)}</span></td>
             <td><span class="issue-badge ${row.ISSUE_TYPE.toLowerCase().replace(/\s+/g, '-')}">${row.ISSUE_TYPE}</span></td>
             <td>${row.USER_NAME || '--'}</td>
             <td>${row.WAREHOUSE_NAME || '--'}</td>
             <td>${formatNumber(row.ELAPSED_SEC, 1)} <span class="unit">sec</span></td>
-            <td class="recommendation-cell">${row.RECOMMENDATION}</td>
+            <td class="recommendation-cell">
+                ${row.TABLE_NAME ? `<strong>${row.TABLE_NAME}:</strong> ` : ''}${row.RECOMMENDATION}
+            </td>
         </tr>
     `).join('');
+    
+    // Attach click handlers for all query elements
+    attachQueryIdListeners();
 }
 
 function renderDbTablesTab(tables, bySchema) {
@@ -1786,6 +2012,74 @@ function renderDbRecommendations(recommendations) {
             <span class="metric">${rec.metric}</span>
         </div>
     `).join('');
+}
+
+// ============================================
+// Query ID Click Handler - Show Full SQL
+// ============================================
+
+function attachQueryIdListeners() {
+    // Attach click handlers to all clickable query elements
+    document.querySelectorAll('.clickable-query, .query-id[data-query]').forEach(el => {
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', function(e) {
+            e.preventDefault();
+            const queryText = decodeURIComponent(this.dataset.query || '');
+            if (queryText) {
+                showQueryModal(queryText);
+            }
+        });
+    });
+}
+
+function showQueryModal(queryText) {
+    // Use existing modal if available, otherwise create one
+    let modal = document.getElementById('queryModal');
+    
+    if (!modal) {
+        // Create modal dynamically
+        modal = document.createElement('div');
+        modal.id = 'queryModal';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Query Details</h3>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <pre class="query-text-display"></pre>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-copy" onclick="copyQueryToClipboard()">Copy to Clipboard</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        
+        // Add close handler
+        modal.querySelector('.modal-close').addEventListener('click', () => {
+            modal.classList.remove('active');
+        });
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.classList.remove('active');
+        });
+    }
+    
+    // Update query text and show modal
+    const queryDisplay = modal.querySelector('.query-text-display') || modal.querySelector('#queryText');
+    if (queryDisplay) {
+        queryDisplay.textContent = queryText;
+    }
+    modal.classList.add('active');
+}
+
+function copyQueryToClipboard() {
+    const modal = document.getElementById('queryModal');
+    const queryText = modal.querySelector('.query-text-display, #queryText').textContent;
+    navigator.clipboard.writeText(queryText).then(() => {
+        showToast('Query copied to clipboard');
+    });
 }
 
 // ============================================

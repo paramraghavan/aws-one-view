@@ -1088,7 +1088,20 @@ class SnowflakeMonitor:
             COUNT(*) as QUERY_COUNT,
             SUM(TOTAL_ELAPSED_TIME) / 1000 / 3600 as TOTAL_HOURS,
             AVG(TOTAL_ELAPSED_TIME) / 1000 as AVG_QUERY_SEC,
-            SUM(BYTES_SCANNED) / POWER(1024, 4) as TB_SCANNED
+            SUM(BYTES_SCANNED) / POWER(1024, 4) as TB_SCANNED,
+            -- Estimate credits based on warehouse size and time
+            SUM(TOTAL_ELAPSED_TIME) / 1000 / 3600 * 
+                CASE MAX(WAREHOUSE_SIZE)
+                    WHEN 'X-Small' THEN 1
+                    WHEN 'Small' THEN 2
+                    WHEN 'Medium' THEN 4
+                    WHEN 'Large' THEN 8
+                    WHEN 'X-Large' THEN 16
+                    WHEN '2X-Large' THEN 32
+                    WHEN '3X-Large' THEN 64
+                    WHEN '4X-Large' THEN 128
+                    ELSE 4
+                END as ESTIMATED_CREDITS
         FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
         WHERE DATABASE_NAME = '{database_name}'
         AND START_TIME >= DATEADD(day, -{days}, CURRENT_TIMESTAMP())
@@ -1230,7 +1243,7 @@ class SnowflakeMonitor:
         LIMIT 10
         """
         
-        # Full table scans
+        # Full table scans - summary
         full_scans = f"""
         SELECT 
             COUNT(*) as FULL_SCAN_COUNT,
@@ -1244,13 +1257,84 @@ class SnowflakeMonitor:
         AND TOTAL_ELAPSED_TIME > 10000
         """
         
-        return {
+        # Full table scan details - identify tables and suggest clustering keys
+        full_scan_details = f"""
+        SELECT 
+            QUERY_ID,
+            QUERY_TEXT,
+            USER_NAME,
+            WAREHOUSE_NAME,
+            TOTAL_ELAPSED_TIME / 1000 as ELAPSED_SEC,
+            BYTES_SCANNED / POWER(1024, 3) as GB_SCANNED,
+            PARTITIONS_SCANNED,
+            PARTITIONS_TOTAL,
+            ROUND((PARTITIONS_SCANNED / NULLIF(PARTITIONS_TOTAL, 0)) * 100, 1) as SCAN_PCT
+        FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+        WHERE DATABASE_NAME = '{database_name}'
+        AND START_TIME >= DATEADD(day, -{days}, CURRENT_TIMESTAMP())
+        AND PARTITIONS_TOTAL > 100
+        AND PARTITIONS_SCANNED >= PARTITIONS_TOTAL * 0.9
+        AND TOTAL_ELAPSED_TIME > 10000
+        ORDER BY BYTES_SCANNED DESC
+        LIMIT 20
+        """
+        
+        # Tables without clustering keys (optimization candidates)
+        unclustered_tables = f"""
+        SELECT 
+            TABLE_SCHEMA,
+            TABLE_NAME,
+            ROW_COUNT,
+            BYTES / POWER(1024, 3) as SIZE_GB
+        FROM SNOWFLAKE.ACCOUNT_USAGE.TABLES
+        WHERE TABLE_CATALOG = '{database_name}'
+        AND DELETED IS NULL
+        AND TABLE_TYPE = 'BASE TABLE'
+        AND CLUSTERING_KEY IS NULL
+        AND BYTES > 1073741824
+        ORDER BY BYTES DESC
+        LIMIT 10
+        """
+        
+        # Queued queries with full details
+        queued_queries = f"""
+        SELECT 
+            QUERY_ID,
+            QUERY_TEXT,
+            USER_NAME,
+            WAREHOUSE_NAME,
+            TOTAL_ELAPSED_TIME / 1000 as ELAPSED_SEC,
+            QUEUED_OVERLOAD_TIME / 1000 as QUEUE_SEC,
+            BYTES_SCANNED / POWER(1024, 3) as GB_SCANNED
+        FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+        WHERE DATABASE_NAME = '{database_name}'
+        AND START_TIME >= DATEADD(day, -{days}, CURRENT_TIMESTAMP())
+        AND QUEUED_OVERLOAD_TIME > 5000
+        ORDER BY QUEUED_OVERLOAD_TIME DESC
+        LIMIT 20
+        """
+        
+        # Execute queries and build result
+        result = {
             'queuing': self._serialize_results(self.execute_query(queuing_issues)),
             'spilling': self._serialize_results(self.execute_query(spilling_issues)),
             'compilation': self._serialize_results(self.execute_query(compilation_issues)),
             'failures': self._serialize_results(self.execute_query(failures)),
-            'full_scans': self._serialize_results(self.execute_query(full_scans))
+            'full_scans': self._serialize_results(self.execute_query(full_scans)),
+            'full_scan_details': self._serialize_results(self.execute_query(full_scan_details)),
+            'unclustered_tables': self._serialize_results(self.execute_query(unclustered_tables)),
+            'queued_queries': self._serialize_results(self.execute_query(queued_queries))
         }
+        
+        # Add suggested clustering columns for full scan queries
+        for scan in result.get('full_scan_details', []):
+            query_text = scan.get('QUERY_TEXT', '')
+            suggested = self._suggest_clustering_columns(query_text)
+            table_name = self._extract_table_from_query(query_text)
+            scan['SUGGESTED_COLUMNS'] = suggested
+            scan['TABLE_NAME'] = table_name
+        
+        return result
     
     def get_database_table_analysis(self, database_name: str) -> List[Dict]:
         """Get detailed table analysis for a database."""
@@ -1336,7 +1420,7 @@ class SnowflakeMonitor:
     def get_database_optimization_opportunities(self, database_name: str, days: int = 7) -> List[Dict]:
         """Get optimization opportunities specific to a database."""
         
-        # Expensive queries
+        # Expensive queries with table extraction
         expensive = f"""
         SELECT 
             QUERY_ID,
@@ -1373,25 +1457,115 @@ class SnowflakeMonitor:
         LIMIT 50
         """
         
+        # Get tables without clustering keys (candidates for optimization)
+        unclustered_tables_query = f"""
+        SELECT 
+            TABLE_SCHEMA,
+            TABLE_NAME,
+            ROW_COUNT,
+            BYTES / POWER(1024, 3) as SIZE_GB
+        FROM SNOWFLAKE.ACCOUNT_USAGE.TABLES
+        WHERE TABLE_CATALOG = '{database_name}'
+        AND DELETED IS NULL
+        AND TABLE_TYPE = 'BASE TABLE'
+        AND CLUSTERING_KEY IS NULL
+        AND BYTES > 1073741824  -- Tables > 1GB
+        ORDER BY BYTES DESC
+        LIMIT 20
+        """
+        
         results = self.execute_query(expensive)
         
-        # Add recommendations
+        try:
+            unclustered = self.execute_query(unclustered_tables_query)
+            unclustered_tables = {f"{t['TABLE_SCHEMA']}.{t['TABLE_NAME']}".upper(): t for t in unclustered}
+        except:
+            unclustered_tables = {}
+        
+        # Add recommendations with suggested columns
         for r in results:
             issue = r.get('ISSUE_TYPE', '')
+            query_text = r.get('QUERY_TEXT', '').upper()
+            schema = r.get('SCHEMA_NAME', '')
+            
+            # Try to extract table name from query
+            table_name = self._extract_table_from_query(query_text)
+            r['TABLE_NAME'] = table_name
+            
             if issue == 'Full Table Scan':
-                r['RECOMMENDATION'] = 'Add clustering keys or filters on partition columns'
+                # Suggest clustering columns based on common patterns
+                suggested_cols = self._suggest_clustering_columns(query_text)
+                if table_name and schema:
+                    full_table = f"{schema}.{table_name}".upper()
+                    if full_table in unclustered_tables:
+                        r['RECOMMENDATION'] = f"Table {table_name} has no clustering key. Consider clustering on: {suggested_cols}"
+                    else:
+                        r['RECOMMENDATION'] = f"Add/optimize clustering key on {table_name}. Suggested columns: {suggested_cols}"
+                else:
+                    r['RECOMMENDATION'] = f"Add clustering key. Suggested columns: {suggested_cols}"
             elif issue == 'Remote Spilling':
-                r['RECOMMENDATION'] = 'Use larger warehouse or optimize query to reduce memory'
+                r['RECOMMENDATION'] = 'Use larger warehouse (costs more credits) or optimize query to reduce memory. Check for large JOINs or GROUP BYs.'
             elif issue == 'Heavy Local Spilling':
-                r['RECOMMENDATION'] = 'Consider warehouse size upgrade or query optimization'
+                r['RECOMMENDATION'] = 'Consider warehouse size upgrade or break query into smaller parts. Review ORDER BY and DISTINCT operations.'
             elif issue == 'SELECT * on Large Table':
-                r['RECOMMENDATION'] = 'Select only required columns to reduce data scanned'
+                r['RECOMMENDATION'] = f"Select only required columns from {table_name if table_name else 'table'}. This reduces data scanned and credits used."
             elif issue == 'High Compilation Time':
-                r['RECOMMENDATION'] = 'Simplify query or break into smaller parts'
+                r['RECOMMENDATION'] = 'Simplify query - reduce subqueries, CTEs, or UNION operations. Consider creating views for complex logic.'
             else:
                 r['RECOMMENDATION'] = 'Review query for optimization opportunities'
         
         return self._serialize_results(results)
+    
+    def _extract_table_from_query(self, query_text: str) -> str:
+        """Extract the main table name from a query."""
+        import re
+        # Look for FROM table_name pattern
+        patterns = [
+            r'FROM\s+([A-Za-z0-9_]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+)',  # db.schema.table
+            r'FROM\s+([A-Za-z0-9_]+\.[A-Za-z0-9_]+)',  # schema.table
+            r'FROM\s+([A-Za-z0-9_]+)',  # table
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, query_text, re.IGNORECASE)
+            if match:
+                return match.group(1).split('.')[-1]  # Return just table name
+        return None
+    
+    def _suggest_clustering_columns(self, query_text: str) -> str:
+        """Suggest clustering columns based on query patterns."""
+        import re
+        suggestions = []
+        
+        # Look for common filter patterns in WHERE clause
+        where_match = re.search(r'WHERE\s+(.+?)(?:GROUP|ORDER|LIMIT|$)', query_text, re.IGNORECASE | re.DOTALL)
+        if where_match:
+            where_clause = where_match.group(1)
+            
+            # Date columns (high priority for clustering)
+            date_patterns = [
+                r'([A-Za-z_]*(?:DATE|TIME|TIMESTAMP|DT|_AT)[A-Za-z_]*)\s*(?:>=|<=|>|<|=|BETWEEN)',
+                r'DATE_TRUNC\s*\([^,]+,\s*([A-Za-z_]+)\)',
+            ]
+            for pattern in date_patterns:
+                matches = re.findall(pattern, where_clause, re.IGNORECASE)
+                for m in matches:
+                    col = m.strip().upper()
+                    if col and col not in suggestions:
+                        suggestions.append(col)
+            
+            # ID columns commonly used in JOINs/filters
+            id_patterns = [r'([A-Za-z_]*(?:_ID|ID_)[A-Za-z_]*)\s*(?:=|IN)']
+            for pattern in id_patterns:
+                matches = re.findall(pattern, where_clause, re.IGNORECASE)
+                for m in matches:
+                    col = m.strip().upper()
+                    if col and col not in suggestions and len(suggestions) < 3:
+                        suggestions.append(col)
+        
+        if not suggestions:
+            return "date/timestamp columns, frequently filtered columns"
+        
+        return ', '.join(suggestions[:3])
     
     def get_database_recommendations(self, database_name: str, days: int = 30) -> List[Dict]:
         """Generate recommendations specific to a database."""
