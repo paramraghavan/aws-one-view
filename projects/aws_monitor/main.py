@@ -1,553 +1,166 @@
 """
-AWS Resource Monitor - Main Application
-A Flask web application for monitoring AWS resources, costs, and performance.
+AWS Monitor - Simplified
+Multi-region resource monitoring with script generation
 """
-
-from flask import Flask, render_template, request, jsonify
-from typing import Dict, List, Any
+from flask import Flask, render_template, jsonify, request, send_file
+from app.resources import ResourceMonitor
+from app.script_generator import ScriptGenerator
 import logging
+import io
 
-from app.aws_client import AWSClient
-from app.config import Config
-from app.monitoring import monitor
-
-# Initialize Flask app
-app = Flask(__name__)
-app.config.from_object(Config)
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize AWS client
-aws_client = AWSClient()
+app = Flask(__name__)
 
-# Start background monitoring if enabled
-if Config.MONITORING_ENABLED:
-    monitor.start()
-    logger.info("Background monitoring enabled")
+# Default regions (auto-selected when UI starts)
+DEFAULT_REGIONS = ['us-east-1', 'us-west-2']
 
 
 @app.route('/')
-def index() -> str:
-    """Render the main dashboard page."""
+def index():
+    """Main dashboard"""
     return render_template('index.html')
 
 
-@app.route('/api/regions', methods=['GET'])
-def get_regions() -> Dict[str, Any]:
+@app.route('/api/discover', methods=['POST'])
+def discover_resources():
     """
-    Get list of all available AWS regions.
+    Discover all resources across regions
+    POST body: {
+        "regions": ["us-east-1", "us-west-2"],
+        "filters": {
+            "tags": {"Environment": "production"},
+            "names": ["web-server"],
+            "ids": ["i-1234567"]
+        }
+    }
+    """
+    data = request.get_json()
+    regions = data.get('regions', DEFAULT_REGIONS)
+    filters = data.get('filters', {})
     
-    Returns:
-        JSON response with list of regions
-    """
     try:
-        regions = aws_client.get_regions()
-        return jsonify({
-            'success': True,
-            'data': regions
-        })
+        monitor = ResourceMonitor()
+        resources = monitor.discover_all(regions, filters)
+        return jsonify(resources)
     except Exception as e:
-        logger.error(f"Error getting regions: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        logger.error(f"Discovery error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/resources', methods=['GET'])
-def get_resources() -> Dict[str, Any]:
+@app.route('/api/metrics', methods=['POST'])
+def get_metrics():
     """
-    Get all AWS resources from selected regions.
-    
-    Query Parameters:
-        regions: List of region names (e.g., ?regions=us-east-1&regions=us-west-2)
-    
-    Returns:
-        JSON response with categorized resources
+    Get performance metrics for resources
+    POST body: {
+        "resources": [{"type": "ec2", "id": "i-123", "region": "us-east-1"}],
+        "period": 300
+    }
     """
+    data = request.get_json()
+    resources = data.get('resources', [])
+    period = data.get('period', 300)
+    
     try:
-        regions = request.args.getlist('regions')
-        if not regions:
-            regions = [Config.DEFAULT_REGION]
-        
-        logger.info(f"Loading resources from regions: {regions}")
-        resources = aws_client.get_all_resources(regions)
-        
-        return jsonify({
-            'success': True,
-            'data': resources
-        })
+        monitor = ResourceMonitor()
+        metrics = monitor.get_metrics(resources, period)
+        return jsonify(metrics)
     except Exception as e:
-        logger.error(f"Error getting resources: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        logger.error(f"Metrics error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/metrics', methods=['GET'])
-def get_metrics() -> Dict[str, Any]:
+@app.route('/api/costs', methods=['POST'])
+def analyze_costs():
     """
-    Get CloudWatch metrics for selected resources.
-    
-    Query Parameters:
-        resource_ids: List of resource IDs
-        resource_type: Type of resource (ec2, rds, lambda)
-        region: AWS region
-        hours: Number of hours of data (default: 24)
-    
-    Returns:
-        JSON response with metrics data
+    Analyze costs
+    POST body: {
+        "regions": ["us-east-1"],
+        "days": 30
+    }
     """
+    data = request.get_json()
+    regions = data.get('regions', DEFAULT_REGIONS)
+    days = data.get('days', 7)
+    
     try:
-        resource_ids = request.args.getlist('resource_ids')
-        resource_type = request.args.get('resource_type', 'ec2')
-        region = request.args.get('region', Config.DEFAULT_REGION)
-        hours = int(request.args.get('hours', 24))
+        monitor = ResourceMonitor()
+        costs = monitor.analyze_costs(regions, days)
+        return jsonify(costs)
+    except Exception as e:
+        logger.error(f"Cost error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/alerts', methods=['POST'])
+def check_alerts():
+    """
+    Check alerts and failures
+    POST body: {
+        "resources": [...],
+        "thresholds": {"cpu": 80, "memory": 85}
+    }
+    """
+    data = request.get_json()
+    resources = data.get('resources', [])
+    thresholds = data.get('thresholds', {})
+    
+    try:
+        monitor = ResourceMonitor()
+        alerts = monitor.check_alerts(resources, thresholds)
+        return jsonify(alerts)
+    except Exception as e:
+        logger.error(f"Alert error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/generate-script', methods=['POST'])
+def generate_script():
+    """
+    Generate Python monitoring script for cron/scheduler
+    POST body: {
+        "regions": ["us-east-1"],
+        "resources": {
+            "types": ["ec2", "rds"],
+            "filters": {"tags": {}, "names": [], "ids": []}
+        },
+        "checks": ["performance", "cost", "alerts"],
+        "thresholds": {"cpu": 80},
+        "notification": {"email": "user@example.com"}
+    }
+    """
+    data = request.get_json()
+    
+    try:
+        generator = ScriptGenerator()
+        script_content = generator.generate(data)
         
-        metrics = aws_client.get_metrics(
-            resource_type=resource_type,
-            resource_ids=resource_ids,
-            region=region,
-            hours=hours
+        # Return as downloadable file
+        buffer = io.BytesIO(script_content.encode('utf-8'))
+        buffer.seek(0)
+        
+        return send_file(
+            buffer,
+            mimetype='text/x-python',
+            as_attachment=True,
+            download_name='aws_monitor_job.py'
         )
-        
-        return jsonify({
-            'success': True,
-            'data': metrics
-        })
     except Exception as e:
-        logger.error(f"Error getting metrics: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        logger.error(f"Script generation error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/costs', methods=['GET'])
-def get_costs() -> Dict[str, Any]:
-    """
-    Get AWS cost data from Cost Explorer.
-    
-    Query Parameters:
-        days: Number of days to retrieve (default: 30)
-    
-    Returns:
-        JSON response with cost data
-    """
+@app.route('/api/regions')
+def list_regions():
+    """Get available AWS regions"""
     try:
-        days = int(request.args.get('days', 30))
-        costs = aws_client.get_costs(days=days)
-        
-        return jsonify({
-            'success': True,
-            'data': costs
-        })
+        monitor = ResourceMonitor()
+        regions = monitor.get_regions()
+        return jsonify({'regions': regions})
     except Exception as e:
-        logger.error(f"Error getting costs: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-@app.route('/api/resource/details', methods=['GET'])
-def get_resource_details() -> Dict[str, Any]:
-    """
-    Get detailed information about a specific resource.
-    
-    Query Parameters:
-        resource_id: Resource identifier
-        resource_type: Type of resource (ec2, rds, lambda, s3, ebs)
-        region: AWS region
-    
-    Returns:
-        JSON response with detailed resource information
-    """
-    try:
-        resource_id = request.args.get('resource_id')
-        resource_type = request.args.get('resource_type')
-        region = request.args.get('region', Config.DEFAULT_REGION)
-        
-        if not resource_id or not resource_type:
-            return jsonify({
-                'success': False,
-                'error': 'Missing required parameters: resource_id, resource_type'
-            }), 400
-        
-        details = aws_client.get_resource_details(resource_id, resource_type, region)
-        
-        return jsonify({
-            'success': True,
-            'data': details
-        })
-    except Exception as e:
-        logger.error(f"Error getting resource details: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-@app.route('/api/bottlenecks', methods=['GET'])
-def detect_bottlenecks() -> Dict[str, Any]:
-    """
-    Detect resource bottlenecks and optimization opportunities.
-    
-    Query Parameters:
-        region: AWS region to scan (default: us-east-1)
-    
-    Returns:
-        JSON response with bottleneck information
-    """
-    try:
-        region = request.args.get('region', Config.DEFAULT_REGION)
-        bottlenecks = aws_client.detect_bottlenecks(region)
-        
-        return jsonify({
-            'success': True,
-            'data': bottlenecks
-        })
-    except Exception as e:
-        logger.error(f"Error detecting bottlenecks: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-# ============================================================================
-# MONITORING ENDPOINTS
-# ============================================================================
-
-@app.route('/api/monitoring/status', methods=['GET'])
-def get_monitoring_status() -> Dict[str, Any]:
-    """
-    Get current monitoring status.
-    
-    Returns:
-        JSON with monitoring enabled status and monitored resources
-    """
-    return jsonify({
-        'success': True,
-        'data': {
-            'enabled': monitor.monitoring_enabled,
-            'interval_minutes': Config.MONITORING_INTERVAL_MINUTES,
-            'monitored_resources': monitor.get_monitored_resources()
-        }
-    })
-
-
-@app.route('/api/monitoring/start', methods=['POST'])
-def start_monitoring() -> Dict[str, Any]:
-    """Start background monitoring."""
-    try:
-        monitor.start()
-        return jsonify({
-            'success': True,
-            'message': 'Monitoring started'
-        })
-    except Exception as e:
-        logger.error(f"Error starting monitoring: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-@app.route('/api/monitoring/stop', methods=['POST'])
-def stop_monitoring() -> Dict[str, Any]:
-    """Stop background monitoring."""
-    try:
-        monitor.stop()
-        return jsonify({
-            'success': True,
-            'message': 'Monitoring stopped'
-        })
-    except Exception as e:
-        logger.error(f"Error stopping monitoring: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-@app.route('/api/monitoring/add', methods=['POST'])
-def add_monitored_resource() -> Dict[str, Any]:
-    """
-    Add a resource to monitor.
-    
-    Request Body:
-        {
-            "id": "i-1234567890",
-            "type": "ec2",
-            "region": "us-east-1",
-            "cpu_threshold": 80  // optional
-        }
-    """
-    try:
-        resource = request.get_json()
-        
-        # Validate required fields
-        required = ['id', 'type', 'region']
-        if not all(k in resource for k in required):
-            return jsonify({
-                'success': False,
-                'error': 'Missing required fields: id, type, region'
-            }), 400
-        
-        monitor.add_resource(resource)
-        
-        return jsonify({
-            'success': True,
-            'message': f'Added {resource["id"]} to monitoring'
-        })
-    except Exception as e:
-        logger.error(f"Error adding monitored resource: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-@app.route('/api/monitoring/remove/<resource_id>', methods=['DELETE'])
-def remove_monitored_resource(resource_id: str) -> Dict[str, Any]:
-    """Remove a resource from monitoring."""
-    try:
-        monitor.remove_resource(resource_id)
-        return jsonify({
-            'success': True,
-            'message': f'Removed {resource_id} from monitoring'
-        })
-    except Exception as e:
-        logger.error(f"Error removing monitored resource: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-@app.route('/api/alerts/test', methods=['POST'])
-def test_alert() -> Dict[str, Any]:
-    """Send a test alert email."""
-    try:
-        from app.alerts import AlertManager
-        alert_manager = AlertManager()
-        alert_manager.test_alert()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Test alert sent'
-        })
-    except Exception as e:
-        logger.error(f"Error sending test alert: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-# ============================================================================
-# COST REPORT ENDPOINTS
-# ============================================================================
-
-@app.route('/api/reports/generate', methods=['POST'])
-def generate_cost_report() -> Dict[str, Any]:
-    """
-    Generate a cost report for selected resources.
-    
-    Request Body:
-        {
-            "resources": [
-                {"id": "i-123", "type": "ec2", "region": "us-east-1", "name": "Web Server"}
-            ],
-            "period": "daily",  // or "weekly", "monthly"
-            "send_email": true
-        }
-    """
-    try:
-        from app.cost_reports import report_generator
-        
-        data = request.get_json()
-        resources = data.get('resources', [])
-        period = data.get('period', 'daily')
-        send_email = data.get('send_email', False)
-        
-        if not resources:
-            return jsonify({
-                'success': False,
-                'error': 'No resources specified'
-            }), 400
-        
-        if period not in ['daily', 'weekly', 'monthly']:
-            return jsonify({
-                'success': False,
-                'error': 'Invalid period. Must be daily, weekly, or monthly'
-            }), 400
-        
-        # Generate report
-        report = report_generator.generate_report(
-            resources=resources,
-            period=period,
-            send_email=send_email
-        )
-        
-        return jsonify({
-            'success': True,
-            'data': report,
-            'message': f'Report generated: ${report["total_cost"]:.2f}'
-        })
-    
-    except Exception as e:
-        logger.error(f"Error generating cost report: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-@app.route('/api/reports/schedule', methods=['POST'])
-def schedule_cost_report() -> Dict[str, Any]:
-    """
-    Schedule a recurring cost report.
-    
-    Request Body:
-        {
-            "name": "Weekly EC2 Report",
-            "resources": [...],
-            "period": "weekly",
-            "schedule": "weekly_monday"  // or "daily", "monthly_1st", "custom_06:00"
-        }
-    """
-    try:
-        data = request.get_json()
-        name = data.get('name')
-        resources = data.get('resources', [])
-        period = data.get('period', 'weekly')
-        schedule = data.get('schedule', 'weekly_monday')
-        
-        if not name:
-            return jsonify({
-                'success': False,
-                'error': 'Report name is required'
-            }), 400
-        
-        if not resources:
-            return jsonify({
-                'success': False,
-                'error': 'No resources specified'
-            }), 400
-        
-        # Add to scheduler
-        monitor.add_scheduled_report(
-            name=name,
-            resources=resources,
-            period=period,
-            schedule=schedule
-        )
-        
-        return jsonify({
-            'success': True,
-            'message': f'Scheduled report: {name}'
-        })
-    
-    except Exception as e:
-        logger.error(f"Error scheduling cost report: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-@app.route('/api/reports/scheduled', methods=['GET'])
-def get_scheduled_reports() -> Dict[str, Any]:
-    """Get list of scheduled cost reports."""
-    try:
-        reports = monitor.get_scheduled_reports()
-        
-        return jsonify({
-            'success': True,
-            'data': reports
-        })
-    except Exception as e:
-        logger.error(f"Error getting scheduled reports: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-
-@app.route('/api/reports/scheduled/<name>', methods=['DELETE'])
-def remove_scheduled_report(name: str) -> Dict[str, Any]:
-    """Remove a scheduled cost report."""
-    try:
-        monitor.remove_scheduled_report(name)
-        
-        return jsonify({
-            'success': True,
-            'message': f'Removed scheduled report: {name}'
-        })
-    except Exception as e:
-        logger.error(f"Error removing scheduled report: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
-    app.run(
-        host='0.0.0.0',
-        port=5000,
-        debug=Config.DEBUG
-    )
-
-# ============================================================================
-# COST OPTIMIZATION ENDPOINTS
-# ============================================================================
-
-@app.route('/api/optimization/analyze', methods=['POST'])
-def analyze_cost_optimization():
-    """Analyze resources for cost optimization opportunities."""
-    try:
-        from app.cost_optimizer import cost_optimizer
-        
-        data = request.get_json()
-        regions = data.get('regions', [Config.DEFAULT_REGION])
-        
-        if not regions:
-            return jsonify({'success': False, 'error': 'No regions specified'}), 400
-        
-        recommendations = cost_optimizer.analyze_all(regions)
-        return jsonify({'success': True, 'data': recommendations})
-    except Exception as e:
-        logger.error(f"Error analyzing cost optimization: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-# ============================================================================
-# SECURITY AUDIT ENDPOINTS
-# ============================================================================
-
-@app.route('/api/security/audit', methods=['POST'])
-def security_audit():
-    """Run security audit across specified regions."""
-    try:
-        from app.security_auditor import security_auditor
-        
-        data = request.get_json()
-        regions = data.get('regions', [Config.DEFAULT_REGION])
-        
-        if not regions:
-            return jsonify({'success': False, 'error': 'No regions specified'}), 400
-        
-        findings = security_auditor.audit_all(regions)
-        return jsonify({'success': True, 'data': findings})
-    except Exception as e:
-        logger.error(f"Error running security audit: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    app.run(host='0.0.0.0', port=5000, debug=True)

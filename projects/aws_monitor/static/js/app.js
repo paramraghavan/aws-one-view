@@ -1,1504 +1,615 @@
-/* ============================================================================
-   AWS Resource Monitor - Frontend Application
-   Clean, maintainable JavaScript organized by feature
-   ============================================================================ */
+// AWS Monitor - UI Controller
 
-// ----------------------------------------------------------------------------
-// GLOBAL STATE
-// ----------------------------------------------------------------------------
+let discoveredResources = null;
 let selectedResources = [];
-let currentResourceType = 'ec2';
-let allResources = null;
-let metricsChart = null;
-let costChart = null;
 
-// ----------------------------------------------------------------------------
-// INITIALIZATION
-// ----------------------------------------------------------------------------
-$(document).ready(function() {
-    initializeApp();
-    setupEventHandlers();
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    setupEventListeners();
 });
 
-function initializeApp() {
-    console.log('Initializing AWS Resource Monitor...');
-    loadRegions();
-    loadMonitoringStatus();
-    loadScheduledReports();
+function setupEventListeners() {
+    // Discover resources
+    document.getElementById('discover-btn').addEventListener('click', discoverResources);
+    
+    // Get metrics
+    document.getElementById('metrics-btn').addEventListener('click', getMetrics);
+    
+    // Analyze costs
+    document.getElementById('cost-btn').addEventListener('click', analyzeCosts);
+    
+    // Check alerts
+    document.getElementById('alerts-btn').addEventListener('click', checkAlerts);
+    
+    // Generate script
+    document.getElementById('generate-script-btn').addEventListener('click', generateScript);
+    
+    // Load all regions
+    document.getElementById('load-more-regions').addEventListener('click', loadAllRegions);
 }
 
-// ----------------------------------------------------------------------------
-// EVENT HANDLERS
-// ----------------------------------------------------------------------------
-function setupEventHandlers() {
-    // Load resources button
-    $('#loadResources').click(loadResources);
+async function discoverResources() {
+    const btn = document.getElementById('discover-btn');
+    const status = document.getElementById('discover-status');
     
-    // Resource type tabs
-    $('.tab-btn').click(function() {
-        $('.tab-btn').removeClass('active');
-        $(this).addClass('active');
-        currentResourceType = $(this).data('type');
-        displayResources();
-    });
-    
-    // Load metrics button
-    $('#loadMetrics').click(loadMetrics);
-    
-    // Load costs button
-    $('#loadCosts').click(loadCosts);
-    
-    // Detect bottlenecks button
-    $('#detectBottlenecks').click(detectBottlenecks);
-    
-    // Monitoring controls
-    $('#startMonitoring').click(startMonitoring);
-    $('#stopMonitoring').click(stopMonitoring);
-    $('#addToMonitoring').click(addSelectedToMonitoring);
-    $('#testAlert').click(sendTestAlert);
-    
-    // Cost report controls
-    $('#generateReport').click(generateCostReport);
-    $('#scheduleReport').click(scheduleCostReport);
-    
-    // Cost optimization
-    $('#analyzeCosts').click(analyzeCostOptimization);
-    
-    // Security audit
-    $('#runSecurityAudit').click(runSecurityAudit);
-}
-
-// ----------------------------------------------------------------------------
-// REGION MANAGEMENT
-// ----------------------------------------------------------------------------
-function loadRegions() {
-    $.ajax({
-        url: '/api/regions',
-        method: 'GET',
-        success: function(response) {
-            if (response.success) {
-                displayRegions(response.data);
-            } else {
-                showError('Failed to load regions');
-            }
-        },
-        error: function() {
-            showError('Error connecting to server');
-        }
-    });
-}
-
-function displayRegions(regions) {
-    const container = $('#regionSelector');
-    container.empty();
-    
-    // Pre-select common regions
-    const defaultRegions = ['us-east-1', 'us-west-2'];
-    
-    regions.forEach(region => {
-        const checked = defaultRegions.includes(region) ? 'checked' : '';
-        const html = `
-            <div class="region-item">
-                <input type="checkbox" id="region-${region}" value="${region}" ${checked}>
-                <label for="region-${region}">${region}</label>
-            </div>
-        `;
-        container.append(html);
-    });
-}
-
-function getSelectedRegions() {
-    const selected = [];
-    $('#regionSelector input:checked').each(function() {
-        selected.push($(this).val());
-    });
-    return selected.length > 0 ? selected : ['us-east-1'];
-}
-
-// ----------------------------------------------------------------------------
-// RESOURCE MANAGEMENT
-// ----------------------------------------------------------------------------
-function loadResources() {
-    const regions = getSelectedRegions();
+    // Get selected regions
+    const regions = Array.from(document.querySelectorAll('#region-selection input[type="checkbox"]:checked'))
+        .map(cb => cb.value);
     
     if (regions.length === 0) {
-        alert('Please select at least one region');
+        showStatus(status, 'Please select at least one region', 'error');
         return;
     }
     
-    $('#resourceList').html('<div class="loading">Loading resources</div>');
-    
-    $.ajax({
-        url: '/api/resources',
-        method: 'GET',
-        data: { regions: regions },
-        traditional: true,
-        success: function(response) {
-            if (response.success) {
-                allResources = response.data;
-                displayResources();
-            } else {
-                showError('Failed to load resources: ' + response.error);
-            }
-        },
-        error: function(xhr) {
-            showError('Error loading resources');
-        }
-    });
-}
-
-function displayResources() {
-    if (!allResources) {
-        return;
+    // Get filters
+    const filters = {};
+    const tagKey = document.getElementById('filter-tag-key').value.trim();
+    const tagValue = document.getElementById('filter-tag-value').value.trim();
+    if (tagKey && tagValue) {
+        filters.tags = {[tagKey]: tagValue};
     }
     
-    const resources = allResources[currentResourceType] || [];
-    const container = $('#resourceList');
-    container.empty();
-    
-    if (resources.length === 0) {
-        container.html('<p class="info-text">No ' + currentResourceType.toUpperCase() + ' resources found</p>');
-        return;
+    const names = document.getElementById('filter-names').value.trim();
+    if (names) {
+        filters.names = names.split(',').map(s => s.trim());
     }
     
-    // Build table based on resource type
-    let table = '<table class="resource-table"><thead><tr>';
+    const ids = document.getElementById('filter-ids').value.trim();
+    if (ids) {
+        filters.ids = ids.split(',').map(s => s.trim());
+    }
     
-    // Define columns for each resource type
-    const columns = getColumnsForResourceType(currentResourceType);
-    table += '<th><input type="checkbox" id="selectAll"></th>';
-    columns.forEach(col => table += '<th>' + col + '</th>');
-    table += '<th>Actions</th>';  // Add actions column
-    table += '</tr></thead><tbody>';
-    
-    // Add rows
-    resources.forEach(resource => {
-        table += '<tr>';
-        table += '<td><input type="checkbox" class="resource-checkbox" data-id="' + resource.id + '" data-region="' + resource.region + '"></td>';
-        table += getRowContentForResource(currentResourceType, resource);
-        // Add view details button
-        table += '<td><button class="btn-details" data-id="' + resource.id + '" data-region="' + resource.region + '" data-type="' + currentResourceType + '">📋 Details</button></td>';
-        table += '</tr>';
-    });
-    
-    table += '</tbody></table>';
-    container.html(table);
-    
-    // Setup checkbox handlers
-    setupResourceCheckboxes();
-    
-    // Setup detail button handlers
-    $('.btn-details').click(function() {
-        const resourceId = $(this).data('id');
-        const region = $(this).data('region');
-        const type = $(this).data('type');
-        showResourceDetails(resourceId, type, region);
-    });
-}
-
-// ----------------------------------------------------------------------------
-// RESOURCE DETAILS
-// ----------------------------------------------------------------------------
-function showResourceDetails(resourceId, resourceType, region) {
     // Show loading
-    showDetailModal('Loading...', '<div class="loading">Fetching resource details</div>');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> Discovering...';
+    showStatus(status, 'Scanning regions for resources...', 'loading');
     
-    $.ajax({
-        url: '/api/resource/details',
-        method: 'GET',
-        data: {
-            resource_id: resourceId,
-            resource_type: resourceType,
-            region: region
-        },
-        success: function(response) {
-            if (response.success) {
-                displayResourceDetails(response.data, resourceType);
-            } else {
-                showDetailModal('Error', '<div class="alert alert-error">' + response.error + '</div>');
-            }
-        },
-        error: function() {
-            showDetailModal('Error', '<div class="alert alert-error">Failed to load resource details</div>');
-        }
-    });
+    try {
+        const response = await fetch('/api/discover', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({regions, filters})
+        });
+        
+        if (!response.ok) throw new Error('Discovery failed');
+        
+        discoveredResources = await response.json();
+        
+        // Display results
+        displayResourceSummary(discoveredResources.summary);
+        displayResourceList(discoveredResources.regions);
+        
+        showStatus(status, `Found ${Object.values(discoveredResources.summary).reduce((a, b) => a + b, 0)} resources`, 'success');
+        
+        // Enable metric and alert buttons
+        document.getElementById('metrics-btn').disabled = false;
+        document.getElementById('alerts-btn').disabled = false;
+        
+    } catch (error) {
+        showStatus(status, `Error: ${error.message}`, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🔍 Discover Resources';
+    }
 }
 
-function displayResourceDetails(details, resourceType) {
-    let html = '<div class="resource-details">';
+function displayResourceSummary(summary) {
+    const container = document.getElementById('resource-summary');
+    container.innerHTML = '<h3>Resource Summary</h3>';
     
-    // Format details based on resource type
-    if (resourceType === 'ec2') {
-        html += `
-            <div class="detail-section">
-                <h4>📊 Current Status</h4>
-                <div class="detail-grid">
-                    <div class="detail-item">
-                        <label>State</label>
-                        <span class="status-badge status-${details.state}">${details.state}</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Current CPU</label>
-                        <span class="metric-value">${details.current_cpu}%</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Type</label>
-                        <span>${details.type}</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Availability Zone</label>
-                        <span>${details.az}</span>
-                    </div>
-                </div>
-            </div>
+    const grid = document.createElement('div');
+    grid.style.display = 'grid';
+    grid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(150px, 1fr))';
+    grid.style.gap = '15px';
+    grid.style.marginTop = '15px';
+    
+    for (const [type, count] of Object.entries(summary)) {
+        if (count > 0) {
+            const card = document.createElement('div');
+            card.className = 'summary-card';
+            card.innerHTML = `
+                <div class="number">${count}</div>
+                <div class="label">${type.toUpperCase()}</div>
+            `;
+            grid.appendChild(card);
+        }
+    }
+    
+    container.appendChild(grid);
+}
+
+function displayResourceList(regionsData) {
+    const container = document.getElementById('resource-list');
+    container.innerHTML = '<h3>Resources by Region</h3>';
+    
+    for (const [region, resourceTypes] of Object.entries(regionsData)) {
+        for (const [type, resources] of Object.entries(resourceTypes)) {
+            if (resources.length === 0) continue;
             
-            <div class="detail-section">
-                <h4>🌐 Network</h4>
-                <div class="detail-grid">
-                    <div class="detail-item">
-                        <label>Private IP</label>
-                        <span>${details.private_ip}</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Public IP</label>
-                        <span>${details.public_ip}</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>VPC</label>
-                        <span>${details.vpc_id}</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Subnet</label>
-                        <span>${details.subnet_id}</span>
-                    </div>
-                </div>
-            </div>
+            const section = document.createElement('div');
+            section.style.marginTop = '20px';
             
-            <div class="detail-section">
-                <h4>🔒 Security</h4>
-                <div class="detail-item">
-                    <label>Security Groups</label>
-                    <span>${details.security_groups.join(', ')}</span>
-                </div>
-            </div>
+            const title = document.createElement('h4');
+            title.textContent = `${type.toUpperCase()} in ${region}`;
+            title.style.color = '#667eea';
+            section.appendChild(title);
             
-            <div class="detail-section">
-                <h4>ℹ️ Info</h4>
-                <div class="detail-grid">
-                    <div class="detail-item">
-                        <label>Launch Time</label>
-                        <span>${new Date(details.launch_time).toLocaleString()}</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Platform</label>
-                        <span>${details.platform}</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Monitoring</label>
-                        <span>${details.monitoring}</span>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        // Tags
-        if (Object.keys(details.tags).length > 0) {
-            html += '<div class="detail-section"><h4>🏷️ Tags</h4><div class="tags">';
-            Object.entries(details.tags).forEach(([key, value]) => {
-                html += `<span class="tag"><strong>${key}:</strong> ${value}</span>`;
+            const table = document.createElement('table');
+            table.className = 'resource-table';
+            
+            // Table header
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            headerRow.innerHTML = `
+                <th><input type="checkbox" class="select-all" data-type="${type}" data-region="${region}"></th>
+                <th>Name/ID</th>
+                <th>Type/Class</th>
+                <th>State/Status</th>
+                <th>Details</th>
+            `;
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+            
+            // Table body
+            const tbody = document.createElement('tbody');
+            resources.forEach(resource => {
+                const row = document.createElement('tr');
+                const resourceId = resource.id || resource.name;
+                
+                row.innerHTML = `
+                    <td><input type="checkbox" class="resource-checkbox" data-type="${type}" data-id="${resourceId}" data-region="${region}"></td>
+                    <td>${resource.name || resource.id || 'N/A'}</td>
+                    <td>${resource.type || resource.class || resource.engine || resource.runtime || 'N/A'}</td>
+                    <td><span class="badge badge-${(resource.state || resource.status || '').toLowerCase()}">${resource.state || resource.status || 'N/A'}</span></td>
+                    <td>${getResourceDetails(type, resource)}</td>
+                `;
+                tbody.appendChild(row);
             });
-            html += '</div></div>';
+            table.appendChild(tbody);
+            
+            section.appendChild(table);
+            container.appendChild(section);
         }
-    } else if (resourceType === 'rds') {
-        html += `
-            <div class="detail-section">
-                <h4>📊 Current Status</h4>
-                <div class="detail-grid">
-                    <div class="detail-item">
-                        <label>Status</label>
-                        <span class="status-badge status-${details.status}">${details.status}</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Current CPU</label>
-                        <span class="metric-value">${details.current_cpu}%</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Class</label>
-                        <span>${details.class}</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Multi-AZ</label>
-                        <span>${details.multi_az ? 'Yes' : 'No'}</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="detail-section">
-                <h4>🗄️ Database</h4>
-                <div class="detail-grid">
-                    <div class="detail-item">
-                        <label>Engine</label>
-                        <span>${details.engine} ${details.engine_version}</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Endpoint</label>
-                        <span>${details.endpoint}:${details.port}</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Storage</label>
-                        <span>${details.storage_gb} GB (${details.storage_type})</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Backup Retention</label>
-                        <span>${details.backup_retention} days</span>
-                    </div>
-                </div>
-            </div>
-        `;
-    } else if (resourceType === 'lambda') {
-        html += `
-            <div class="detail-section">
-                <h4>⚡ Function Configuration</h4>
-                <div class="detail-grid">
-                    <div class="detail-item">
-                        <label>Runtime</label>
-                        <span>${details.runtime}</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Memory</label>
-                        <span>${details.memory_mb} MB</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Timeout</label>
-                        <span>${details.timeout_sec} seconds</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Code Size</label>
-                        <span>${(details.code_size_bytes / 1024 / 1024).toFixed(2)} MB</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="detail-section">
-                <h4>📈 Usage (Last 24h)</h4>
-                <div class="detail-item">
-                    <label>Invocations</label>
-                    <span class="metric-value">${details.invocations_24h.toLocaleString()}</span>
-                </div>
-            </div>
-            
-            <div class="detail-section">
-                <h4>ℹ️ Info</h4>
-                <div class="detail-grid">
-                    <div class="detail-item">
-                        <label>Handler</label>
-                        <span>${details.handler}</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Last Modified</label>
-                        <span>${details.last_modified}</span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Layers</label>
-                        <span>${details.layers}</span>
-                    </div>
-                </div>
-            </div>
-        `;
     }
     
-    html += '</div>';
-    
-    showDetailModal(details.id, html);
-}
-
-function showDetailModal(title, content) {
-    // Create modal if it doesn't exist
-    if ($('#detailModal').length === 0) {
-        $('body').append(`
-            <div id="detailModal" class="modal">
-                <div class="modal-content">
-                    <span class="modal-close">&times;</span>
-                    <h2 id="modalTitle"></h2>
-                    <div id="modalBody"></div>
-                </div>
-            </div>
-        `);
-        
-        // Close button handler
-        $('.modal-close').click(function() {
-            $('#detailModal').hide();
+    // Add select-all handlers
+    document.querySelectorAll('.select-all').forEach(checkbox => {
+        checkbox.addEventListener('change', (e) => {
+            const type = e.target.dataset.type;
+            const region = e.target.dataset.region;
+            const checkboxes = document.querySelectorAll(`.resource-checkbox[data-type="${type}"][data-region="${region}"]`);
+            checkboxes.forEach(cb => cb.checked = e.target.checked);
         });
-        
-        // Click outside to close
-        $('#detailModal').click(function(e) {
-            if (e.target.id === 'detailModal') {
-                $(this).hide();
-            }
-        });
-    }
-    
-    // Set content and show
-    $('#modalTitle').text(title);
-    $('#modalBody').html(content);
-    $('#detailModal').show();
-}
-
-function getColumnsForResourceType(type) {
-    const columnMap = {
-        'ec2': ['Instance ID', 'Type', 'State', 'Region'],
-        'rds': ['DB ID', 'Class', 'Engine', 'Status', 'Region'],
-        's3': ['Bucket Name', 'Region', 'Created'],
-        'lambda': ['Function Name', 'Runtime', 'Memory (MB)', 'Region'],
-        'ebs': ['Volume ID', 'Size (GB)', 'Type', 'State', 'Region']
-    };
-    return columnMap[type] || [];
-}
-
-function getRowContentForResource(type, resource) {
-    let html = '';
-    
-    switch(type) {
-        case 'ec2':
-            html += '<td>' + resource.id + '</td>';
-            html += '<td>' + resource.type + '</td>';
-            html += '<td><span class="status-badge status-' + resource.state + '">' + resource.state + '</span></td>';
-            html += '<td>' + resource.region + '</td>';
-            break;
-        
-        case 'rds':
-            html += '<td>' + resource.id + '</td>';
-            html += '<td>' + resource.class + '</td>';
-            html += '<td>' + resource.engine + '</td>';
-            html += '<td><span class="status-badge status-' + resource.status + '">' + resource.status + '</span></td>';
-            html += '<td>' + resource.region + '</td>';
-            break;
-        
-        case 's3':
-            html += '<td>' + resource.id + '</td>';
-            html += '<td>' + resource.region + '</td>';
-            html += '<td>' + new Date(resource.created).toLocaleDateString() + '</td>';
-            break;
-        
-        case 'lambda':
-            html += '<td>' + resource.id + '</td>';
-            html += '<td>' + resource.runtime + '</td>';
-            html += '<td>' + resource.memory_mb + '</td>';
-            html += '<td>' + resource.region + '</td>';
-            break;
-        
-        case 'ebs':
-            html += '<td>' + resource.id + '</td>';
-            html += '<td>' + resource.size_gb + '</td>';
-            html += '<td>' + resource.type + '</td>';
-            html += '<td><span class="status-badge status-' + resource.state + '">' + resource.state + '</span></td>';
-            html += '<td>' + resource.region + '</td>';
-            break;
-    }
-    
-    return html;
-}
-
-function setupResourceCheckboxes() {
-    // Select all checkbox
-    $('#selectAll').change(function() {
-        $('.resource-checkbox').prop('checked', $(this).is(':checked'));
-        updateSelectedResources();
     });
     
-    // Individual checkboxes
-    $('.resource-checkbox').change(function() {
-        updateSelectedResources();
+    // Track selected resources
+    document.querySelectorAll('.resource-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', updateSelectedResources);
     });
+}
+
+function getResourceDetails(type, resource) {
+    if (type === 'ec2') {
+        return `${resource.private_ip || 'N/A'} | AZ: ${resource.az || 'N/A'}`;
+    } else if (type === 'rds') {
+        return `${resource.engine} ${resource.version || ''} | Multi-AZ: ${resource.multi_az ? 'Yes' : 'No'}`;
+    } else if (type === 'lambda') {
+        return `${resource.memory || 0} MB | Timeout: ${resource.timeout || 0}s`;
+    } else if (type === 'eks') {
+        return `Version ${resource.version || 'N/A'} | Nodes: ${resource.node_groups?.length || 0}`;
+    } else if (type === 'emr') {
+        return `${resource.release_label || 'N/A'}`;
+    } else if (type === 'ebs') {
+        return `${resource.size} GB | ${resource.type} | Encrypted: ${resource.encrypted ? 'Yes' : 'No'}`;
+    }
+    return 'N/A';
 }
 
 function updateSelectedResources() {
-    selectedResources = [];
-    
-    $('.resource-checkbox:checked').each(function() {
-        selectedResources.push({
-            id: $(this).data('id'),
-            region: $(this).data('region'),
-            type: currentResourceType
-        });
-    });
-    
-    // Show/hide metrics section based on selection
-    if (selectedResources.length > 0 && ['ec2', 'rds', 'lambda'].includes(currentResourceType)) {
-        $('#metricsSection').show();
-        $('#monitoringActions').show();
-    } else {
-        $('#metricsSection').hide();
-        if (selectedResources.length === 0) {
-            $('#monitoringActions').hide();
-        }
-    }
-    
-    console.log('Selected resources:', selectedResources.length);
+    selectedResources = Array.from(document.querySelectorAll('.resource-checkbox:checked'))
+        .map(cb => ({
+            type: cb.dataset.type,
+            id: cb.dataset.id,
+            region: cb.dataset.region
+        }));
 }
 
-// ----------------------------------------------------------------------------
-// METRICS VISUALIZATION
-// ----------------------------------------------------------------------------
-function loadMetrics() {
+async function getMetrics() {
     if (selectedResources.length === 0) {
         alert('Please select resources first');
         return;
     }
     
-    const resourceIds = selectedResources.map(r => r.id);
-    const region = selectedResources[0].region;
-    const hours = parseInt($('#metricHours').val());
+    const btn = document.getElementById('metrics-btn');
+    const results = document.getElementById('metrics-results');
+    const period = parseInt(document.getElementById('metrics-period').value);
     
-    $.ajax({
-        url: '/api/metrics',
-        method: 'GET',
-        data: {
-            resource_ids: resourceIds,
-            resource_type: currentResourceType,
-            region: region,
-            hours: hours
-        },
-        traditional: true,
-        success: function(response) {
-            if (response.success) {
-                displayMetrics(response.data);
-            } else {
-                showError('Failed to load metrics');
-            }
-        },
-        error: function() {
-            showError('Error loading metrics');
-        }
-    });
-}
-
-function displayMetrics(metricsData) {
-    const ctx = document.getElementById('metricsChart');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> Loading...';
+    results.innerHTML = '<p class="status loading">Collecting metrics...</p>';
     
-    // Destroy existing chart
-    if (metricsChart) {
-        metricsChart.destroy();
+    try {
+        const response = await fetch('/api/metrics', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({resources: selectedResources, period})
+        });
+        
+        if (!response.ok) throw new Error('Failed to get metrics');
+        
+        const metrics = await response.json();
+        displayMetrics(metrics);
+        
+    } catch (error) {
+        results.innerHTML = `<p class="status error">Error: ${error.message}</p>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '📊 Get Metrics';
     }
-    
-    // Prepare datasets
-    const datasets = [];
-    const colors = ['#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a'];
-    let colorIndex = 0;
-    
-    Object.entries(metricsData).forEach(([resourceId, metrics]) => {
-        if (metrics.cpu && metrics.cpu.length > 0) {
-            datasets.push({
-                label: resourceId + ' CPU',
-                data: metrics.cpu.map(dp => ({
-                    x: new Date(dp.Timestamp),
-                    y: dp.Average
-                })),
-                borderColor: colors[colorIndex % colors.length],
-                backgroundColor: colors[colorIndex % colors.length] + '33',
-                tension: 0.4
-            });
-            colorIndex++;
-        }
-    });
-    
-    // Create chart
-    metricsChart = new Chart(ctx, {
-        type: 'line',
-        data: { datasets: datasets },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'top'
-                }
-            },
-            scales: {
-                x: {
-                    type: 'time',
-                    time: {
-                        unit: 'hour'
-                    }
-                },
-                y: {
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'CPU Utilization (%)'
-                    }
-                }
-            }
-        }
-    });
 }
 
-// ----------------------------------------------------------------------------
-// COST ANALYSIS
-// ----------------------------------------------------------------------------
-function loadCosts() {
-    const days = parseInt($('#costDays').val());
+function displayMetrics(metrics) {
+    const container = document.getElementById('metrics-results');
+    container.innerHTML = '<h3>Performance Metrics</h3>';
     
-    $('#costDisplay').html('<div class="loading">Loading cost data</div>');
-    
-    $.ajax({
-        url: '/api/costs',
-        method: 'GET',
-        data: { days: days },
-        success: function(response) {
-            if (response.success) {
-                displayCosts(response.data);
-            } else {
-                showError('Failed to load costs: ' + (response.data.error || 'Unknown error'));
-            }
-        },
-        error: function() {
-            showError('Error loading costs');
+    for (const [resourceKey, resourceMetrics] of Object.entries(metrics)) {
+        if (resourceMetrics.error) {
+            container.innerHTML += `<p class="status error">${resourceKey}: ${resourceMetrics.error}</p>`;
+            continue;
         }
-    });
+        
+        const card = document.createElement('div');
+        card.className = 'metric-card';
+        card.innerHTML = `<h4>${resourceKey}</h4>`;
+        
+        const grid = document.createElement('div');
+        grid.className = 'metric-grid';
+        
+        for (const [metricName, metricData] of Object.entries(resourceMetrics)) {
+            if (typeof metricData === 'object' && metricData !== null) {
+                const item = document.createElement('div');
+                item.className = 'metric-item';
+                
+                let value = metricData.current || metricData.total || metricData.avg || 0;
+                value = typeof value === 'number' ? value.toFixed(2) : value;
+                
+                item.innerHTML = `
+                    <div class="label">${formatMetricName(metricName)}</div>
+                    <div class="value">${value}</div>
+                `;
+                grid.appendChild(item);
+            }
+        }
+        
+        card.appendChild(grid);
+        container.appendChild(card);
+    }
 }
 
-function displayCosts(costData) {
-    const container = $('#costDisplay');
+function formatMetricName(name) {
+    return name
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/^./, str => str.toUpperCase())
+        .trim();
+}
+
+async function analyzeCosts() {
+    const btn = document.getElementById('cost-btn');
+    const results = document.getElementById('cost-results');
+    const days = parseInt(document.getElementById('cost-days').value);
     
-    if (costData.error) {
-        container.html(`<div class="alert alert-error">${costData.error}</div>`);
+    const regions = Array.from(document.querySelectorAll('#region-selection input[type="checkbox"]:checked'))
+        .map(cb => cb.value);
+    
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> Analyzing...';
+    results.innerHTML = '<p class="status loading">Analyzing costs...</p>';
+    
+    try {
+        const response = await fetch('/api/costs', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({regions, days})
+        });
+        
+        if (!response.ok) throw new Error('Cost analysis failed');
+        
+        const costs = await response.json();
+        displayCosts(costs);
+        
+    } catch (error) {
+        results.innerHTML = `<p class="status error">Error: ${error.message}</p>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '💰 Analyze Costs';
+    }
+}
+
+function displayCosts(costs) {
+    const container = document.getElementById('cost-results');
+    
+    if (costs.error) {
+        container.innerHTML = `<p class="status error">${costs.error}</p>`;
         return;
     }
     
-    // Display total cost
-    let html = `
+    container.innerHTML = `
         <div class="cost-summary">
-            <div class="cost-card">
-                <h4>Total Cost (${costData.period_days} days)</h4>
-                <div class="amount">$${costData.total.toFixed(2)}</div>
-            </div>
-            <div class="cost-card">
-                <h4>Services</h4>
-                <div class="amount">${costData.service_count}</div>
-            </div>
+            <h3>Cost Summary</h3>
+            <div class="cost-number">$${costs.total_cost}</div>
+            <p>Period: ${costs.period.start} to ${costs.period.end}</p>
+            <p>Daily Average: $${costs.daily_average}</p>
         </div>
     `;
     
-    // Display breakdown by service
-    if (costData.by_service && Object.keys(costData.by_service).length > 0) {
-        html += '<h3 style="margin-top: 20px;">Cost Breakdown by Service</h3>';
-        html += '<div class="service-costs">';
-        
-        // Sort and display all services
-        Object.entries(costData.by_service).forEach(([service, data]) => {
-            const color = data.total > 0 ? '#28a745' : '#999';
-            html += `
-                <div class="service-cost-item">
-                    <div class="service-name">${service}</div>
-                    <div class="service-cost" style="color: ${color};">
-                        $${data.total.toFixed(2)} 
-                        <span class="cost-percentage">(${data.percentage}%)</span>
-                    </div>
-                </div>
-            `;
-        });
-        
-        html += '</div>';
-    }
-    
-    container.html(html);
-    
-    // Show chart
-    $('#costChart').show();
-    displayCostChart(costData.by_service);
-}
-
-function displayCostChart(serviceData) {
-    const ctx = document.getElementById('costChart');
-    
-    if (costChart) {
-        costChart.destroy();
-    }
-    
-    // Extract services and their totals
-    const labels = [];
-    const data = [];
-    const colors = [];
-    
-    Object.entries(serviceData).forEach(([service, info]) => {
-        if (info.total > 0) {  // Only show services with costs
-            labels.push(service);
-            data.push(info.total);
-            // Color code by amount
-            if (info.total > 1000) {
-                colors.push('rgba(220, 53, 69, 0.6)');  // Red for expensive
-            } else if (info.total > 100) {
-                colors.push('rgba(255, 193, 7, 0.6)');  // Yellow for moderate
-            } else {
-                colors.push('rgba(40, 167, 69, 0.6)');  // Green for cheap
-            }
-        }
-    });
-    
-    costChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Cost ($)',
-                data: data,
-                backgroundColor: colors,
-                borderColor: colors.map(c => c.replace('0.6', '1')),
-                borderWidth: 2
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            const service = context.label;
-                            const info = serviceData[service];
-                            return [
-                                `Total: $${context.parsed.y.toFixed(2)}`,
-                                `Percentage: ${info.percentage}%`
-                            ];
-                        }
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        callback: function(value) {
-                            return '$' + value.toFixed(2);
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
-
-// ----------------------------------------------------------------------------
-// BOTTLENECK DETECTION
-// ----------------------------------------------------------------------------
-function detectBottlenecks() {
-    const region = getSelectedRegions()[0];
-    
-    $('#bottleneckDisplay').html('<div class="loading">Scanning for bottlenecks</div>');
-    
-    $.ajax({
-        url: '/api/bottlenecks',
-        method: 'GET',
-        data: { region: region },
-        success: function(response) {
-            if (response.success) {
-                displayBottlenecks(response.data);
-            } else {
-                showError('Failed to detect bottlenecks');
-            }
-        },
-        error: function() {
-            showError('Error detecting bottlenecks');
-        }
-    });
-}
-
-function displayBottlenecks(bottlenecks) {
-    const container = $('#bottleneckDisplay');
-    container.empty();
-    
-    let hasIssues = false;
-    
-    // High CPU resources
-    if (bottlenecks.high_cpu.length > 0) {
-        hasIssues = true;
-        container.append('<h3 style="margin-top: 20px;">⚠️ High CPU Utilization</h3>');
-        
-        bottlenecks.high_cpu.forEach(item => {
-            const html = `
-                <div class="bottleneck-item ${item.severity}">
-                    <h4>${item.resource_id} (${item.type})</h4>
-                    <div class="bottleneck-metrics">
-                        <div class="metric-box">
-                            <label>Average CPU</label>
-                            <div class="value">${item.avg_cpu}%</div>
-                        </div>
-                        <div class="metric-box">
-                            <label>Peak CPU</label>
-                            <div class="value">${item.max_cpu}%</div>
-                        </div>
-                        <div class="metric-box">
-                            <label>Severity</label>
-                            <div class="value">${item.severity.toUpperCase()}</div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            container.append(html);
-        });
-    }
-    
-    // Underutilized resources
-    if (bottlenecks.underutilized.length > 0) {
-        hasIssues = true;
-        container.append('<h3 style="margin-top: 20px;">💡 Underutilized Resources</h3>');
-        
-        bottlenecks.underutilized.forEach(item => {
-            const html = `
-                <div class="bottleneck-item">
-                    <h4>${item.resource_id} (${item.type})</h4>
-                    <p>${item.recommendation}</p>
-                    <div class="bottleneck-metrics">
-                        <div class="metric-box">
-                            <label>Average CPU</label>
-                            <div class="value">${item.avg_cpu}%</div>
-                        </div>
-                    </div>
-                </div>
-            `;
-            container.append(html);
-        });
-    }
-    
-    if (!hasIssues) {
-        container.html('<div class="alert alert-success">✅ No issues detected! Resources are performing well.</div>');
-    }
-}
-
-// ----------------------------------------------------------------------------
-// UTILITY FUNCTIONS
-// ----------------------------------------------------------------------------
-function showError(message) {
-    console.error(message);
-    const html = '<div class="alert alert-error">' + message + '</div>';
-    $('#resourceList').html(html);
-}
-
-// ----------------------------------------------------------------------------
-// BACKGROUND MONITORING
-// ----------------------------------------------------------------------------
-function loadMonitoringStatus() {
-    $.ajax({
-        url: '/api/monitoring/status',
-        method: 'GET',
-        success: function(response) {
-            if (response.success) {
-                updateMonitoringUI(response.data);
-            }
-        },
-        error: function() {
-            console.error('Error loading monitoring status');
-        }
-    });
-}
-
-function updateMonitoringUI(data) {
-    const statusDot = $('.status-dot');
-    const statusText = $('.status-text');
-    
-    if (data.enabled) {
-        statusDot.removeClass('inactive').addClass('active');
-        statusText.text('Monitoring Active (checks every ' + data.interval_minutes + ' minutes)');
-        $('#startMonitoring').hide();
-        $('#stopMonitoring').show();
-    } else {
-        statusDot.removeClass('active').addClass('inactive');
-        statusText.text('Monitoring Inactive');
-        $('#startMonitoring').show();
-        $('#stopMonitoring').hide();
-    }
-    
-    // Display monitored resources
-    displayMonitoredResources(data.monitored_resources);
-}
-
-function displayMonitoredResources(resources) {
-    const container = $('#monitoredResourcesList');
-    
-    if (!resources || resources.length === 0) {
-        container.html('<p class="info-text" style="color: white;">No resources being monitored</p>');
-        return;
-    }
-    
-    let html = '<h4 style="margin-bottom: 10px; color: white;">Monitored Resources:</h4>';
-    
-    resources.forEach(resource => {
-        html += `
-            <div class="monitored-item">
-                <div class="monitored-item-info">
-                    <strong>${resource.id}</strong>
-                    <small>${resource.type} • ${resource.region} • CPU threshold: ${resource.cpu_threshold || 80}%</small>
-                </div>
-                <button class="btn-remove" onclick="removeFromMonitoring('${resource.id}')">Remove</button>
-            </div>
+    // Top services
+    if (costs.by_service && Object.keys(costs.by_service).length > 0) {
+        container.innerHTML += '<h4>Top Services by Cost</h4>';
+        const table = document.createElement('table');
+        table.className = 'resource-table';
+        table.innerHTML = `
+            <thead>
+                <tr>
+                    <th>Service</th>
+                    <th>Cost</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${Object.entries(costs.by_service).map(([service, cost]) => `
+                    <tr>
+                        <td>${service}</td>
+                        <td>$${cost}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
         `;
-    });
-    
-    container.html(html);
-}
-
-function startMonitoring() {
-    $.ajax({
-        url: '/api/monitoring/start',
-        method: 'POST',
-        success: function(response) {
-            if (response.success) {
-                alert('Background monitoring started!');
-                loadMonitoringStatus();
-            }
-        },
-        error: function() {
-            alert('Error starting monitoring');
-        }
-    });
-}
-
-function stopMonitoring() {
-    if (!confirm('Stop background monitoring?')) {
-        return;
+        container.appendChild(table);
     }
     
-    $.ajax({
-        url: '/api/monitoring/stop',
-        method: 'POST',
-        success: function(response) {
-            if (response.success) {
-                alert('Background monitoring stopped');
-                loadMonitoringStatus();
-            }
-        },
-        error: function() {
-            alert('Error stopping monitoring');
-        }
-    });
+    // By region
+    if (costs.by_region && Object.keys(costs.by_region).length > 0) {
+        container.innerHTML += '<h4 style="margin-top:20px">Cost by Region</h4>';
+        const table = document.createElement('table');
+        table.className = 'resource-table';
+        table.innerHTML = `
+            <thead>
+                <tr>
+                    <th>Region</th>
+                    <th>Cost</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${Object.entries(costs.by_region).map(([region, cost]) => `
+                    <tr>
+                        <td>${region}</td>
+                        <td>$${cost}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        `;
+        container.appendChild(table);
+    }
 }
 
-function addSelectedToMonitoring() {
+async function checkAlerts() {
     if (selectedResources.length === 0) {
         alert('Please select resources first');
         return;
     }
     
-    // Only support monitorable resource types
-    const monitorable = ['ec2', 'rds', 'lambda'];
-    const validResources = selectedResources.filter(r => monitorable.includes(r.type));
+    const btn = document.getElementById('alerts-btn');
+    const results = document.getElementById('alerts-results');
     
-    if (validResources.length === 0) {
-        alert('Selected resources cannot be monitored. Only EC2, RDS, and Lambda are supported.');
-        return;
-    }
+    const thresholds = {
+        cpu: parseInt(document.getElementById('threshold-cpu').value),
+        memory: parseInt(document.getElementById('threshold-memory').value)
+    };
     
-    // Get custom threshold
-    const threshold = prompt('Enter CPU threshold (%) for alerts:', '80');
-    if (!threshold) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> Checking...';
+    results.innerHTML = '<p class="status loading">Checking alerts...</p>';
     
-    let addedCount = 0;
-    
-    validResources.forEach(resource => {
-        $.ajax({
-            url: '/api/monitoring/add',
+    try {
+        const response = await fetch('/api/alerts', {
             method: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify({
-                id: resource.id,
-                type: resource.type,
-                region: resource.region,
-                cpu_threshold: parseFloat(threshold)
-            }),
-            success: function(response) {
-                addedCount++;
-                if (addedCount === validResources.length) {
-                    alert(`Added ${addedCount} resource(s) to monitoring`);
-                    loadMonitoringStatus();
-                }
-            },
-            error: function() {
-                console.error('Error adding resource to monitoring');
-            }
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({resources: selectedResources, thresholds})
         });
-    });
+        
+        if (!response.ok) throw new Error('Alert check failed');
+        
+        const alerts = await response.json();
+        displayAlerts(alerts);
+        
+    } catch (error) {
+        results.innerHTML = `<p class="status error">Error: ${error.message}</p>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '⚠️ Check Alerts';
+    }
 }
 
-function removeFromMonitoring(resourceId) {
-    if (!confirm('Remove from monitoring?')) {
+function displayAlerts(alerts) {
+    const container = document.getElementById('alerts-results');
+    
+    const totalAlerts = alerts.critical.length + alerts.warning.length + alerts.info.length;
+    
+    if (totalAlerts === 0) {
+        container.innerHTML = '<p class="status success">✅ No alerts found. All resources are healthy!</p>';
         return;
     }
     
-    $.ajax({
-        url: '/api/monitoring/remove/' + resourceId,
-        method: 'DELETE',
-        success: function(response) {
-            if (response.success) {
-                loadMonitoringStatus();
-            }
-        },
-        error: function() {
-            alert('Error removing resource from monitoring');
-        }
-    });
-}
-
-function sendTestAlert() {
-    if (!confirm('Send a test alert email?')) {
-        return;
+    container.innerHTML = `<h3>Alerts Found: ${totalAlerts}</h3>`;
+    
+    // Critical
+    if (alerts.critical.length > 0) {
+        container.innerHTML += '<h4>🔴 Critical</h4>';
+        alerts.critical.forEach(alert => {
+            const div = document.createElement('div');
+            div.className = 'alert-item alert-critical';
+            div.innerHTML = `
+                <strong>${alert.resource_type}:${alert.resource}</strong><br>
+                ${alert.message}
+            `;
+            container.appendChild(div);
+        });
     }
     
-    $.ajax({
-        url: '/api/alerts/test',
-        method: 'POST',
-        success: function(response) {
-            if (response.success) {
-                alert('Test alert sent! Check your email.');
-            }
-        },
-        error: function(xhr) {
-            const error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
-            alert('Error sending test alert: ' + error);
-        }
-    });
-}
-
-// ----------------------------------------------------------------------------
-// COST REPORTS
-// ----------------------------------------------------------------------------
-function generateCostReport() {
-    if (selectedResources.length === 0) {
-        alert('Please select resources first');
-        return;
+    // Warning
+    if (alerts.warning.length > 0) {
+        container.innerHTML += '<h4>⚠️ Warning</h4>';
+        alerts.warning.forEach(alert => {
+            const div = document.createElement('div');
+            div.className = 'alert-item alert-warning';
+            div.innerHTML = `
+                <strong>${alert.resource_type}:${alert.resource}</strong><br>
+                ${alert.message}
+            `;
+            container.appendChild(div);
+        });
     }
     
-    const period = $('#reportPeriod').val();
-    const sendEmail = $('#emailReport').is(':checked');
-    
-    // Prepare resources with names
-    const resources = selectedResources.map(r => ({
-        id: r.id,
-        type: r.type,
-        region: r.region,
-        name: r.id  // Could get name from tags if available
-    }));
-    
-    // Show loading
-    $('#reportResult').html('<div class="loading">Generating cost report...</div>').show();
-    
-    $.ajax({
-        url: '/api/reports/generate',
-        method: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify({
-            resources: resources,
-            period: period,
-            send_email: sendEmail
-        }),
-        success: function(response) {
-            if (response.success) {
-                displayReportResult(response.data, sendEmail);
-            } else {
-                $('#reportResult').html(`<div class="alert alert-error">${response.error}</div>`);
-            }
-        },
-        error: function(xhr) {
-            const error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
-            $('#reportResult').html(`<div class="alert alert-error">Error: ${error}</div>`);
-        }
-    });
-}
-
-function displayReportResult(report, emailSent) {
-    let html = `
-        <div class="report-result">
-            <h4>${report.title}</h4>
-            <div class="report-summary">
-                <div class="report-stat">
-                    <label>Total Cost</label>
-                    <span class="cost-value">$${report.total_cost.toFixed(2)}</span>
-                </div>
-                <div class="report-stat">
-                    <label>Resources</label>
-                    <span>${report.resource_count}</span>
-                </div>
-                <div class="report-stat">
-                    <label>Period</label>
-                    <span>${report.start_date} to ${report.end_date}</span>
-                </div>
-            </div>
-    `;
-    
-    if (emailSent) {
-        html += '<div class="alert alert-success">✅ Report sent via email!</div>';
+    // Info
+    if (alerts.info.length > 0) {
+        container.innerHTML += '<h4>ℹ️ Info</h4>';
+        alerts.info.forEach(alert => {
+            const div = document.createElement('div');
+            div.className = 'alert-item alert-info';
+            div.innerHTML = `
+                <strong>${alert.resource_type}:${alert.resource_id}</strong><br>
+                ${alert.message}
+            `;
+            container.appendChild(div);
+        });
     }
-    
-    html += '<h5>Cost Breakdown:</h5><div class="report-breakdown">';
-    
-    report.resources.forEach(resource => {
-        const statusText = resource.estimated ? ' (estimated)' : '';
-        const errorText = resource.error ? ` - Error: ${resource.error}` : '';
-        html += `
-            <div class="report-item">
-                <div class="report-item-name">${resource.name}</div>
-                <div class="report-item-cost">$${resource.cost.toFixed(2)}${statusText}${errorText}</div>
-            </div>
-        `;
-    });
-    
-    html += '</div></div>';
-    
-    $('#reportResult').html(html).show();
 }
 
-function scheduleCostReport() {
-    if (selectedResources.length === 0) {
-        alert('Please select resources first');
-        return;
-    }
+async function generateScript() {
+    const btn = document.getElementById('generate-script-btn');
+    const status = document.getElementById('script-status');
     
-    const name = $('#reportName').val().trim();
-    if (!name) {
-        alert('Please enter a report name');
-        return;
-    }
-    
-    const period = $('#scheduledPeriod').val();
-    const schedule = $('#reportSchedule').val();
-    
-    // Prepare resources
-    const resources = selectedResources.map(r => ({
-        id: r.id,
-        type: r.type,
-        region: r.region,
-        name: r.id
-    }));
-    
-    $.ajax({
-        url: '/api/reports/schedule',
-        method: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify({
-            name: name,
-            resources: resources,
-            period: period,
-            schedule: schedule
-        }),
-        success: function(response) {
-            if (response.success) {
-                alert('Report scheduled successfully!');
-                $('#reportName').val('');
-                loadScheduledReports();
-            } else {
-                alert('Error: ' + response.error);
-            }
-        },
-        error: function(xhr) {
-            const error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
-            alert('Error scheduling report: ' + error);
-        }
-    });
-}
-
-function loadScheduledReports() {
-    $.ajax({
-        url: '/api/reports/scheduled',
-        method: 'GET',
-        success: function(response) {
-            if (response.success) {
-                displayScheduledReports(response.data);
-            }
-        },
-        error: function() {
-            console.error('Error loading scheduled reports');
-        }
-    });
-}
-
-function displayScheduledReports(reports) {
-    const container = $('#scheduledReportsContent');
-    
-    if (!reports || reports.length === 0) {
-        container.html('<p class="info-text">No scheduled reports</p>');
-        return;
-    }
-    
-    let html = '';
-    
-    reports.forEach(report => {
-        html += `
-            <div class="scheduled-report-item">
-                <div class="report-info">
-                    <strong>${report.name}</strong>
-                    <div class="report-details">
-                        ${report.period} report • ${report.schedule} • ${report.resources.length} resources
-                    </div>
-                </div>
-                <button class="btn-remove" onclick="removeScheduledReport('${report.name}')">Remove</button>
-            </div>
-        `;
-    });
-    
-    container.html(html);
-}
-
-function removeScheduledReport(name) {
-    if (!confirm(`Remove scheduled report "${name}"?`)) {
-        return;
-    }
-    
-    $.ajax({
-        url: '/api/reports/scheduled/' + encodeURIComponent(name),
-        method: 'DELETE',
-        success: function(response) {
-            if (response.success) {
-                loadScheduledReports();
-            } else {
-                alert('Error: ' + response.error);
-            }
-        },
-        error: function() {
-            alert('Error removing scheduled report');
-        }
-    });
-}
-
-// ----------------------------------------------------------------------------
-// COST OPTIMIZATION
-// ----------------------------------------------------------------------------
-function analyzeCostOptimization() {
-    const regions = $('#regionSelect').val() || [];
+    // Get selected regions
+    const regions = Array.from(document.querySelectorAll('#region-selection input[type="checkbox"]:checked'))
+        .map(cb => cb.value);
     
     if (regions.length === 0) {
-        alert('Please select at least one region first');
+        showStatus(status, 'Please select at least one region', 'error');
         return;
     }
     
-    $('#optimizationDisplay').html('<div class="loading">Analyzing cost savings opportunities...</div>');
+    // Get resource types
+    const resourceTypes = Array.from(document.querySelectorAll('.resource-type-check:checked'))
+        .map(cb => cb.value);
     
-    $.ajax({
-        url: '/api/optimization/analyze',
-        method: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify({ regions: regions }),
-        success: function(response) {
-            if (response.success) {
-                displayOptimizationResults(response.data);
-            } else {
-                $('#optimizationDisplay').html(`<div class="alert alert-error">${response.error}</div>`);
-            }
-        },
-        error: function(xhr) {
-            const error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
-            $('#optimizationDisplay').html(`<div class="alert alert-error">Error: ${error}</div>`);
-        }
-    });
-}
-
-function displayOptimizationResults(data) {
-    let html = `
-        <div class="optimization-results">
-            <div class="optimization-summary">
-                <div class="savings-card">
-                    <h3>💰 Potential Monthly Savings</h3>
-                    <div class="savings-amount">$${data.total_monthly_savings.toFixed(2)}</div>
-                    <div class="savings-annual">$${(data.total_monthly_savings * 12).toFixed(2)}/year</div>
-                </div>
-            </div>
-    `;
-    
-    // Quick Wins
-    if (data.quick_wins && data.quick_wins.length > 0) {
-        html += '<div class="quick-wins"><h3>⚡ Quick Wins (Easy to Implement)</h3>';
-        data.quick_wins.forEach(item => {
-            html += `
-                <div class="optimization-item ${item.severity}">
-                    <div class="opt-header">
-                        <span class="opt-resource">${item.resource_id}</span>
-                        <span class="opt-savings">Save $${item.monthly_savings.toFixed(2)}/month</span>
-                    </div>
-                    <div class="opt-recommendation">${item.recommendation}</div>
-                </div>
-            `;
-        });
-        html += '</div>';
-    }
-    
-    // Idle Instances
-    if (data.idle_instances && data.idle_instances.length > 0) {
-        html += `<div class="optimization-category"><h4>🛑 Idle Instances (${data.idle_instances.length})</h4>`;
-        data.idle_instances.slice(0, 5).forEach(item => {
-            html += `
-                <div class="optimization-item">
-                    <strong>${item.resource_id}</strong> - ${item.instance_type} - Avg CPU: ${item.avg_cpu_7d}%
-                    <div class="opt-savings">Save $${item.monthly_savings.toFixed(2)}/month</div>
-                </div>
-            `;
-        });
-        if (data.idle_instances.length > 5) {
-            html += `<div class="more-items">...and ${data.idle_instances.length - 5} more</div>`;
-        }
-        html += '</div>';
-    }
-    
-    // Right-Sizing
-    if (data.underutilized_instances && data.underutilized_instances.length > 0) {
-        html += `<div class="optimization-category"><h4>📉 Right-Sizing Opportunities (${data.underutilized_instances.length})</h4>`;
-        data.underutilized_instances.slice(0, 5).forEach(item => {
-            html += `
-                <div class="optimization-item">
-                    <strong>${item.resource_id}</strong>: ${item.current_type} → ${item.suggested_type}
-                    <div class="opt-savings">Save $${item.monthly_savings.toFixed(2)}/month</div>
-                </div>
-            `;
-        });
-        html += '</div>';
-    }
-    
-    // Unattached Volumes
-    if (data.unattached_volumes && data.unattached_volumes.length > 0) {
-        html += `<div class="optimization-category"><h4>💾 Unattached Volumes (${data.unattached_volumes.length})</h4>`;
-        data.unattached_volumes.slice(0, 5).forEach(item => {
-            html += `
-                <div class="optimization-item">
-                    <strong>${item.resource_id}</strong> - ${item.size_gb}GB - ${item.age_days} days old
-                    <div class="opt-savings">Save $${item.monthly_savings.toFixed(2)}/month</div>
-                </div>
-            `;
-        });
-        html += '</div>';
-    }
-    
-    // Reserved Instances
-    if (data.reserved_instance_opportunities && data.reserved_instance_opportunities.length > 0) {
-        html += `<div class="optimization-category"><h4>📅 Reserved Instance Opportunities (${data.reserved_instance_opportunities.length})</h4>`;
-        data.reserved_instance_opportunities.slice(0, 3).forEach(item => {
-            html += `
-                <div class="optimization-item">
-                    <strong>${item.resource_id}</strong> - ${item.instance_type} - Running ${item.running_days} days
-                    <div class="opt-savings">Save $${item.monthly_savings.toFixed(2)}/month ($${item.annual_savings.toFixed(2)}/year)</div>
-                </div>
-            `;
-        });
-        html += '</div>';
-    }
-    
-    html += '</div>';
-    $('#optimizationDisplay').html(html);
-}
-
-// ----------------------------------------------------------------------------
-// SECURITY AUDIT
-// ----------------------------------------------------------------------------
-function runSecurityAudit() {
-    const regions = $('#regionSelect').val() || [];
-    
-    if (regions.length === 0) {
-        alert('Please select at least one region first');
+    if (resourceTypes.length === 0) {
+        showStatus(status, 'Please select at least one resource type', 'error');
         return;
     }
     
-    $('#securityDisplay').html('<div class="loading">Running security audit...</div>');
+    // Get checks
+    const checks = Array.from(document.querySelectorAll('.check-type:checked'))
+        .map(cb => cb.value);
     
-    $.ajax({
-        url: '/api/security/audit',
-        method: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify({ regions: regions }),
-        success: function(response) {
-            if (response.success) {
-                displaySecurityResults(response.data);
-            } else {
-                $('#securityDisplay').html(`<div class="alert alert-error">${response.error}</div>`);
-            }
+    // Get filters
+    const filters = {};
+    const tagKey = document.getElementById('filter-tag-key').value.trim();
+    const tagValue = document.getElementById('filter-tag-value').value.trim();
+    if (tagKey && tagValue) {
+        filters.tags = {[tagKey]: tagValue};
+    }
+    const names = document.getElementById('filter-names').value.trim();
+    if (names) {
+        filters.names = names.split(',').map(s => s.trim());
+    }
+    const ids = document.getElementById('filter-ids').value.trim();
+    if (ids) {
+        filters.ids = ids.split(',').map(s => s.trim());
+    }
+    
+    // Get notification
+    const email = document.getElementById('notification-email').value.trim();
+    
+    const config = {
+        regions,
+        resources: {
+            types: resourceTypes,
+            filters
         },
-        error: function(xhr) {
-            const error = xhr.responseJSON ? xhr.responseJSON.error : 'Unknown error';
-            $('#securityDisplay').html(`<div class="alert alert-error">Error: ${error}</div>`);
-        }
-    });
+        checks,
+        thresholds: {
+            cpu: parseInt(document.getElementById('threshold-cpu').value),
+            memory: parseInt(document.getElementById('threshold-memory').value)
+        },
+        notification: email ? {email} : {}
+    };
+    
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> Generating...';
+    showStatus(status, 'Generating script...', 'loading');
+    
+    try {
+        const response = await fetch('/api/generate-script', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+        });
+        
+        if (!response.ok) throw new Error('Script generation failed');
+        
+        // Download the file
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'aws_monitor_job.py';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        showStatus(status, '✅ Script downloaded! Schedule it with cron or Python scheduler.', 'success');
+        
+    } catch (error) {
+        showStatus(status, `Error: ${error.message}`, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '📝 Generate Script';
+    }
 }
 
-function displaySecurityResults(data) {
-    const score = data.security_score;
-    const scoreClass = score >= 80 ? 'good' : score >= 60 ? 'medium' : 'poor';
+async function loadAllRegions() {
+    const btn = document.getElementById('load-more-regions');
+    btn.disabled = true;
+    btn.textContent = 'Loading...';
     
-    let html = `
-        <div class="security-results">
-            <div class="security-score-card ${scoreClass}">
-                <h3>🔒 Security Score</h3>
-                <div class="score-display">${score}/100</div>
-                <div class="score-details">${data.passed_checks} of ${data.total_checks} checks passed</div>
-            </div>
-    `;
-    
-    // Critical Issues
-    if (data.critical && data.critical.length > 0) {
-        html += `<div class="security-category critical"><h4>🔴 Critical Issues (${data.critical.length})</h4>`;
-        data.critical.forEach(finding => {
-            html += `
-                <div class="security-finding">
-                    <div class="finding-header">
-                        <strong>${finding.resource_id || finding.resource_type}</strong>
-                        <span class="finding-severity critical">CRITICAL</span>
-                    </div>
-                    <div class="finding-issue">${finding.issue}</div>
-                    <div class="finding-recommendation">💡 ${finding.recommendation}</div>
-                </div>
-            `;
+    try {
+        const response = await fetch('/api/regions');
+        const data = await response.json();
+        
+        const container = document.getElementById('region-selection');
+        
+        // Clear existing except button
+        container.querySelectorAll('label').forEach(label => label.remove());
+        
+        // Add all regions
+        data.regions.forEach(region => {
+            const label = document.createElement('label');
+            const isDefault = ['us-east-1', 'us-west-2'].includes(region);
+            label.innerHTML = `<input type="checkbox" value="${region}" ${isDefault ? 'checked' : ''}> ${region}`;
+            container.insertBefore(label, btn);
         });
-        html += '</div>';
+        
+        btn.textContent = 'Regions Loaded';
+        btn.disabled = true;
+        
+    } catch (error) {
+        btn.textContent = 'Error Loading Regions';
+        console.error(error);
     }
-    
-    // High Priority
-    if (data.high && data.high.length > 0) {
-        html += `<div class="security-category high"><h4>⚠️ High Priority (${data.high.length})</h4>`;
-        data.high.slice(0, 5).forEach(finding => {
-            html += `
-                <div class="security-finding">
-                    <div class="finding-header">
-                        <strong>${finding.resource_id || finding.resource_type}</strong>
-                        <span class="finding-severity high">HIGH</span>
-                    </div>
-                    <div class="finding-issue">${finding.issue}</div>
-                    <div class="finding-recommendation">💡 ${finding.recommendation}</div>
-                </div>
-            `;
-        });
-        if (data.high.length > 5) {
-            html += `<div class="more-items">...and ${data.high.length - 5} more high priority issues</div>`;
-        }
-        html += '</div>';
-    }
-    
-    // Medium Priority
-    if (data.medium && data.medium.length > 0) {
-        html += `<div class="security-category medium"><h4>⚡ Medium Priority (${data.medium.length})</h4>`;
-        data.medium.slice(0, 3).forEach(finding => {
-            html += `
-                <div class="security-finding">
-                    <div class="finding-header">
-                        <strong>${finding.resource_id || finding.resource_type}</strong>
-                        <span class="finding-severity medium">MEDIUM</span>
-                    </div>
-                    <div class="finding-issue">${finding.issue}</div>
-                </div>
-            `;
-        });
-        if (data.medium.length > 3) {
-            html += `<div class="more-items">...and ${data.medium.length - 3} more medium priority issues</div>`;
-        }
-        html += '</div>';
-    }
-    
-    // Success summary
-    if (score >= 80) {
-        html += '<div class="alert alert-success">✅ Good security posture! Address the remaining issues to improve further.</div>';
-    } else if (score >= 60) {
-        html += '<div class="alert alert-warning">⚠️ Moderate security. Focus on critical and high priority issues first.</div>';
-    } else {
-        html += '<div class="alert alert-error">🔴 Security needs immediate attention. Address critical issues now!</div>';
-    }
-    
-    html += '</div>';
-    $('#securityDisplay').html(html);
+}
+
+function showStatus(element, message, type) {
+    element.textContent = message;
+    element.className = `status ${type}`;
+    element.style.display = 'block';
 }

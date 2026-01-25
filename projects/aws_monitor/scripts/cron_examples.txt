@@ -1,0 +1,68 @@
+# AWS Monitor - Example Cron Jobs
+# Add these to your crontab with: crontab -e
+
+# Monitor every 5 minutes
+*/5 * * * * /usr/bin/python3 /path/to/aws_monitor_job.py >> /var/log/aws_monitor.log 2>&1
+
+# Monitor every 15 minutes
+*/15 * * * * /usr/bin/python3 /path/to/aws_monitor_job.py >> /var/log/aws_monitor.log 2>&1
+
+# Monitor every hour
+0 * * * * /usr/bin/python3 /path/to/aws_monitor_job.py >> /var/log/aws_monitor.log 2>&1
+
+# Monitor twice daily (8 AM and 8 PM)
+0 8,20 * * * /usr/bin/python3 /path/to/aws_monitor_job.py >> /var/log/aws_monitor.log 2>&1
+
+# Monitor once daily at 9 AM
+0 9 * * * /usr/bin/python3 /path/to/aws_monitor_job.py >> /var/log/aws_monitor.log 2>&1
+
+# Monitor on weekdays at 9 AM
+0 9 * * 1-5 /usr/bin/python3 /path/to/aws_monitor_job.py >> /var/log/aws_monitor.log 2>&1
+
+# Cost analysis daily at 6 AM
+0 6 * * * /usr/bin/python3 /path/to/aws_cost_monitor.py >> /var/log/aws_costs.log 2>&1
+
+# Note: Replace /path/to/aws_monitor_job.py with actual path
+# Make sure the script has execute permissions: chmod +x aws_monitor_job.py
+
+# Python APScheduler Example
+# ---------------------------
+# Instead of cron, you can use Python's APScheduler:
+#
+# from apscheduler.schedulers.blocking import BlockingScheduler
+# from aws_monitor_job import main
+#
+# scheduler = BlockingScheduler()
+#
+# # Run every 5 minutes
+# scheduler.add_job(main, 'interval', minutes=5)
+#
+# # Run daily at 9 AM
+# scheduler.add_job(main, 'cron', hour=9, minute=0)
+#
+# # Run on weekdays at 9 AM
+# scheduler.add_job(main, 'cron', day_of_week='mon-fri', hour=9, minute=0)
+#
+# scheduler.start()
+
+# Cron Syntax Quick Reference
+# ---------------------------
+# * * * * *  command
+# │ │ │ │ │
+# │ │ │ │ └─── Day of week (0-7, Sunday = 0 or 7)
+# │ │ │ └───── Month (1-12)
+# │ │ └─────── Day of month (1-31)
+# │ └───────── Hour (0-23)
+# └─────────── Minute (0-59)
+#
+# Special characters:
+# * - any value
+# , - value list separator
+# - - range of values
+# / - step values
+#
+# Examples:
+# */5 * * * * - Every 5 minutes
+# 0 */2 * * * - Every 2 hours
+# 0 9 * * 1-5 - Weekdays at 9 AM
+# 0 0 1 * *   - First day of month at midnight

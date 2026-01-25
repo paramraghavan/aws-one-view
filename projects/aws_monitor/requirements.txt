@@ -1,19 +1,4 @@
-# AWS Resource Monitor - Python Dependencies
-
-# Web Framework
 Flask==3.0.0
-
-# AWS SDK
-boto3==1.34.22
-
-# Background Task Scheduling
-APScheduler==3.10.4
-
-# Required by Flask
+boto3==1.34.14
+botocore==1.34.14
 Werkzeug==3.0.1
-Jinja2==3.1.3
-click==8.1.7
-
-# Optional: For production deployment
-# Uncomment if deploying with Gunicorn
-# gunicorn==21.2.0

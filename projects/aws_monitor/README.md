@@ -1,210 +1,372 @@
-# AWS Resource Monitor
+# AWS Monitor - Simplified
 
-A clean, simple web application to monitor AWS resources, analyze costs, and detect bottlenecks with **automated background monitoring and email alerts**.
+A clean, simple AWS multi-region monitoring tool with support for EC2, RDS, S3, Lambda, EBS, Kubernetes (EKS), and EMR.
 
 ## Features
 
-- **Resource Discovery**: View EC2, RDS, S3, Lambda, and EBS resources across multiple regions
-- **Performance Monitoring**: Real-time CloudWatch metrics with visual charts
-- **Cost Analysis**: Track spending with AWS Cost Explorer integration
-- **Bottleneck Detection**: Automatically identify over/under-utilized resources
-- **⭐ Background Monitoring**: Continuous monitoring of selected resources
-- **⭐ Email Alerts**: Get notified when thresholds are exceeded
+✅ **Multi-Region Monitoring**: Monitor resources across multiple AWS regions  
+✅ **7 Resource Types**: EC2, RDS, S3, Lambda, EBS, Kubernetes (EKS), EMR  
+✅ **Performance Metrics**: Real-time CloudWatch metrics  
+✅ **Cost Analysis**: Track spending by service and region  
+✅ **Alerts & Health**: Detect issues and failures  
+✅ **Script Generator**: Create Python scripts for cron/scheduler  
+✅ **Flexible Filtering**: Filter by tags, names, or IDs  
+✅ **No Background Jobs**: On-demand monitoring only
+
+## What's Different from Complex Versions?
+
+This is a **simplified, clean version**:
+- ❌ No background monitoring
+- ❌ No database required
+- ❌ No complex configuration files
+- ❌ No automated actions (start/stop instances)
+- ✅ Simple on-demand monitoring
+- ✅ Easy script generation for scheduling
+- ✅ Clean, focused UI
+- ✅ Clear documentation
 
 ## Quick Start
 
-### Prerequisites
-
-- Python 3.8+
-- AWS credentials with read permissions
-- pip (Python package manager)
-- (Optional) Email account for alerts (Gmail, SES, etc.)
-
-### Installation
+### 1. Prerequisites
 
 ```bash
-# 1. Install dependencies
-pip install -r requirements.txt
+# Python 3.8+
+python --version
 
-# 2. Set AWS credentials
-export AWS_ACCESS_KEY_ID="your-key"
-export AWS_SECRET_ACCESS_KEY="your-secret"
-export AWS_DEFAULT_REGION="us-east-1"
+# Install dependencies
+pip install flask boto3
+```
 
-# 3. (Optional) Enable monitoring & alerts
-export MONITORING_ENABLED=true
-export ALERTS_ENABLED=true
-export ALERT_RECIPIENTS="your-email@example.com"
-export SMTP_SERVER="smtp.gmail.com"
-export SMTP_PORT=587
-export SMTP_USERNAME="your-email@gmail.com"
-export SMTP_PASSWORD="your-app-password"
-export SMTP_FROM_EMAIL="your-email@gmail.com"
+### 2. Configure AWS Profile
 
-# 4. Run the application
+Create AWS profile named `monitor`:
+
+```bash
+aws configure --profile monitor
+# Enter your AWS Access Key ID
+# Enter your AWS Secret Access Key
+# Default region: us-east-1
+# Default output format: json
+```
+
+Or manually edit `~/.aws/credentials`:
+```ini
+[monitor]
+aws_access_key_id = YOUR_ACCESS_KEY
+aws_secret_access_key = YOUR_SECRET_KEY
+region = us-east-1
+```
+
+### 3. Run Application
+
+```bash
+cd aws_monitor_simple
 python main.py
 ```
 
-### Access
+Open browser: `http://localhost:5000`
 
-Open your browser to: **http://localhost:5000**
+## Usage Guide
 
-## Usage
+### Step 1: Select Regions
+- Default: us-east-1 and us-west-2 are pre-selected
+- Click "Load All Regions" to see all available regions
+- Select/deselect regions as needed
 
-1. **Select Regions** → Check the AWS regions you want to monitor
-2. **Load Resources** → Click "Load Resources" to scan your infrastructure
-3. **Browse** → Use tabs to view different resource types
-4. **Analyze** → Select resources to view metrics and details
-5. **⭐ Add to Monitoring** → Select resources and click "Add to Background Monitoring"
-6. **Optimize** → Use bottleneck detection to find improvement opportunities
+**Note**: Your AWS profile has global access to all regions (if you have permissions)
 
-## Background Monitoring & Alerts
+### Step 2: Filter Resources (Optional)
+Filter resources by:
+- **Tags**: `Environment=production`, `Team=backend`
+- **Names**: Comma-separated list
+- **IDs**: Comma-separated list (instance IDs, volume IDs, etc.)
 
-### Setup
+### Step 3: Discover Resources
+Click "🔍 Discover Resources" to scan selected regions for:
+- EC2 instances
+- RDS databases
+- S3 buckets
+- Lambda functions
+- EBS volumes
+- EKS clusters (Kubernetes)
+- EMR clusters
 
-See detailed setup guide: **[docs/ALERTS_SETUP.md](docs/ALERTS_SETUP.md)**
+Results show:
+- Resource summary by type
+- Detailed resource tables
+- Select specific resources for metrics/alerts
 
-### Quick Setup (Gmail)
+### Step 4: Get Performance Metrics
+1. Select resources using checkboxes
+2. Choose metric period (5min, 15min, 1hr)
+3. Click "📊 Get Metrics"
 
+View metrics:
+- **EC2**: CPU, Network, Disk I/O
+- **RDS**: CPU, Connections, Storage, Latency
+- **Lambda**: Invocations, Errors, Duration, Throttles
+- **EMR**: Cluster idle status, Running apps
+
+### Step 5: Analyze Costs
+Click "💰 Analyze Costs" to see:
+- Total costs for period (7, 30, or 90 days)
+- Daily average spend
+- Top 10 services by cost
+- Cost breakdown by region
+
+**Note**: Requires Cost Explorer API access
+
+### Step 6: Check Alerts & Health
+1. Select resources using checkboxes
+2. Set thresholds (CPU: 80%, Memory: 85%)
+3. Click "⚠️ Check Alerts"
+
+Alerts detect:
+- High CPU utilization
+- Lambda errors
+- RDS connection issues
+- RDS Multi-AZ not configured
+- EKS node group issues
+
+### Step 7: Generate Monitoring Script
+Create a Python script to schedule with cron or Python scheduler:
+
+1. Select regions to monitor
+2. Choose resource types (EC2, RDS, Lambda, EKS, EMR)
+3. Select resource filters (tags, names, IDs)
+4. Choose checks (Performance, Cost, Alerts)
+5. Set thresholds
+6. Enter email for notifications (optional)
+7. Click "📝 Generate Script"
+
+Script downloads as `aws_monitor_job.py`.
+
+**Schedule with Cron:**
 ```bash
-# Enable features
-export MONITORING_ENABLED=true
-export ALERTS_ENABLED=true
+# Every 5 minutes
+*/5 * * * * /usr/bin/python3 /path/to/aws_monitor_job.py >> /var/log/aws_monitor.log 2>&1
 
-# Configure email
-export ALERT_RECIPIENTS="admin@example.com"
-export SMTP_USERNAME="your-gmail@gmail.com"
-export SMTP_PASSWORD="your-app-password"  # Get from Google
-export SMTP_FROM_EMAIL="your-gmail@gmail.com"
+# Every hour
+0 * * * * /usr/bin/python3 /path/to/aws_monitor_job.py
+
+# Daily at 8 AM
+0 8 * * * /usr/bin/python3 /path/to/aws_monitor_job.py
 ```
 
-### How It Works
-
-1. Select resources in the UI
-2. Click "Add Selected to Background Monitoring"
-3. Set CPU threshold (e.g., 80%)
-4. Monitoring checks every 15 minutes
-5. Email sent when threshold exceeded
-
-### Example Alert
-
-```
-Subject: AWS Alert: 2 issue(s) detected
-
-🔴 CRITICAL ISSUES:
-Resource: i-1234567890 (ec2)
-Issue: CPU at 95.2% (threshold: 80%)
-```
-
-## Configuration
-
-Edit `app/config.py` to customize:
-
+**Schedule with Python APScheduler:**
 ```python
-CPU_HIGH_THRESHOLD = 80.0      # Alert when CPU > 80%
-CPU_CRITICAL_THRESHOLD = 90.0  # Critical when CPU > 90%
-CPU_LOW_THRESHOLD = 10.0       # Underutilized when CPU < 10%
+from apscheduler.schedulers.blocking import BlockingScheduler
+from aws_monitor_job import main
+
+scheduler = BlockingScheduler()
+scheduler.add_job(main, 'interval', minutes=5)
+scheduler.start()
 ```
 
-## Project Structure
+## Architecture
 
 ```
-aws_monitor/
-├── main.py              # Flask application entry point
+aws_monitor_simple/
+├── main.py                  # Flask application
 ├── app/
-│   ├── aws_client.py    # AWS API integration
-│   └── config.py        # Configuration settings
+│   ├── resources.py         # Resource discovery and monitoring
+│   └── script_generator.py  # Script generation
 ├── templates/
-│   └── index.html       # Web interface
+│   └── index.html           # Web UI
 ├── static/
-│   ├── css/style.css    # Styles
-│   └── js/app.js        # Frontend logic
-└── requirements.txt     # Python dependencies
+│   ├── css/style.css        # Styling
+│   └── js/app.js            # UI logic
+├── docs/
+│   └── BOTO3_API_REFERENCE.md  # Complete boto3 API documentation
+└── README.md
 ```
 
-## Required AWS Permissions
+## API Endpoints
 
-The IAM user/role needs these permissions:
+### GET /
+Main dashboard UI
 
-- `ec2:DescribeInstances`, `ec2:DescribeVolumes`, `ec2:DescribeRegions`
-- `rds:DescribeDBInstances`
-- `s3:ListAllMyBuckets`, `s3:GetBucketLocation`
-- `lambda:ListFunctions`
-- `cloudwatch:GetMetricStatistics`
-- `ce:GetCostAndUsage`
-
-See `docs/iam-policy.json` for the complete policy.
-
-## Development
-
-### Running in Debug Mode
-
-```bash
-export DEBUG=true
-python main.py
+### POST /api/discover
+Discover resources across regions
+```json
+{
+  "regions": ["us-east-1", "us-west-2"],
+  "filters": {
+    "tags": {"Environment": "production"},
+    "names": ["web-server"],
+    "ids": ["i-1234567"]
+  }
+}
 ```
 
-### Adding New Resource Types
-
-1. Add discovery method in `app/aws_client.py`
-2. Update `get_all_resources()` to include new resource
-3. Add tab in `templates/index.html`
-4. Add display logic in `static/js/app.js`
-
-## Deployment
-
-### Docker
-
-```bash
-docker build -t aws-monitor .
-docker run -p 5000:5000 \
-  -e AWS_ACCESS_KEY_ID=xxx \
-  -e AWS_SECRET_ACCESS_KEY=yyy \
-  aws-monitor
+### POST /api/metrics
+Get performance metrics
+```json
+{
+  "resources": [
+    {"type": "ec2", "id": "i-1234567", "region": "us-east-1"}
+  ],
+  "period": 300
+}
 ```
 
-### Production
-
-Use a production WSGI server:
-
-```bash
-pip install gunicorn
-gunicorn -w 4 -b 0.0.0.0:5000 main:app
+### POST /api/costs
+Analyze costs
+```json
+{
+  "regions": ["us-east-1"],
+  "days": 7
+}
 ```
+
+### POST /api/alerts
+Check alerts
+```json
+{
+  "resources": [...],
+  "thresholds": {"cpu": 80, "memory": 85}
+}
+```
+
+### POST /api/generate-script
+Generate monitoring script (downloads file)
+```json
+{
+  "regions": ["us-east-1"],
+  "resources": {
+    "types": ["ec2", "rds"],
+    "filters": {...}
+  },
+  "checks": ["performance", "cost", "alerts"],
+  "thresholds": {...},
+  "notification": {"email": "admin@example.com"}
+}
+```
+
+### GET /api/regions
+Get available AWS regions
+
+## AWS Permissions
+
+The `monitor` profile needs these IAM permissions:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": [
+      "ec2:DescribeRegions",
+      "ec2:DescribeInstances",
+      "ec2:DescribeVolumes",
+      "rds:DescribeDBInstances",
+      "rds:ListTagsForResource",
+      "s3:ListAllMyBuckets",
+      "s3:GetBucketLocation",
+      "s3:GetBucketTagging",
+      "lambda:ListFunctions",
+      "lambda:ListTags",
+      "eks:ListClusters",
+      "eks:DescribeCluster",
+      "eks:ListNodegroups",
+      "eks:DescribeNodegroup",
+      "elasticmapreduce:ListClusters",
+      "elasticmapreduce:DescribeCluster",
+      "cloudwatch:GetMetricStatistics",
+      "ce:GetCostAndUsage",
+      "iam:GetUser"
+    ],
+    "Resource": "*"
+  }]
+}
+```
+
+**Note**: These are read-only permissions. The monitor cannot modify resources.
+
+## Region Access FAQ
+
+**Q**: When the UI auto-selects us-east-1 and us-west-2, does my AWS profile need special access?
+
+**A**: No. AWS IAM permissions are **global**. If your `monitor` profile has the permissions above, it can access resources in **all AWS regions**. Regions are not separately access-controlled.
+
+However:
+- Some newer regions require opt-in (Middle East, Africa)
+- If you haven't opted in, API calls to those regions will fail
+- The application handles this gracefully
+
+## Supported Resource Types
+
+| Type | Discovery | Metrics | Alerts | Notes |
+|------|-----------|---------|--------|-------|
+| EC2 | ✅ | ✅ | ✅ | Instances |
+| RDS | ✅ | ✅ | ✅ | Databases, Multi-AZ check |
+| S3 | ✅ | ❌ | ❌ | Buckets (global) |
+| Lambda | ✅ | ✅ | ✅ | Functions |
+| EBS | ✅ | ❌ | ❌ | Volumes, encryption check |
+| EKS | ✅ | ⚠️ | ✅ | Kubernetes clusters, node groups |
+| EMR | ✅ | ✅ | ❌ | Hadoop/Spark clusters |
+
+⚠️ EKS metrics require Container Insights to be enabled
 
 ## Troubleshooting
 
-### No resources found
-
-- Verify AWS credentials are configured
-- Check IAM permissions
+### No Resources Found
+- Check AWS profile configuration: `aws configure --profile monitor`
+- Verify IAM permissions
 - Ensure resources exist in selected regions
 
-### Cost data not loading
+### Cost Explorer Error
+- Enable Cost Explorer in AWS Console (takes 24 hours)
+- Ensure `ce:GetCostAndUsage` permission
 
-- Cost Explorer must be enabled in AWS Console
-- Requires `ce:GetCostAndUsage` permission
-- Data may take 24 hours to appear
+### Region Access Error
+- Check if region requires opt-in
+- Verify profile has access to that region
 
-### Connection errors
+### Script Won't Run
+- Check Python version (3.8+)
+- Install dependencies: `pip install boto3`
+- Verify AWS credentials are configured
 
+## Development
+
+Run in debug mode:
 ```bash
-# Test AWS connectivity
-python tests/test_connection.py
+export FLASK_ENV=development
+python main.py
 ```
 
-## Contributing
+Run tests:
+```bash
+# TODO: Add tests
+```
 
-This project uses:
-- **Flask** for the web framework
-- **Boto3** for AWS SDK
-- **Chart.js** for visualizations
-- **jQuery** for DOM manipulation
+## Documentation
 
+- **[BOTO3_API_REFERENCE.md](docs/BOTO3_API_REFERENCE.md)**: Complete guide to all boto3 APIs used
+  - Every API call explained
+  - Parameters and return values
+  - Common patterns and best practices
+  - Region access explained
+
+## License
+
+MIT License - Feel free to modify and use as needed
 
 ## Support
 
 For issues or questions:
-- Check the documentation in `docs/`
-- Review AWS documentation
-- Check application logs for errors
+1. Check [BOTO3_API_REFERENCE.md](docs/BOTO3_API_REFERENCE.md) for API details
+2. Verify AWS permissions
+3. Check CloudWatch and Cost Explorer access
+4. Review generated script for errors
+
+## Roadmap
+
+Future enhancements (not included in simplified version):
+- Database storage for historical data
+- Advanced alerting with SNS/Email
+- Resource recommendations
+- Cost optimization suggestions
+- Custom dashboards
+- Multi-account support

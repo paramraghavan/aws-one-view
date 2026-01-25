@@ -3,212 +3,137 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AWS Resource Monitor</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <title>AWS Monitor - Simplified</title>
+    <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
-        <header class="header">
-            <h1>AWS Resource Monitor</h1>
-            <p>Monitor resources, analyze costs, and detect bottlenecks</p>
+        <header>
+            <h1>🔍 AWS Monitor</h1>
+            <p>Monitor AWS and Kubernetes resources across regions</p>
         </header>
-
-        <!-- Background Monitoring Control -->
-        <section class="card monitoring-card">
-            <h2>🔔 Background Monitoring</h2>
-            <div class="monitoring-status">
-                <div class="status-indicator" id="monitoringStatus">
-                    <span class="status-dot"></span>
-                    <span class="status-text">Loading...</span>
-                </div>
-                <div class="monitoring-controls">
-                    <button id="startMonitoring" class="btn btn-success" style="display:none;">Start Monitoring</button>
-                    <button id="stopMonitoring" class="btn btn-warning" style="display:none;">Stop Monitoring</button>
-                    <button id="testAlert" class="btn btn-secondary">Send Test Alert</button>
-                </div>
-            </div>
-            <div id="monitoredResourcesList" class="monitored-list">
-                <p class="info-text">No resources being monitored</p>
-            </div>
-        </section>
 
         <!-- Region Selection -->
         <section class="card">
             <h2>1. Select Regions</h2>
-            <div id="regionSelector" class="region-grid">
-                <div class="loading">Loading regions...</div>
+            <div id="region-selection">
+                <label><input type="checkbox" value="us-east-1" checked> us-east-1 (N. Virginia)</label>
+                <label><input type="checkbox" value="us-west-2" checked> us-west-2 (Oregon)</label>
+                <label><input type="checkbox" value="us-west-1"> us-west-1 (N. California)</label>
+                <label><input type="checkbox" value="eu-west-1"> eu-west-1 (Ireland)</label>
+                <label><input type="checkbox" value="eu-central-1"> eu-central-1 (Frankfurt)</label>
+                <label><input type="checkbox" value="ap-southeast-1"> ap-southeast-1 (Singapore)</label>
+                <label><input type="checkbox" value="ap-northeast-1"> ap-northeast-1 (Tokyo)</label>
+                <button id="load-more-regions">Load All Regions</button>
             </div>
-            <button id="loadResources" class="btn btn-primary">Load Resources</button>
+            <p class="info">ℹ️ Regions are auto-selected. Your AWS profile 'monitor' must have access to selected regions.</p>
         </section>
 
-        <!-- Resource Display -->
+        <!-- Resource Filters -->
         <section class="card">
-            <h2>2. Browse Resources</h2>
-            
-            <!-- Resource Type Tabs -->
-            <div class="tabs">
-                <button class="tab-btn active" data-type="ec2">EC2</button>
-                <button class="tab-btn" data-type="rds">RDS</button>
-                <button class="tab-btn" data-type="s3">S3</button>
-                <button class="tab-btn" data-type="lambda">Lambda</button>
-                <button class="tab-btn" data-type="ebs">EBS</button>
-            </div>
-            
-            <!-- Resource List -->
-            <div id="resourceList" class="resource-list">
-                <p class="info-text">Select regions and click "Load Resources"</p>
-            </div>
-            
-            <!-- Add to Monitoring Button -->
-            <div id="monitoringActions" style="display:none; margin-top: 15px;">
-                <button id="addToMonitoring" class="btn btn-success">Add Selected to Background Monitoring</button>
+            <h2>2. Filter Resources (Optional)</h2>
+            <div class="filters">
+                <div class="filter-group">
+                    <label>By Tag:</label>
+                    <input type="text" id="filter-tag-key" placeholder="Key (e.g., Environment)">
+                    <input type="text" id="filter-tag-value" placeholder="Value (e.g., production)">
+                </div>
+                <div class="filter-group">
+                    <label>By Name:</label>
+                    <input type="text" id="filter-names" placeholder="Names (comma-separated)">
+                </div>
+                <div class="filter-group">
+                    <label>By ID:</label>
+                    <input type="text" id="filter-ids" placeholder="IDs (comma-separated)">
+                </div>
             </div>
         </section>
 
-        <!-- Metrics Visualization -->
-        <section class="card" id="metricsSection" style="display: none;">
-            <h2>3. Performance Metrics</h2>
-            <div class="metric-controls">
-                <label>
-                    Time Range:
-                    <select id="metricHours">
-                        <option value="6">Last 6 Hours</option>
-                        <option value="24" selected>Last 24 Hours</option>
-                        <option value="72">Last 3 Days</option>
+        <!-- Discover Resources -->
+        <section class="card">
+            <h2>3. Discover Resources</h2>
+            <button id="discover-btn" class="primary-btn">🔍 Discover Resources</button>
+            <div id="discover-status" class="status"></div>
+            <div id="resource-summary"></div>
+            <div id="resource-list"></div>
+        </section>
+
+        <!-- Performance Metrics -->
+        <section class="card">
+            <h2>4. Performance Metrics</h2>
+            <button id="metrics-btn" class="primary-btn" disabled>📊 Get Metrics</button>
+            <div class="options">
+                <label>Period:
+                    <select id="metrics-period">
+                        <option value="300">5 minutes</option>
+                        <option value="900">15 minutes</option>
+                        <option value="3600">1 hour</option>
                     </select>
                 </label>
-                <button id="loadMetrics" class="btn btn-secondary">Load Metrics</button>
             </div>
-            <canvas id="metricsChart"></canvas>
+            <div id="metrics-results"></div>
         </section>
 
         <!-- Cost Analysis -->
         <section class="card">
-            <h2>4. Cost Analysis</h2>
-            <div class="cost-controls">
-                <label>
-                    Period:
-                    <select id="costDays">
-                        <option value="7">Last 7 Days</option>
-                        <option value="30" selected>Last 30 Days</option>
-                        <option value="90">Last 90 Days</option>
+            <h2>5. Cost Analysis</h2>
+            <button id="cost-btn" class="primary-btn">💰 Analyze Costs</button>
+            <div class="options">
+                <label>Days:
+                    <select id="cost-days">
+                        <option value="7">Last 7 days</option>
+                        <option value="30">Last 30 days</option>
+                        <option value="90">Last 90 days</option>
                     </select>
                 </label>
-                <button id="loadCosts" class="btn btn-secondary">Load Costs</button>
             </div>
-            <div id="costDisplay">
-                <p class="info-text">Click "Load Costs" to view spending analysis</p>
-            </div>
-            <canvas id="costChart" style="display: none;"></canvas>
+            <div id="cost-results"></div>
         </section>
 
-        <!-- Cost Reports -->
+        <!-- Alerts & Health -->
         <section class="card">
-            <h2>📊 Cost Reports</h2>
+            <h2>6. Alerts & Health</h2>
+            <button id="alerts-btn" class="primary-btn" disabled>⚠️ Check Alerts</button>
+            <div class="options">
+                <label>CPU Threshold: <input type="number" id="threshold-cpu" value="80" min="0" max="100">%</label>
+                <label>Memory Threshold: <input type="number" id="threshold-memory" value="85" min="0" max="100">%</label>
+            </div>
+            <div id="alerts-results"></div>
+        </section>
+
+        <!-- Generate Script -->
+        <section class="card">
+            <h2>7. Generate Monitoring Script</h2>
+            <p>Select resources and generate a Python script you can schedule with cron or Python scheduler.</p>
             
-            <!-- Manual Report Generation -->
-            <div class="report-section">
-                <h3>Generate Manual Report</h3>
-                <p class="info-text">Select resources above and generate a cost report</p>
-                
-                <div class="report-controls">
-                    <label>
-                        Report Period:
-                        <select id="reportPeriod">
-                            <option value="daily">Daily (Yesterday)</option>
-                            <option value="weekly" selected>Weekly (Last 7 Days)</option>
-                            <option value="monthly">Monthly (This Month)</option>
-                        </select>
-                    </label>
-                    
-                    <label>
-                        <input type="checkbox" id="emailReport" checked> Email Report
-                    </label>
-                    
-                    <button id="generateReport" class="btn btn-success">Generate Report</button>
+            <div class="script-config">
+                <h3>Select Resource Types:</h3>
+                <div class="checkbox-group">
+                    <label><input type="checkbox" class="resource-type-check" value="ec2" checked> EC2</label>
+                    <label><input type="checkbox" class="resource-type-check" value="rds" checked> RDS</label>
+                    <label><input type="checkbox" class="resource-type-check" value="s3"> S3</label>
+                    <label><input type="checkbox" class="resource-type-check" value="lambda"> Lambda</label>
+                    <label><input type="checkbox" class="resource-type-check" value="eks"> Kubernetes (EKS)</label>
+                    <label><input type="checkbox" class="resource-type-check" value="emr"> EMR</label>
                 </div>
-                
-                <div id="reportResult" style="display:none; margin-top: 15px;"></div>
+
+                <h3>Select Checks:</h3>
+                <div class="checkbox-group">
+                    <label><input type="checkbox" class="check-type" value="performance" checked> Performance Metrics</label>
+                    <label><input type="checkbox" class="check-type" value="cost" checked> Cost Analysis</label>
+                    <label><input type="checkbox" class="check-type" value="alerts" checked> Alerts & Failover</label>
+                </div>
+
+                <h3>Notification (Optional):</h3>
+                <input type="email" id="notification-email" placeholder="Email for alerts (optional)">
             </div>
-            
-            <!-- Scheduled Reports -->
-            <div class="report-section">
-                <h3>Scheduled Reports</h3>
-                <p class="info-text">Schedule automatic cost reports for selected resources</p>
-                
-                <div class="report-controls">
-                    <input type="text" id="reportName" placeholder="Report Name (e.g., 'Weekly EC2 Costs')" style="width: 300px;">
-                    
-                    <label>
-                        Period:
-                        <select id="scheduledPeriod">
-                            <option value="daily">Daily</option>
-                            <option value="weekly" selected>Weekly</option>
-                            <option value="monthly">Monthly</option>
-                        </select>
-                    </label>
-                    
-                    <label>
-                        Schedule:
-                        <select id="reportSchedule">
-                            <option value="daily">Every Day at 9 AM</option>
-                            <option value="weekly_monday" selected>Every Monday at 9 AM</option>
-                            <option value="weekly_friday">Every Friday at 9 AM</option>
-                            <option value="monthly_1st">1st of Month at 9 AM</option>
-                            <option value="custom_06:00">Every Day at 6 AM</option>
-                            <option value="custom_18:00">Every Day at 6 PM</option>
-                        </select>
-                    </label>
-                    
-                    <button id="scheduleReport" class="btn btn-primary">Schedule Report</button>
-                </div>
-                
-                <!-- List of Scheduled Reports -->
-                <div id="scheduledReportsList" style="margin-top: 20px;">
-                    <h4>Active Scheduled Reports</h4>
-                    <div id="scheduledReportsContent">
-                        <p class="info-text">No scheduled reports</p>
-                    </div>
-                </div>
-            </div>
+
+            <button id="generate-script-btn" class="primary-btn">📝 Generate Script</button>
+            <div id="script-status" class="status"></div>
         </section>
 
-        <!-- Bottleneck Detection -->
-        <section class="card">
-            <h2>6. Bottleneck Detection</h2>
-            <button id="detectBottlenecks" class="btn btn-warning">Scan for Issues</button>
-            <div id="bottleneckDisplay">
-                <p class="info-text">Click "Scan for Issues" to analyze resource utilization</p>
-            </div>
-        </section>
-
-        <!-- Cost Optimization -->
-        <section class="card">
-            <h2>7. Cost Optimization 💰</h2>
-            <p class="info-text">Find opportunities to reduce AWS spending automatically</p>
-            <button id="analyzeCosts" class="btn btn-success">Find Savings Opportunities</button>
-            <div id="optimizationDisplay">
-                <p class="info-text">Click "Find Savings Opportunities" to discover ways to save money</p>
-            </div>
-        </section>
-
-        <!-- Security Audit -->
-        <section class="card">
-            <h2>8. Security Audit 🔒</h2>
-            <p class="info-text">Scan for security vulnerabilities and compliance issues</p>
-            <button id="runSecurityAudit" class="btn btn-danger">Run Security Audit</button>
-            <div id="securityDisplay">
-                <p class="info-text">Click "Run Security Audit" to check for security issues</p>
-            </div>
-        </section>
     </div>
 
-    <!-- External Libraries -->
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
-    <!-- Application JavaScript -->
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="/static/js/app.js"></script>
 </body>
 </html>

@@ -1,0 +1,692 @@
+"""
+Resource Monitor - Core monitoring logic
+Handles: EC2, RDS, S3, Lambda, EBS, Kubernetes (EKS), EMR
+Uses AWS profile: 'monitor'
+"""
+import boto3
+from datetime import datetime, timedelta
+from botocore.exceptions import ClientError
+import logging
+
+logger = logging.getLogger(__name__)
+
+AWS_PROFILE = 'monitor'
+
+
+class ResourceMonitor:
+    """Main resource monitoring class"""
+    
+    def __init__(self):
+        self.session = boto3.Session(profile_name=AWS_PROFILE)
+    
+    def get_regions(self):
+        """Get all available AWS regions"""
+        ec2 = self.session.client('ec2', region_name='us-east-1')
+        regions = ec2.describe_regions()['Regions']
+        return [r['RegionName'] for r in regions]
+    
+    def discover_all(self, regions, filters=None):
+        """
+        Discover all resources across regions
+        
+        Args:
+            regions: List of region names
+            filters: dict with 'tags', 'names', 'ids'
+        
+        Returns:
+            dict with all discovered resources
+        """
+        filters = filters or {}
+        results = {
+            'timestamp': datetime.utcnow().isoformat(),
+            'regions': {}
+        }
+        
+        for region in regions:
+            logger.info(f"Scanning region: {region}")
+            results['regions'][region] = {
+                'ec2': self._discover_ec2(region, filters),
+                'rds': self._discover_rds(region, filters),
+                's3': self._discover_s3(filters),  # S3 is global
+                'lambda': self._discover_lambda(region, filters),
+                'ebs': self._discover_ebs(region, filters),
+                'eks': self._discover_eks(region, filters),
+                'emr': self._discover_emr(region, filters)
+            }
+        
+        # Add summary
+        results['summary'] = self._calculate_summary(results['regions'])
+        
+        return results
+    
+    def _discover_ec2(self, region, filters):
+        """Discover EC2 instances"""
+        try:
+            ec2 = self.session.client('ec2', region_name=region)
+            
+            # Build filters
+            api_filters = []
+            if filters.get('tags'):
+                for k, v in filters['tags'].items():
+                    api_filters.append({'Name': f'tag:{k}', 'Values': [v]})
+            if filters.get('ids'):
+                api_filters.append({'Name': 'instance-id', 'Values': filters['ids']})
+            
+            response = ec2.describe_instances(Filters=api_filters)
+            
+            instances = []
+            for reservation in response['Reservations']:
+                for inst in reservation['Instances']:
+                    name = self._get_tag(inst.get('Tags', []), 'Name')
+                    
+                    # Apply name filter
+                    if filters.get('names') and name not in filters['names']:
+                        continue
+                    
+                    instances.append({
+                        'id': inst['InstanceId'],
+                        'name': name,
+                        'type': inst['InstanceType'],
+                        'state': inst['State']['Name'],
+                        'az': inst['Placement']['AvailabilityZone'],
+                        'private_ip': inst.get('PrivateIpAddress'),
+                        'public_ip': inst.get('PublicIpAddress'),
+                        'launch_time': inst['LaunchTime'].isoformat(),
+                        'tags': {t['Key']: t['Value'] for t in inst.get('Tags', [])}
+                    })
+            
+            return instances
+        except Exception as e:
+            logger.error(f"EC2 discovery error in {region}: {e}")
+            return []
+    
+    def _discover_rds(self, region, filters):
+        """Discover RDS instances"""
+        try:
+            rds = self.session.client('rds', region_name=region)
+            response = rds.describe_db_instances()
+            
+            instances = []
+            for db in response['DBInstances']:
+                name = db['DBInstanceIdentifier']
+                
+                # Apply filters
+                if filters.get('names') and name not in filters['names']:
+                    continue
+                if filters.get('ids') and db['DbiResourceId'] not in filters['ids']:
+                    continue
+                
+                # Get tags
+                arn = db['DBInstanceArn']
+                try:
+                    tag_response = rds.list_tags_for_resource(ResourceName=arn)
+                    tags = {t['Key']: t['Value'] for t in tag_response['TagList']}
+                    
+                    # Check tag filter
+                    if filters.get('tags'):
+                        matches = all(tags.get(k) == v for k, v in filters['tags'].items())
+                        if not matches:
+                            continue
+                except:
+                    tags = {}
+                
+                instances.append({
+                    'id': db['DbiResourceId'],
+                    'name': name,
+                    'engine': db['Engine'],
+                    'version': db['EngineVersion'],
+                    'class': db['DBInstanceClass'],
+                    'status': db['DBInstanceStatus'],
+                    'az': db['AvailabilityZone'],
+                    'multi_az': db['MultiAZ'],
+                    'storage': db['AllocatedStorage'],
+                    'endpoint': db['Endpoint']['Address'] if db.get('Endpoint') else None,
+                    'tags': tags
+                })
+            
+            return instances
+        except Exception as e:
+            logger.error(f"RDS discovery error in {region}: {e}")
+            return []
+    
+    def _discover_s3(self, filters):
+        """Discover S3 buckets (global service)"""
+        try:
+            s3 = self.session.client('s3')
+            response = s3.list_buckets()
+            
+            buckets = []
+            for bucket in response['Buckets']:
+                name = bucket['Name']
+                
+                # Apply name filter
+                if filters.get('names') and name not in filters['names']:
+                    continue
+                
+                # Get tags
+                try:
+                    tag_response = s3.get_bucket_tagging(Bucket=name)
+                    tags = {t['Key']: t['Value'] for t in tag_response['TagSet']}
+                    
+                    # Check tag filter
+                    if filters.get('tags'):
+                        matches = all(tags.get(k) == v for k, v in filters['tags'].items())
+                        if not matches:
+                            continue
+                except ClientError:
+                    tags = {}
+                
+                # Get region
+                try:
+                    location = s3.get_bucket_location(Bucket=name)
+                    region = location['LocationConstraint'] or 'us-east-1'
+                except:
+                    region = 'unknown'
+                
+                buckets.append({
+                    'name': name,
+                    'creation_date': bucket['CreationDate'].isoformat(),
+                    'region': region,
+                    'tags': tags
+                })
+            
+            return buckets
+        except Exception as e:
+            logger.error(f"S3 discovery error: {e}")
+            return []
+    
+    def _discover_lambda(self, region, filters):
+        """Discover Lambda functions"""
+        try:
+            lambda_client = self.session.client('lambda', region_name=region)
+            response = lambda_client.list_functions()
+            
+            functions = []
+            for func in response['Functions']:
+                name = func['FunctionName']
+                
+                # Apply name filter
+                if filters.get('names') and name not in filters['names']:
+                    continue
+                
+                # Get tags
+                try:
+                    tag_response = lambda_client.list_tags(Resource=func['FunctionArn'])
+                    tags = tag_response['Tags']
+                    
+                    # Check tag filter
+                    if filters.get('tags'):
+                        matches = all(tags.get(k) == v for k, v in filters['tags'].items())
+                        if not matches:
+                            continue
+                except:
+                    tags = {}
+                
+                functions.append({
+                    'name': name,
+                    'arn': func['FunctionArn'],
+                    'runtime': func['Runtime'],
+                    'memory': func['MemorySize'],
+                    'timeout': func['Timeout'],
+                    'last_modified': func['LastModified'],
+                    'tags': tags
+                })
+            
+            return functions
+        except Exception as e:
+            logger.error(f"Lambda discovery error in {region}: {e}")
+            return []
+    
+    def _discover_ebs(self, region, filters):
+        """Discover EBS volumes"""
+        try:
+            ec2 = self.session.client('ec2', region_name=region)
+            
+            api_filters = []
+            if filters.get('tags'):
+                for k, v in filters['tags'].items():
+                    api_filters.append({'Name': f'tag:{k}', 'Values': [v]})
+            if filters.get('ids'):
+                api_filters.append({'Name': 'volume-id', 'Values': filters['ids']})
+            
+            response = ec2.describe_volumes(Filters=api_filters)
+            
+            volumes = []
+            for vol in response['Volumes']:
+                name = self._get_tag(vol.get('Tags', []), 'Name')
+                
+                # Apply name filter
+                if filters.get('names') and name not in filters['names']:
+                    continue
+                
+                volumes.append({
+                    'id': vol['VolumeId'],
+                    'name': name,
+                    'size': vol['Size'],
+                    'type': vol['VolumeType'],
+                    'state': vol['State'],
+                    'az': vol['AvailabilityZone'],
+                    'encrypted': vol['Encrypted'],
+                    'attached_to': vol['Attachments'][0]['InstanceId'] if vol['Attachments'] else None,
+                    'tags': {t['Key']: t['Value'] for t in vol.get('Tags', [])}
+                })
+            
+            return volumes
+        except Exception as e:
+            logger.error(f"EBS discovery error in {region}: {e}")
+            return []
+    
+    def _discover_eks(self, region, filters):
+        """Discover EKS clusters (Kubernetes)"""
+        try:
+            eks = self.session.client('eks', region_name=region)
+            response = eks.list_clusters()
+            
+            clusters = []
+            for cluster_name in response['clusters']:
+                # Apply name filter
+                if filters.get('names') and cluster_name not in filters['names']:
+                    continue
+                
+                # Get cluster details
+                cluster = eks.describe_cluster(name=cluster_name)['cluster']
+                
+                # Get tags
+                tags = cluster.get('tags', {})
+                
+                # Check tag filter
+                if filters.get('tags'):
+                    matches = all(tags.get(k) == v for k, v in filters['tags'].items())
+                    if not matches:
+                        continue
+                
+                # Get node groups
+                node_groups = []
+                try:
+                    ng_response = eks.list_nodegroups(clusterName=cluster_name)
+                    for ng_name in ng_response['nodegroups']:
+                        ng = eks.describe_nodegroup(
+                            clusterName=cluster_name,
+                            nodegroupName=ng_name
+                        )['nodegroup']
+                        node_groups.append({
+                            'name': ng_name,
+                            'status': ng['status'],
+                            'instance_types': ng.get('instanceTypes', []),
+                            'desired_size': ng['scalingConfig']['desiredSize'],
+                            'min_size': ng['scalingConfig']['minSize'],
+                            'max_size': ng['scalingConfig']['maxSize']
+                        })
+                except:
+                    pass
+                
+                clusters.append({
+                    'name': cluster_name,
+                    'arn': cluster['arn'],
+                    'version': cluster['version'],
+                    'status': cluster['status'],
+                    'endpoint': cluster['endpoint'],
+                    'created': cluster['createdAt'].isoformat(),
+                    'node_groups': node_groups,
+                    'tags': tags
+                })
+            
+            return clusters
+        except Exception as e:
+            logger.error(f"EKS discovery error in {region}: {e}")
+            return []
+    
+    def _discover_emr(self, region, filters):
+        """Discover EMR clusters"""
+        try:
+            emr = self.session.client('emr', region_name=region)
+            response = emr.list_clusters(
+                ClusterStates=['STARTING', 'BOOTSTRAPPING', 'RUNNING', 'WAITING']
+            )
+            
+            clusters = []
+            for cluster_summary in response['Clusters']:
+                cluster_id = cluster_summary['Id']
+                name = cluster_summary['Name']
+                
+                # Apply filters
+                if filters.get('names') and name not in filters['names']:
+                    continue
+                if filters.get('ids') and cluster_id not in filters['ids']:
+                    continue
+                
+                # Get detailed info
+                cluster = emr.describe_cluster(ClusterId=cluster_id)['Cluster']
+                
+                # Get tags
+                tags = {t['Key']: t['Value'] for t in cluster.get('Tags', [])}
+                
+                # Check tag filter
+                if filters.get('tags'):
+                    matches = all(tags.get(k) == v for k, v in filters['tags'].items())
+                    if not matches:
+                        continue
+                
+                clusters.append({
+                    'id': cluster_id,
+                    'name': name,
+                    'status': cluster['Status']['State'],
+                    'release_label': cluster.get('ReleaseLabel'),
+                    'master_instance_type': cluster.get('MasterPublicDnsName'),
+                    'instance_count': cluster.get('NormalizedInstanceHours', 0),
+                    'created': cluster['Status']['Timeline']['CreationDateTime'].isoformat(),
+                    'tags': tags
+                })
+            
+            return clusters
+        except Exception as e:
+            logger.error(f"EMR discovery error in {region}: {e}")
+            return []
+    
+    def _get_tag(self, tags, key):
+        """Extract tag value from AWS tags list"""
+        for tag in tags:
+            if tag['Key'] == key:
+                return tag['Value']
+        return ''
+    
+    def _calculate_summary(self, regions_data):
+        """Calculate resource summary"""
+        summary = {}
+        for region, resources in regions_data.items():
+            for resource_type, items in resources.items():
+                if resource_type == 's3':  # S3 is global, count once
+                    if 's3' not in summary:
+                        summary['s3'] = len(items)
+                else:
+                    summary[resource_type] = summary.get(resource_type, 0) + len(items)
+        return summary
+    
+    def get_metrics(self, resources, period=300):
+        """
+        Get CloudWatch metrics for resources
+        
+        Args:
+            resources: List of dicts with 'type', 'id', 'region'
+            period: Metric period in seconds (default 300 = 5 min)
+        
+        Returns:
+            dict with metrics for each resource
+        """
+        results = {}
+        end_time = datetime.utcnow()
+        start_time = end_time - timedelta(hours=1)
+        
+        for resource in resources:
+            resource_type = resource['type']
+            resource_id = resource['id']
+            region = resource['region']
+            
+            try:
+                cloudwatch = self.session.client('cloudwatch', region_name=region)
+                
+                if resource_type == 'ec2':
+                    metrics = self._get_ec2_metrics(cloudwatch, resource_id, start_time, end_time, period)
+                elif resource_type == 'rds':
+                    metrics = self._get_rds_metrics(cloudwatch, resource_id, start_time, end_time, period)
+                elif resource_type == 'lambda':
+                    metrics = self._get_lambda_metrics(cloudwatch, resource_id, start_time, end_time, period)
+                elif resource_type == 'eks':
+                    metrics = self._get_eks_metrics(cloudwatch, resource_id, start_time, end_time, period)
+                elif resource_type == 'emr':
+                    metrics = self._get_emr_metrics(cloudwatch, resource_id, start_time, end_time, period)
+                else:
+                    metrics = {}
+                
+                results[f"{resource_type}:{resource_id}"] = metrics
+                
+            except Exception as e:
+                logger.error(f"Metrics error for {resource_type}:{resource_id}: {e}")
+                results[f"{resource_type}:{resource_id}"] = {'error': str(e)}
+        
+        return results
+    
+    def _get_ec2_metrics(self, cloudwatch, instance_id, start_time, end_time, period):
+        """Get EC2 metrics from CloudWatch"""
+        metrics = {}
+        
+        for metric_name in ['CPUUtilization', 'NetworkIn', 'NetworkOut', 'DiskReadBytes', 'DiskWriteBytes']:
+            response = cloudwatch.get_metric_statistics(
+                Namespace='AWS/EC2',
+                MetricName=metric_name,
+                Dimensions=[{'Name': 'InstanceId', 'Value': instance_id}],
+                StartTime=start_time,
+                EndTime=end_time,
+                Period=period,
+                Statistics=['Average', 'Maximum']
+            )
+            
+            datapoints = sorted(response['Datapoints'], key=lambda x: x['Timestamp'])
+            if datapoints:
+                metrics[metric_name.lower()] = {
+                    'current': datapoints[-1]['Average'],
+                    'max': max(d['Maximum'] for d in datapoints),
+                    'avg': sum(d['Average'] for d in datapoints) / len(datapoints)
+                }
+        
+        return metrics
+    
+    def _get_rds_metrics(self, cloudwatch, db_id, start_time, end_time, period):
+        """Get RDS metrics from CloudWatch"""
+        metrics = {}
+        
+        for metric_name in ['CPUUtilization', 'DatabaseConnections', 'FreeStorageSpace', 'ReadLatency', 'WriteLatency']:
+            response = cloudwatch.get_metric_statistics(
+                Namespace='AWS/RDS',
+                MetricName=metric_name,
+                Dimensions=[{'Name': 'DBInstanceIdentifier', 'Value': db_id}],
+                StartTime=start_time,
+                EndTime=end_time,
+                Period=period,
+                Statistics=['Average', 'Maximum']
+            )
+            
+            datapoints = sorted(response['Datapoints'], key=lambda x: x['Timestamp'])
+            if datapoints:
+                metrics[metric_name.lower()] = {
+                    'current': datapoints[-1]['Average'],
+                    'max': max(d['Maximum'] for d in datapoints),
+                    'avg': sum(d['Average'] for d in datapoints) / len(datapoints)
+                }
+        
+        return metrics
+    
+    def _get_lambda_metrics(self, cloudwatch, function_name, start_time, end_time, period):
+        """Get Lambda metrics from CloudWatch"""
+        metrics = {}
+        
+        for metric_name in ['Invocations', 'Errors', 'Duration', 'Throttles']:
+            response = cloudwatch.get_metric_statistics(
+                Namespace='AWS/Lambda',
+                MetricName=metric_name,
+                Dimensions=[{'Name': 'FunctionName', 'Value': function_name}],
+                StartTime=start_time,
+                EndTime=end_time,
+                Period=period,
+                Statistics=['Sum'] if metric_name in ['Invocations', 'Errors', 'Throttles'] else ['Average']
+            )
+            
+            datapoints = sorted(response['Datapoints'], key=lambda x: x['Timestamp'])
+            if datapoints:
+                stat_key = 'Sum' if metric_name in ['Invocations', 'Errors', 'Throttles'] else 'Average'
+                metrics[metric_name.lower()] = {
+                    'current': datapoints[-1][stat_key],
+                    'total': sum(d[stat_key] for d in datapoints)
+                }
+        
+        return metrics
+    
+    def _get_eks_metrics(self, cloudwatch, cluster_name, start_time, end_time, period):
+        """Get EKS metrics from CloudWatch"""
+        # EKS metrics are collected via Container Insights
+        # This is a placeholder - actual implementation would query container metrics
+        return {'note': 'Enable Container Insights for EKS metrics'}
+    
+    def _get_emr_metrics(self, cloudwatch, cluster_id, start_time, end_time, period):
+        """Get EMR metrics from CloudWatch"""
+        metrics = {}
+        
+        for metric_name in ['IsIdle', 'ContainerPending', 'AppsRunning']:
+            response = cloudwatch.get_metric_statistics(
+                Namespace='AWS/ElasticMapReduce',
+                MetricName=metric_name,
+                Dimensions=[{'Name': 'JobFlowId', 'Value': cluster_id}],
+                StartTime=start_time,
+                EndTime=end_time,
+                Period=period,
+                Statistics=['Average']
+            )
+            
+            datapoints = sorted(response['Datapoints'], key=lambda x: x['Timestamp'])
+            if datapoints:
+                metrics[metric_name.lower()] = {
+                    'current': datapoints[-1]['Average']
+                }
+        
+        return metrics
+    
+    def analyze_costs(self, regions, days=7):
+        """
+        Analyze costs using Cost Explorer
+        
+        Args:
+            regions: List of regions
+            days: Number of days to analyze
+        
+        Returns:
+            dict with cost analysis
+        """
+        try:
+            ce = self.session.client('ce', region_name='us-east-1')
+            
+            end_date = datetime.utcnow().date()
+            start_date = end_date - timedelta(days=days)
+            
+            # Get total costs
+            response = ce.get_cost_and_usage(
+                TimePeriod={
+                    'Start': start_date.isoformat(),
+                    'End': end_date.isoformat()
+                },
+                Granularity='DAILY',
+                Metrics=['UnblendedCost'],
+                GroupBy=[
+                    {'Type': 'DIMENSION', 'Key': 'SERVICE'},
+                    {'Type': 'DIMENSION', 'Key': 'REGION'}
+                ]
+            )
+            
+            # Process results
+            costs_by_service = {}
+            costs_by_region = {}
+            daily_costs = []
+            
+            for result in response['ResultsByTime']:
+                date = result['TimePeriod']['Start']
+                day_total = 0
+                
+                for group in result['Groups']:
+                    service = group['Keys'][0]
+                    region = group['Keys'][1]
+                    amount = float(group['Metrics']['UnblendedCost']['Amount'])
+                    
+                    costs_by_service[service] = costs_by_service.get(service, 0) + amount
+                    costs_by_region[region] = costs_by_region.get(region, 0) + amount
+                    day_total += amount
+                
+                daily_costs.append({'date': date, 'cost': day_total})
+            
+            total_cost = sum(d['cost'] for d in daily_costs)
+            
+            return {
+                'period': {'start': start_date.isoformat(), 'end': end_date.isoformat()},
+                'total_cost': round(total_cost, 2),
+                'daily_average': round(total_cost / days, 2),
+                'by_service': {k: round(v, 2) for k, v in sorted(costs_by_service.items(), key=lambda x: x[1], reverse=True)[:10]},
+                'by_region': {k: round(v, 2) for k, v in sorted(costs_by_region.items(), key=lambda x: x[1], reverse=True)},
+                'daily_costs': daily_costs
+            }
+            
+        except Exception as e:
+            logger.error(f"Cost analysis error: {e}")
+            return {'error': str(e)}
+    
+    def check_alerts(self, resources, thresholds):
+        """
+        Check resources against thresholds and detect issues
+        
+        Args:
+            resources: List of resources with metrics
+            thresholds: dict like {'cpu': 80, 'memory': 85, 'disk': 90}
+        
+        Returns:
+            dict with alerts and issues
+        """
+        alerts = {
+            'critical': [],
+            'warning': [],
+            'info': []
+        }
+        
+        # Get metrics for resources
+        metrics = self.get_metrics(resources, period=300)
+        
+        for resource_key, resource_metrics in metrics.items():
+            resource_type, resource_id = resource_key.split(':', 1)
+            
+            # Check CPU
+            if 'cpuutilization' in resource_metrics:
+                cpu = resource_metrics['cpuutilization']['current']
+                threshold = thresholds.get('cpu', 80)
+                
+                if cpu > threshold:
+                    alerts['critical'].append({
+                        'resource': resource_id,
+                        'type': resource_type,
+                        'metric': 'CPU',
+                        'current': cpu,
+                        'threshold': threshold,
+                        'message': f"CPU utilization {cpu:.1f}% exceeds threshold {threshold}%"
+                    })
+                elif cpu > threshold * 0.8:
+                    alerts['warning'].append({
+                        'resource': resource_id,
+                        'type': resource_type,
+                        'metric': 'CPU',
+                        'current': cpu,
+                        'message': f"CPU utilization {cpu:.1f}% approaching threshold"
+                    })
+            
+            # Check Lambda errors
+            if resource_type == 'lambda' and 'errors' in resource_metrics:
+                errors = resource_metrics['errors']['current']
+                if errors > 0:
+                    alerts['warning'].append({
+                        'resource': resource_id,
+                        'type': resource_type,
+                        'metric': 'Errors',
+                        'current': errors,
+                        'message': f"Lambda function has {errors} errors"
+                    })
+            
+            # Check RDS connections
+            if resource_type == 'rds' and 'databaseconnections' in resource_metrics:
+                connections = resource_metrics['databaseconnections']['current']
+                max_connections = thresholds.get('max_db_connections', 100)
+                
+                if connections > max_connections * 0.9:
+                    alerts['critical'].append({
+                        'resource': resource_id,
+                        'type': resource_type,
+                        'metric': 'Connections',
+                        'current': connections,
+                        'threshold': max_connections,
+                        'message': f"Database connections {connections} near limit"
+                    })
+        
+        return alerts
