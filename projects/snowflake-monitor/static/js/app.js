@@ -240,10 +240,20 @@ async function loadQueries() {
 async function loadWarehouses() {
     showLoading('Loading warehouse configurations...');
     try {
-        const [configs, clusterLoad] = await Promise.all([
-            fetchAPI('warehouse-config'),
-            fetchAPI('cluster-load', { days: 7 })
-        ]);
+        let configs = [];
+        let clusterLoad = [];
+        
+        try {
+            configs = await fetchAPI('warehouse-config');
+        } catch (e) {
+            console.warn('Failed to load warehouse-config:', e);
+        }
+        
+        try {
+            clusterLoad = await fetchAPI('cluster-load', { days: 7 });
+        } catch (e) {
+            console.warn('Failed to load cluster-load:', e);
+        }
         
         renderWarehouseConfigTable(configs);
         renderClusterLoadChart(clusterLoad);
@@ -353,15 +363,22 @@ function renderStorageChart(data) {
         state.charts.storage.destroy();
     }
     
-    const sortedData = data.sort((a, b) => b.TOTAL_GB - a.TOTAL_GB).slice(0, 8);
+    // Calculate totals for DB storage vs Failsafe storage
+    let totalDbStorage = 0;
+    let totalFailsafeStorage = 0;
+    
+    data.forEach(d => {
+        totalDbStorage += d.DATABASE_GB || 0;
+        totalFailsafeStorage += d.FAILSAFE_GB || 0;
+    });
     
     state.charts.storage = new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: sortedData.map(d => d.DATABASE_NAME || 'Unknown'),
+            labels: ['Database Storage', 'Failsafe Storage'],
             datasets: [{
-                data: sortedData.map(d => d.TOTAL_GB),
-                backgroundColor: chartColorPalette,
+                data: [totalDbStorage, totalFailsafeStorage],
+                backgroundColor: [chartColors.cyan, chartColors.orange],
                 borderWidth: 0
             }]
         },
@@ -372,6 +389,17 @@ function renderStorageChart(data) {
                 legend: {
                     position: 'right',
                     labels: { usePointStyle: true }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const value = context.raw;
+                            if (value >= 1024) {
+                                return `${context.label}: ${(value / 1024).toFixed(2)} TB`;
+                            }
+                            return `${context.label}: ${value.toFixed(1)} GB`;
+                        }
+                    }
                 }
             }
         }
@@ -519,6 +547,26 @@ function renderClusterLoadChart(data) {
     
     if (state.charts.clusterLoad) {
         state.charts.clusterLoad.destroy();
+    }
+    
+    // Check if data is empty or invalid
+    if (!data || !Array.isArray(data) || data.length === 0) {
+        state.charts.clusterLoad = new Chart(ctx, {
+            type: 'line',
+            data: { datasets: [] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'No cluster load data available',
+                        color: '#8b9cb3'
+                    }
+                }
+            }
+        });
+        return;
     }
     
     // Group by warehouse
@@ -709,9 +757,15 @@ function renderQueuedTable(data) {
 
 function renderWarehouseConfigTable(data) {
     const tbody = document.querySelector('#warehouseConfigTable tbody');
+    
+    if (!data || !Array.isArray(data) || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="no-data">No warehouse configurations found</td></tr>';
+        return;
+    }
+    
     tbody.innerHTML = data.map(row => `
         <tr>
-            <td><strong>${row.WAREHOUSE_NAME}</strong></td>
+            <td><strong>${row.WAREHOUSE_NAME || '--'}</strong></td>
             <td><span class="state-badge ${(row.STATE || '').toLowerCase()}">${row.STATE || '--'}</span></td>
             <td>${row.SIZE || '--'}</td>
             <td>${row.TYPE || '--'}</td>
@@ -1683,8 +1737,17 @@ async function loadDatabaseAnalysis() {
     showLoading(`Analyzing database: ${dbName}...`);
     
     try {
-        // Load all data in parallel
-        const [overview, costAnalysis, slowQueries, bottlenecks, tables, patterns, optimization, recommendations] = await Promise.all([
+        // Load all data in parallel with individual error handling
+        let overview = { query_metrics: {}, storage: {}, objects: {} };
+        let costAnalysis = { daily_volume: [], by_warehouse: [], by_user: [] };
+        let slowQueries = [];
+        let bottlenecks = { queuing: [], spilling: [], compilation: [], failures: [], full_scans: [], full_scan_details: [], unclustered_tables: [], queued_queries: [] };
+        let tables = [];
+        let patterns = { hourly: [], by_type: [], by_schema: [] };
+        let optimization = [];
+        let recommendations = [];
+        
+        const results = await Promise.allSettled([
             fetchAPI(`database/${dbName}/overview`, { days }),
             fetchAPI(`database/${dbName}/cost-analysis`, { days }),
             fetchAPI(`database/${dbName}/slow-queries`, { days: 7, threshold: 30 }),
@@ -1694,6 +1757,16 @@ async function loadDatabaseAnalysis() {
             fetchAPI(`database/${dbName}/optimization`, { days: 7 }),
             fetchAPI(`database/${dbName}/recommendations`, { days })
         ]);
+        
+        // Extract successful results
+        if (results[0].status === 'fulfilled') overview = results[0].value;
+        if (results[1].status === 'fulfilled') costAnalysis = results[1].value;
+        if (results[2].status === 'fulfilled') slowQueries = results[2].value;
+        if (results[3].status === 'fulfilled') bottlenecks = results[3].value;
+        if (results[4].status === 'fulfilled') tables = results[4].value;
+        if (results[5].status === 'fulfilled') patterns = results[5].value;
+        if (results[6].status === 'fulfilled') optimization = results[6].value;
+        if (results[7].status === 'fulfilled') recommendations = results[7].value;
         
         // Show the overview section, hide empty state
         document.getElementById('dbOverviewSection').style.display = 'block';
@@ -1740,11 +1813,17 @@ async function loadDatabaseAnalysis() {
         
     } catch (error) {
         console.error('Error loading database analysis:', error);
+        showToast('Failed to load database analysis: ' + error.message, 'error');
         hideLoading();
     }
 }
 
 function renderDbCostTab(costAnalysis) {
+    // Ensure costAnalysis has expected structure
+    const dailyVolume = costAnalysis?.daily_volume || [];
+    const byWarehouse = costAnalysis?.by_warehouse || [];
+    const byUser = costAnalysis?.by_user || [];
+    
     // Daily volume chart
     const dailyCtx = document.getElementById('dbDailyVolumeChart').getContext('2d');
     if (state.charts.dbDailyVolume) state.charts.dbDailyVolume.destroy();
@@ -1752,11 +1831,11 @@ function renderDbCostTab(costAnalysis) {
     state.charts.dbDailyVolume = new Chart(dailyCtx, {
         type: 'line',
         data: {
-            labels: costAnalysis.daily_volume.map(d => d.DATE),
+            labels: dailyVolume.map(d => d.DATE),
             datasets: [
                 {
                     label: 'Queries',
-                    data: costAnalysis.daily_volume.map(d => d.QUERY_COUNT),
+                    data: dailyVolume.map(d => d.QUERY_COUNT),
                     borderColor: chartColors.cyan,
                     backgroundColor: 'rgba(0, 212, 255, 0.1)',
                     fill: true,
@@ -1764,7 +1843,7 @@ function renderDbCostTab(costAnalysis) {
                 },
                 {
                     label: 'Compute Hours',
-                    data: costAnalysis.daily_volume.map(d => d.TOTAL_HOURS),
+                    data: dailyVolume.map(d => d.TOTAL_HOURS),
                     borderColor: chartColors.orange,
                     backgroundColor: 'transparent',
                     yAxisID: 'y1'
@@ -1794,13 +1873,13 @@ function renderDbCostTab(costAnalysis) {
     state.charts.dbWarehouse = new Chart(whCtx, {
         type: 'bar',
         data: {
-            labels: costAnalysis.by_warehouse.map(d => {
+            labels: byWarehouse.map(d => {
                 const rate = creditRates[d.WAREHOUSE_SIZE] || '?';
                 return `${d.WAREHOUSE_NAME} (${d.WAREHOUSE_SIZE} = ${rate} cr/hr)`;
             }),
             datasets: [{
                 label: 'Compute Hours',
-                data: costAnalysis.by_warehouse.map(d => d.TOTAL_HOURS),
+                data: byWarehouse.map(d => d.TOTAL_HOURS),
                 backgroundColor: chartColorPalette
             }]
         },
@@ -1812,7 +1891,8 @@ function renderDbCostTab(costAnalysis) {
                 tooltip: {
                     callbacks: {
                         afterLabel: function(context) {
-                            const data = costAnalysis.by_warehouse[context.dataIndex];
+                            const data = byWarehouse[context.dataIndex];
+                            if (!data) return '';
                             const rate = creditRates[data.WAREHOUSE_SIZE] || 4;
                             const estCredits = data.TOTAL_HOURS * rate;
                             return `≈ ${formatNumber(estCredits, 0)} credits\nQueries: ${formatNumber(data.QUERY_COUNT, 0)}\nTB Scanned: ${formatNumber(data.TB_SCANNED, 2)}`;
@@ -1828,18 +1908,27 @@ function renderDbCostTab(costAnalysis) {
     
     // User cost table
     const tbody = document.querySelector('#dbUserCostTable tbody');
-    tbody.innerHTML = costAnalysis.by_user.map(row => `
-        <tr>
-            <td><strong>${row.USER_NAME}</strong></td>
-            <td>${formatNumber(row.QUERY_COUNT, 0)} <span class="unit">queries</span></td>
-            <td>${formatNumber(row.TOTAL_HOURS, 1)} <span class="unit">hrs</span></td>
-            <td>${formatNumber(row.AVG_QUERY_SEC, 1)} <span class="unit">sec</span></td>
-            <td>${formatNumber(row.TB_SCANNED, 2)} <span class="unit">TB</span></td>
-        </tr>
-    `).join('');
+    if (byUser.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="no-data">No user data available</td></tr>';
+    } else {
+        tbody.innerHTML = byUser.map(row => `
+            <tr>
+                <td><strong>${row.USER_NAME}</strong></td>
+                <td>${formatNumber(row.QUERY_COUNT, 0)} <span class="unit">queries</span></td>
+                <td>${formatNumber(row.TOTAL_HOURS, 1)} <span class="unit">hrs</span></td>
+                <td>${formatNumber(row.AVG_QUERY_SEC, 1)} <span class="unit">sec</span></td>
+                <td>${formatNumber(row.TB_SCANNED, 2)} <span class="unit">TB</span></td>
+            </tr>
+        `).join('');
+    }
 }
 
 function renderDbPerformanceTab(patterns, slowQueries) {
+    // Ensure patterns has expected structure
+    const hourly = patterns?.hourly || [];
+    const byType = patterns?.by_type || [];
+    const queries = Array.isArray(slowQueries) ? slowQueries : [];
+    
     // Hourly chart
     const hourlyCtx = document.getElementById('dbHourlyChart').getContext('2d');
     if (state.charts.dbHourly) state.charts.dbHourly.destroy();
@@ -1847,10 +1936,10 @@ function renderDbPerformanceTab(patterns, slowQueries) {
     state.charts.dbHourly = new Chart(hourlyCtx, {
         type: 'bar',
         data: {
-            labels: patterns.hourly.map(d => `${d.HOUR_OF_DAY}:00`),
+            labels: hourly.map(d => `${d.HOUR_OF_DAY}:00`),
             datasets: [{
                 label: 'Query Count',
-                data: patterns.hourly.map(d => d.QUERY_COUNT),
+                data: hourly.map(d => d.QUERY_COUNT),
                 backgroundColor: chartColors.cyan,
                 borderRadius: 4
             }]
@@ -1868,9 +1957,9 @@ function renderDbPerformanceTab(patterns, slowQueries) {
     state.charts.dbQueryType = new Chart(typeCtx, {
         type: 'doughnut',
         data: {
-            labels: patterns.by_type.map(d => d.QUERY_TYPE),
+            labels: byType.map(d => d.QUERY_TYPE),
             datasets: [{
-                data: patterns.by_type.map(d => d.QUERY_COUNT),
+                data: byType.map(d => d.QUERY_COUNT),
                 backgroundColor: chartColorPalette
             }]
         },
@@ -1883,28 +1972,42 @@ function renderDbPerformanceTab(patterns, slowQueries) {
     
     // Slow queries table - clickable query IDs
     const tbody = document.querySelector('#dbSlowQueriesTable tbody');
-    tbody.innerHTML = slowQueries.slice(0, 30).map(row => `
-        <tr>
-            <td><span class="query-id clickable-query" data-query="${encodeURIComponent(row.QUERY_TEXT || '')}">${truncateText(row.QUERY_ID, 15)}</span></td>
-            <td>${row.USER_NAME || '--'}</td>
-            <td>${row.WAREHOUSE_NAME || '--'}</td>
-            <td>${row.QUERY_TYPE || '--'}</td>
-            <td>${formatNumber(row.ELAPSED_SEC, 1)} <span class="unit">sec</span></td>
-            <td>${formatNumber(row.GB_SCANNED, 2)} <span class="unit">GB</span></td>
-            <td>${formatNumber(row.QUEUE_SEC, 1)} <span class="unit">sec</span></td>
-            <td><span class="status-badge ${(row.EXECUTION_STATUS || '').toLowerCase()}">${row.EXECUTION_STATUS || '--'}</span></td>
-        </tr>
-    `).join('');
+    if (queries.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="no-data">No slow queries found</td></tr>';
+    } else {
+        tbody.innerHTML = queries.slice(0, 30).map(row => `
+            <tr>
+                <td><span class="query-id clickable-query" data-query="${encodeURIComponent(row.QUERY_TEXT || '')}">${truncateText(row.QUERY_ID, 15)}</span></td>
+                <td>${row.USER_NAME || '--'}</td>
+                <td>${row.WAREHOUSE_NAME || '--'}</td>
+                <td>${row.QUERY_TYPE || '--'}</td>
+                <td>${formatNumber(row.ELAPSED_SEC, 1)} <span class="unit">sec</span></td>
+                <td>${formatNumber(row.GB_SCANNED, 2)} <span class="unit">GB</span></td>
+                <td>${formatNumber(row.QUEUE_SEC, 1)} <span class="unit">sec</span></td>
+                <td><span class="status-badge ${(row.EXECUTION_STATUS || '').toLowerCase()}">${row.EXECUTION_STATUS || '--'}</span></td>
+            </tr>
+        `).join('');
+    }
     
     // Attach click handlers for query IDs
     attachQueryIdListeners();
 }
 
 function renderDbBottlenecksTab(bottlenecks, optimization) {
+    // Ensure bottlenecks has expected structure
+    const queuing = bottlenecks?.queuing || [];
+    const spilling = bottlenecks?.spilling || [];
+    const fullScans = bottlenecks?.full_scans || [];
+    const fullScanDetails = bottlenecks?.full_scan_details || [];
+    const unclusteredTables = bottlenecks?.unclustered_tables || [];
+    const queuedQueries = bottlenecks?.queued_queries || [];
+    const failures = bottlenecks?.failures || [];
+    const opts = Array.isArray(optimization) ? optimization : [];
+    
     // Queue issues - show summary AND list of queued queries
     let queueHtml = '';
-    if (bottlenecks.queuing.length > 0) {
-        queueHtml = bottlenecks.queuing.map(item => `
+    if (queuing.length > 0) {
+        queueHtml = queuing.map(item => `
             <div class="bottleneck-item">
                 <span class="label">${item.WAREHOUSE_NAME}</span>
                 <span class="value ${item.AVG_QUEUE_SEC > 10 ? 'danger' : (item.AVG_QUEUE_SEC > 5 ? 'warning' : '')}">${formatNumber(item.QUEUED_QUERIES, 0)} queued, avg ${formatNumber(item.AVG_QUEUE_SEC, 1)}s</span>
@@ -1912,9 +2015,9 @@ function renderDbBottlenecksTab(bottlenecks, optimization) {
         `).join('');
         
         // Add clickable queued queries list
-        if (bottlenecks.queued_queries && bottlenecks.queued_queries.length > 0) {
+        if (queuedQueries.length > 0) {
             queueHtml += '<div class="bottleneck-queries-list"><h5>Top Queued Queries:</h5>';
-            queueHtml += bottlenecks.queued_queries.slice(0, 5).map(q => `
+            queueHtml += queuedQueries.slice(0, 5).map(q => `
                 <div class="query-row clickable-query" data-query="${encodeURIComponent(q.QUERY_TEXT || '')}">
                     <span class="query-id-link">${truncateText(q.QUERY_ID, 20)}</span>
                     <span class="queue-time">${formatNumber(q.QUEUE_SEC, 1)}s queue</span>
@@ -1928,7 +2031,7 @@ function renderDbBottlenecksTab(bottlenecks, optimization) {
     document.getElementById('dbQueueIssues').innerHTML = queueHtml;
     
     // Spill issues
-    const spillHtml = bottlenecks.spilling.length > 0 ? bottlenecks.spilling.map(item => `
+    const spillHtml = spilling.length > 0 ? spilling.map(item => `
         <div class="bottleneck-item">
             <span class="label">${item.WAREHOUSE_NAME}</span>
             <span class="value ${item.REMOTE_SPILL_GB > 5 ? 'danger' : 'warning'}">${formatNumber(item.LOCAL_SPILL_GB, 1)} <span class="unit">GB</span> local, ${formatNumber(item.REMOTE_SPILL_GB, 1)} <span class="unit">GB</span> remote</span>
@@ -1937,7 +2040,7 @@ function renderDbBottlenecksTab(bottlenecks, optimization) {
     document.getElementById('dbSpillIssues').innerHTML = spillHtml;
     
     // Full scan issues - show summary AND detailed list with suggested columns
-    const scanData = bottlenecks.full_scans[0] || {};
+    const scanData = fullScans[0] || {};
     let scanHtml = '';
     
     if (scanData.FULL_SCAN_COUNT > 0) {
@@ -1953,9 +2056,9 @@ function renderDbBottlenecksTab(bottlenecks, optimization) {
         `;
         
         // Add detailed full scan list with suggested clustering columns
-        if (bottlenecks.full_scan_details && bottlenecks.full_scan_details.length > 0) {
+        if (fullScanDetails.length > 0) {
             scanHtml += '<div class="bottleneck-queries-list"><h5>Tables to Cluster:</h5>';
-            scanHtml += bottlenecks.full_scan_details.slice(0, 5).map(scan => `
+            scanHtml += fullScanDetails.slice(0, 5).map(scan => `
                 <div class="scan-suggestion clickable-query" data-query="${encodeURIComponent(scan.QUERY_TEXT || '')}">
                     <div class="scan-table"><strong>${scan.TABLE_NAME || 'Unknown'}</strong> - ${formatNumber(scan.GB_SCANNED, 1)} GB scanned</div>
                     <div class="scan-columns">Cluster on: <code>${scan.SUGGESTED_COLUMNS || 'date/timestamp columns'}</code></div>
@@ -1965,9 +2068,9 @@ function renderDbBottlenecksTab(bottlenecks, optimization) {
         }
         
         // Add unclustered tables recommendation
-        if (bottlenecks.unclustered_tables && bottlenecks.unclustered_tables.length > 0) {
+        if (unclusteredTables.length > 0) {
             scanHtml += '<div class="unclustered-alert"><h5>⚠️ Large Tables Without Clustering:</h5>';
-            scanHtml += bottlenecks.unclustered_tables.slice(0, 3).map(t => `
+            scanHtml += unclusteredTables.slice(0, 3).map(t => `
                 <div class="unclustered-table">${t.TABLE_SCHEMA}.${t.TABLE_NAME} (${formatNumber(t.SIZE_GB, 1)} GB)</div>
             `).join('');
             scanHtml += '</div>';
@@ -1978,7 +2081,7 @@ function renderDbBottlenecksTab(bottlenecks, optimization) {
     document.getElementById('dbScanIssues').innerHTML = scanHtml;
     
     // Failure issues
-    const failHtml = bottlenecks.failures.length > 0 ? bottlenecks.failures.slice(0, 3).map(item => `
+    const failHtml = failures.length > 0 ? failures.slice(0, 3).map(item => `
         <div class="bottleneck-item">
             <span class="label">${truncateText(item.ERROR_MESSAGE, 40)}</span>
             <span class="value danger">${item.FAILURE_COUNT} failures</span>
@@ -1988,24 +2091,32 @@ function renderDbBottlenecksTab(bottlenecks, optimization) {
     
     // Optimization table
     const tbody = document.querySelector('#dbOptimizationTable tbody');
-    tbody.innerHTML = optimization.slice(0, 20).map(row => `
-        <tr>
-            <td><span class="query-id clickable-query" data-query="${encodeURIComponent(row.QUERY_TEXT || '')}">${truncateText(row.QUERY_ID, 15)}</span></td>
-            <td><span class="issue-badge ${row.ISSUE_TYPE.toLowerCase().replace(/\s+/g, '-')}">${row.ISSUE_TYPE}</span></td>
-            <td>${row.USER_NAME || '--'}</td>
-            <td>${row.WAREHOUSE_NAME || '--'}</td>
-            <td>${formatNumber(row.ELAPSED_SEC, 1)} <span class="unit">sec</span></td>
-            <td class="recommendation-cell">
-                ${row.TABLE_NAME ? `<strong>${row.TABLE_NAME}:</strong> ` : ''}${row.RECOMMENDATION}
-            </td>
-        </tr>
-    `).join('');
+    if (opts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="no-data">No optimization opportunities found</td></tr>';
+    } else {
+        tbody.innerHTML = opts.slice(0, 20).map(row => `
+            <tr>
+                <td><span class="query-id clickable-query" data-query="${encodeURIComponent(row.QUERY_TEXT || '')}">${truncateText(row.QUERY_ID, 15)}</span></td>
+                <td><span class="issue-badge ${(row.ISSUE_TYPE || '').toLowerCase().replace(/\s+/g, '-')}">${row.ISSUE_TYPE || '--'}</span></td>
+                <td>${row.USER_NAME || '--'}</td>
+                <td>${row.WAREHOUSE_NAME || '--'}</td>
+                <td>${formatNumber(row.ELAPSED_SEC, 1)} <span class="unit">sec</span></td>
+                <td class="recommendation-cell">
+                    ${row.TABLE_NAME ? `<strong>${row.TABLE_NAME}:</strong> ` : ''}${row.RECOMMENDATION || 'Review query'}
+                </td>
+            </tr>
+        `).join('');
+    }
     
     // Attach click handlers for all query elements
     attachQueryIdListeners();
 }
 
 function renderDbTablesTab(tables, bySchema) {
+    // Ensure arrays exist
+    const schemaData = Array.isArray(bySchema) ? bySchema : [];
+    const tableData = Array.isArray(tables) ? tables : [];
+    
     // Schema chart
     const schemaCtx = document.getElementById('dbSchemaChart').getContext('2d');
     if (state.charts.dbSchema) state.charts.dbSchema.destroy();
@@ -2013,10 +2124,10 @@ function renderDbTablesTab(tables, bySchema) {
     state.charts.dbSchema = new Chart(schemaCtx, {
         type: 'bar',
         data: {
-            labels: bySchema.map(d => d.SCHEMA_NAME),
+            labels: schemaData.map(d => d.SCHEMA_NAME || 'Unknown'),
             datasets: [{
                 label: 'Query Count',
-                data: bySchema.map(d => d.QUERY_COUNT),
+                data: schemaData.map(d => d.QUERY_COUNT || 0),
                 backgroundColor: chartColorPalette
             }]
         },
@@ -2028,17 +2139,17 @@ function renderDbTablesTab(tables, bySchema) {
     });
     
     // Table size chart (top 10)
-    const topTables = tables.slice(0, 10);
+    const topTables = tableData.slice(0, 10);
     const sizeCtx = document.getElementById('dbTableSizeChart').getContext('2d');
     if (state.charts.dbTableSize) state.charts.dbTableSize.destroy();
     
     state.charts.dbTableSize = new Chart(sizeCtx, {
         type: 'bar',
         data: {
-            labels: topTables.map(d => d.TABLE_NAME),
+            labels: topTables.map(d => d.TABLE_NAME || 'Unknown'),
             datasets: [{
                 label: 'Size (GB)',
-                data: topTables.map(d => d.SIZE_GB),
+                data: topTables.map(d => d.SIZE_GB || 0),
                 backgroundColor: chartColors.cyan
             }]
         },
@@ -2051,17 +2162,21 @@ function renderDbTablesTab(tables, bySchema) {
     
     // Tables table
     const tbody = document.querySelector('#dbTablesTable tbody');
-    tbody.innerHTML = tables.slice(0, 30).map(row => `
-        <tr>
-            <td>${row.TABLE_SCHEMA}</td>
-            <td><strong>${row.TABLE_NAME}</strong></td>
-            <td>${formatNumber(row.ROW_COUNT, 0)}</td>
-            <td>${formatNumber(row.SIZE_GB, 2)} <span class="unit">GB</span></td>
-            <td><code>${row.CLUSTERING_KEY || 'None'}</code></td>
-            <td>${formatDate(row.LAST_ALTERED)}</td>
-            <td><span class="freshness-badge ${row.FRESHNESS.toLowerCase().replace(' ', '-')}">${row.FRESHNESS}</span></td>
-        </tr>
-    `).join('');
+    if (tableData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="no-data">No table data available</td></tr>';
+    } else {
+        tbody.innerHTML = tableData.slice(0, 30).map(row => `
+            <tr>
+                <td>${row.TABLE_SCHEMA || '--'}</td>
+                <td><strong>${row.TABLE_NAME || '--'}</strong></td>
+                <td>${formatNumber(row.ROW_COUNT, 0)}</td>
+                <td>${formatNumber(row.SIZE_GB, 2)} <span class="unit">GB</span></td>
+                <td><code>${row.CLUSTERING_KEY || 'None'}</code></td>
+                <td>${formatDate(row.LAST_ALTERED)}</td>
+                <td><span class="freshness-badge ${(row.FRESHNESS || 'unknown').toLowerCase().replace(' ', '-')}">${row.FRESHNESS || 'Unknown'}</span></td>
+            </tr>
+        `).join('');
+    }
 }
 
 function renderDbRecommendations(recommendations) {

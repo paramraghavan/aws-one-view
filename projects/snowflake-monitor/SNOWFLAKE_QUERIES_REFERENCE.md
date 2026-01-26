@@ -115,7 +115,7 @@ ORDER BY DATE
 
 ---
 
-### 1.6 Storage by Database
+### 1.6 Storage Breakdown (DB vs Failsafe)
 
 ```sql
 SELECT 
@@ -128,8 +128,12 @@ WHERE USAGE_DATE = (SELECT MAX(USAGE_DATE) FROM SNOWFLAKE.ACCOUNT_USAGE.DATABASE
 ORDER BY TOTAL_GB DESC
 ```
 
-**Dashboard Location:** Overview → "Storage by Database" chart  
-**Purpose:** Identify which databases use the most storage
+**Dashboard Location:** Overview → "Storage Breakdown" pie chart  
+**Purpose:** Shows total storage split between active database storage and fail-safe storage
+
+**Visualization:** Doughnut chart with two segments:
+- **Database Storage** (cyan) - Active data stored in databases
+- **Failsafe Storage** (orange) - 7-day recovery data (cannot be reduced)
 
 ---
 
