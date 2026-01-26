@@ -70,6 +70,17 @@ function formatDate(dateStr) {
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatStorageSize(gb) {
+    if (gb === null || gb === undefined || isNaN(gb)) return '--';
+    if (gb >= 1024) {
+        return (gb / 1024).toFixed(2) + ' TB';
+    } else if (gb >= 1) {
+        return gb.toFixed(1) + ' GB';
+    } else {
+        return (gb * 1024).toFixed(0) + ' MB';
+    }
+}
+
 function showToast(message, type = 'success') {
     const container = document.getElementById('toastContainer');
     const toast = document.createElement('div');
@@ -114,6 +125,20 @@ async function fetchAPI(endpoint, params = {}) {
     
     try {
         const response = await fetch(url);
+        
+        // Check if response is OK
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        // Check content type before parsing
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            const text = await response.text();
+            console.error(`Non-JSON response from ${endpoint}:`, text.substring(0, 200));
+            throw new Error(`Server returned non-JSON response for ${endpoint}`);
+        }
+        
         const data = await response.json();
         
         if (!data.success) {
@@ -842,96 +867,119 @@ function attachQueryIdListeners() {
 async function loadAttention() {
     showLoading('Loading issues...');
     try {
-        const [bottlenecks, recommendations, optimization] = await Promise.all([
-            fetchAPI('bottleneck-analysis'),
-            fetchAPI('recommendations'),
-            fetchAPI('optimization-opportunities')
-        ]);
+        // Load each API separately to handle individual failures
+        let bottlenecks = { queuing: [], spilling: [], compilation: [], failures: [] };
+        let recommendations = [];
+        let optimization = [];
+        
+        try {
+            bottlenecks = await fetchAPI('bottleneck-analysis');
+        } catch (e) {
+            console.warn('Failed to load bottleneck-analysis:', e);
+        }
+        
+        try {
+            recommendations = await fetchAPI('recommendations');
+        } catch (e) {
+            console.warn('Failed to load recommendations:', e);
+        }
+        
+        try {
+            optimization = await fetchAPI('optimization-opportunities');
+        } catch (e) {
+            console.warn('Failed to load optimization-opportunities:', e);
+        }
         
         // Categorize issues
         const critical = [];
         const warnings = [];
         const optimizations = [];
         
-        // Process bottlenecks
-        if (bottlenecks.queuing) {
-            bottlenecks.queuing.forEach(q => {
-                if (q.AVG_QUEUE_TIME_SEC > 30) {
-                    critical.push({
-                        text: `${q.WAREHOUSE_NAME}: High queue time (avg ${formatNumber(q.AVG_QUEUE_TIME_SEC, 1)}s)`,
-                        metric: `${formatNumber(q.QUEUED_QUERIES, 0)} queries queued`
-                    });
-                } else if (q.AVG_QUEUE_TIME_SEC > 10) {
-                    warnings.push({
-                        text: `${q.WAREHOUSE_NAME}: Moderate queue time (avg ${formatNumber(q.AVG_QUEUE_TIME_SEC, 1)}s)`,
-                        metric: `${formatNumber(q.QUEUED_QUERIES, 0)} queries queued`
-                    });
-                }
-            });
-        }
-        
-        if (bottlenecks.spilling) {
-            bottlenecks.spilling.forEach(s => {
-                if (s.GB_SPILLED_REMOTE > 10) {
-                    critical.push({
-                        text: `${s.WAREHOUSE_NAME}: Heavy remote spilling (expensive!)`,
-                        metric: `${formatNumber(s.GB_SPILLED_REMOTE, 1)} GB remote spill`
-                    });
-                } else if (s.GB_SPILLED_LOCAL > 50) {
-                    warnings.push({
-                        text: `${s.WAREHOUSE_NAME}: High local spilling`,
-                        metric: `${formatNumber(s.GB_SPILLED_LOCAL, 1)} GB local spill`
-                    });
-                }
-            });
-        }
-        
-        if (bottlenecks.failures && bottlenecks.failures.length > 0) {
-            bottlenecks.failures.forEach(f => {
-                if (f.FAILURE_COUNT > 100) {
-                    critical.push({
-                        text: `Query failures: ${truncateText(f.ERROR_MESSAGE, 50)}`,
-                        metric: `${formatNumber(f.FAILURE_COUNT, 0)} failures`
-                    });
-                } else if (f.FAILURE_COUNT > 20) {
-                    warnings.push({
-                        text: `Query failures: ${truncateText(f.ERROR_MESSAGE, 50)}`,
-                        metric: `${formatNumber(f.FAILURE_COUNT, 0)} failures`
-                    });
-                }
-            });
-        }
-        
-        // Process recommendations
-        recommendations.forEach(rec => {
-            if (rec.severity === 'High') {
-                critical.push({
-                    text: rec.title + ': ' + truncateText(rec.description, 80),
-                    metric: rec.warehouse || rec.category
-                });
-            } else if (rec.severity === 'Medium') {
-                warnings.push({
-                    text: rec.title + ': ' + truncateText(rec.description, 80),
-                    metric: rec.warehouse || rec.category
-                });
-            } else {
-                optimizations.push({
-                    text: rec.title + ': ' + truncateText(rec.description, 80),
-                    metric: rec.warehouse || rec.category
+        // Process bottlenecks (ensure object exists)
+        if (bottlenecks && typeof bottlenecks === 'object') {
+            if (Array.isArray(bottlenecks.queuing)) {
+                bottlenecks.queuing.forEach(q => {
+                    if (q.AVG_QUEUE_TIME_SEC > 30) {
+                        critical.push({
+                            text: `${q.WAREHOUSE_NAME}: High queue time (avg ${formatNumber(q.AVG_QUEUE_TIME_SEC, 1)}s)`,
+                            metric: `${formatNumber(q.QUEUED_QUERIES, 0)} queries queued`
+                        });
+                    } else if (q.AVG_QUEUE_TIME_SEC > 10) {
+                        warnings.push({
+                            text: `${q.WAREHOUSE_NAME}: Moderate queue time (avg ${formatNumber(q.AVG_QUEUE_TIME_SEC, 1)}s)`,
+                            metric: `${formatNumber(q.QUEUED_QUERIES, 0)} queries queued`
+                        });
+                    }
                 });
             }
-        });
+            
+            if (Array.isArray(bottlenecks.spilling)) {
+                bottlenecks.spilling.forEach(s => {
+                    if (s.GB_SPILLED_REMOTE > 10) {
+                        critical.push({
+                            text: `${s.WAREHOUSE_NAME}: Heavy remote spilling (expensive!)`,
+                            metric: `${formatNumber(s.GB_SPILLED_REMOTE, 1)} GB remote spill`
+                        });
+                    } else if (s.GB_SPILLED_LOCAL > 50) {
+                        warnings.push({
+                            text: `${s.WAREHOUSE_NAME}: High local spilling`,
+                            metric: `${formatNumber(s.GB_SPILLED_LOCAL, 1)} GB local spill`
+                        });
+                    }
+                });
+            }
+            
+            if (Array.isArray(bottlenecks.failures) && bottlenecks.failures.length > 0) {
+                bottlenecks.failures.forEach(f => {
+                    if (f.FAILURE_COUNT > 100) {
+                        critical.push({
+                            text: `Query failures: ${truncateText(f.ERROR_MESSAGE, 50)}`,
+                            metric: `${formatNumber(f.FAILURE_COUNT, 0)} failures`
+                        });
+                    } else if (f.FAILURE_COUNT > 20) {
+                        warnings.push({
+                            text: `Query failures: ${truncateText(f.ERROR_MESSAGE, 50)}`,
+                            metric: `${formatNumber(f.FAILURE_COUNT, 0)} failures`
+                        });
+                    }
+                });
+            }
+        }
         
-        // Add optimization opportunities summary
+        // Process recommendations (ensure it's an array)
+        if (Array.isArray(recommendations)) {
+            recommendations.forEach(rec => {
+                if (rec.severity === 'High') {
+                    critical.push({
+                        text: rec.title + ': ' + truncateText(rec.description, 80),
+                        metric: rec.warehouse || rec.category
+                    });
+                } else if (rec.severity === 'Medium') {
+                    warnings.push({
+                        text: rec.title + ': ' + truncateText(rec.description, 80),
+                        metric: rec.warehouse || rec.category
+                    });
+                } else {
+                    optimizations.push({
+                        text: rec.title + ': ' + truncateText(rec.description, 80),
+                        metric: rec.warehouse || rec.category
+                    });
+                }
+            });
+        }
+        
+        // Add optimization opportunities summary (ensure it's an array)
         const issueTypes = {};
-        optimization.forEach(opt => {
-            const type = opt.ISSUE_TYPE;
-            if (!issueTypes[type]) {
-                issueTypes[type] = { count: 0, totalSec: 0 };
-            }
-            issueTypes[type].count++;
-            issueTypes[type].totalSec += opt.ELAPSED_SEC || 0;
-        });
+        if (Array.isArray(optimization)) {
+            optimization.forEach(opt => {
+                const type = opt.ISSUE_TYPE;
+                if (!issueTypes[type]) {
+                    issueTypes[type] = { count: 0, totalSec: 0 };
+                }
+                issueTypes[type].count++;
+                issueTypes[type].totalSec += opt.ELAPSED_SEC || 0;
+            });
+        }
         
         Object.entries(issueTypes).forEach(([type, data]) => {
             optimizations.push({
@@ -946,11 +994,17 @@ async function loadAttention() {
         renderAttentionList('optimizationIssues', optimizations, '');
         
         // Render top queries to fix
-        renderAttentionQueriesTable(optimization.slice(0, 10));
+        renderAttentionQueriesTable(Array.isArray(optimization) ? optimization.slice(0, 10) : []);
         
         hideLoading();
     } catch (error) {
         console.error('Error loading attention:', error);
+        // Show error state in the UI
+        renderAttentionList('criticalIssues', [], 'critical');
+        renderAttentionList('warningIssues', [], 'warning');
+        renderAttentionList('optimizationIssues', [], '');
+        renderAttentionQueriesTable([]);
+        showToast('Failed to load attention data', 'error');
         hideLoading();
     }
 }
@@ -1655,8 +1709,24 @@ async function loadDatabaseAnalysis() {
         document.getElementById('dbActiveUsers').textContent = qm.UNIQUE_USERS || '--';
         document.getElementById('dbAvgQueryTime').textContent = formatNumber(qm.AVG_QUERY_SEC, 1);
         document.getElementById('dbTbScanned').textContent = formatNumber(qm.TB_SCANNED, 2);
-        document.getElementById('dbStorage').textContent = formatNumber(st.STORAGE_TB, 2);
         document.getElementById('dbFailedQueries').textContent = formatNumber(qm.FAILED_QUERIES, 0);
+        
+        // Storage with smart units and breakdown
+        const totalGb = st.TOTAL_GB || 0;
+        const dbGb = st.DATABASE_GB || 0;
+        const failsafeGb = st.FAILSAFE_GB || 0;
+        
+        if (totalGb >= 1024) {
+            document.getElementById('dbStorage').textContent = formatNumber(totalGb / 1024, 2);
+            document.getElementById('dbStorageUnit').textContent = 'TB';
+        } else {
+            document.getElementById('dbStorage').textContent = formatNumber(totalGb, 1);
+            document.getElementById('dbStorageUnit').textContent = 'GB';
+        }
+        
+        // Storage breakdown
+        document.getElementById('dbStorageDb').textContent = formatStorageSize(dbGb);
+        document.getElementById('dbStorageFailsafe').textContent = formatStorageSize(failsafeGb);
         
         // Render all tabs
         renderDbCostTab(costAnalysis);

@@ -40,6 +40,24 @@ def get_monitor():
     return SnowflakeMonitor(SNOWFLAKE_CONFIG)
 
 
+# Global error handlers to ensure JSON responses
+@app.errorhandler(404)
+def not_found(e):
+    if request.path.startswith('/api/'):
+        return jsonify({'success': False, 'error': f'Endpoint not found: {request.path}'}), 404
+    return render_template('dashboard.html'), 404
+
+@app.errorhandler(500)
+def server_error(e):
+    return jsonify({'success': False, 'error': f'Server error: {str(e)}'}), 500
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    if request.path.startswith('/api/'):
+        return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
+    return str(e), 500
+
+
 @app.route('/')
 def dashboard():
     """Main dashboard view."""

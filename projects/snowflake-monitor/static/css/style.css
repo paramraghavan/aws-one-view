@@ -1919,6 +1919,28 @@ td .unit {
     margin: 0;
 }
 
+/* Storage breakdown in metric card */
+.metric-card.storage-breakdown .metric-content {
+    position: relative;
+}
+
+.storage-details {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.25rem;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.storage-item {
+    white-space: nowrap;
+}
+
+.storage-item span {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+}
+
 /* ============================================
    CLICKABLE QUERY IDS & MODAL
    ============================================ */

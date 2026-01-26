@@ -636,6 +636,8 @@ class MockSnowflakeMonitor:
     
     def get_database_overview(self, database_name: str, days: int = 30) -> Dict:
         """Get comprehensive overview metrics for a specific database."""
+        db_gb = random.uniform(50, 2000)
+        failsafe_gb = random.uniform(5, db_gb * 0.1)
         return {
             'query_metrics': {
                 'TOTAL_QUERIES': random.randint(50000, 200000),
@@ -649,8 +651,9 @@ class MockSnowflakeMonitor:
                 'AVG_QUEUE_SEC': random.uniform(0, 8)
             },
             'storage': {
-                'STORAGE_TB': random.uniform(0.5, 5),
-                'FAILSAFE_GB': random.uniform(10, 100)
+                'DATABASE_GB': db_gb,
+                'FAILSAFE_GB': failsafe_gb,
+                'TOTAL_GB': db_gb + failsafe_gb
             },
             'objects': {
                 'SCHEMA_COUNT': random.randint(3, 12),
