@@ -843,7 +843,7 @@ async function loadAttention() {
     showLoading('Loading issues...');
     try {
         const [bottlenecks, recommendations, optimization] = await Promise.all([
-            fetchAPI('bottlenecks'),
+            fetchAPI('bottleneck-analysis'),
             fetchAPI('recommendations'),
             fetchAPI('optimization-opportunities')
         ]);
@@ -856,14 +856,14 @@ async function loadAttention() {
         // Process bottlenecks
         if (bottlenecks.queuing) {
             bottlenecks.queuing.forEach(q => {
-                if (q.AVG_QUEUE_SEC > 30) {
+                if (q.AVG_QUEUE_TIME_SEC > 30) {
                     critical.push({
-                        text: `${q.WAREHOUSE_NAME}: High queue time (avg ${formatNumber(q.AVG_QUEUE_SEC, 1)}s)`,
+                        text: `${q.WAREHOUSE_NAME}: High queue time (avg ${formatNumber(q.AVG_QUEUE_TIME_SEC, 1)}s)`,
                         metric: `${formatNumber(q.QUEUED_QUERIES, 0)} queries queued`
                     });
-                } else if (q.AVG_QUEUE_SEC > 10) {
+                } else if (q.AVG_QUEUE_TIME_SEC > 10) {
                     warnings.push({
-                        text: `${q.WAREHOUSE_NAME}: Moderate queue time (avg ${formatNumber(q.AVG_QUEUE_SEC, 1)}s)`,
+                        text: `${q.WAREHOUSE_NAME}: Moderate queue time (avg ${formatNumber(q.AVG_QUEUE_TIME_SEC, 1)}s)`,
                         metric: `${formatNumber(q.QUEUED_QUERIES, 0)} queries queued`
                     });
                 }
@@ -872,15 +872,15 @@ async function loadAttention() {
         
         if (bottlenecks.spilling) {
             bottlenecks.spilling.forEach(s => {
-                if (s.REMOTE_SPILL_GB > 10) {
+                if (s.GB_SPILLED_REMOTE > 10) {
                     critical.push({
                         text: `${s.WAREHOUSE_NAME}: Heavy remote spilling (expensive!)`,
-                        metric: `${formatNumber(s.REMOTE_SPILL_GB, 1)} GB remote spill`
+                        metric: `${formatNumber(s.GB_SPILLED_REMOTE, 1)} GB remote spill`
                     });
-                } else if (s.LOCAL_SPILL_GB > 50) {
+                } else if (s.GB_SPILLED_LOCAL > 50) {
                     warnings.push({
                         text: `${s.WAREHOUSE_NAME}: High local spilling`,
-                        metric: `${formatNumber(s.LOCAL_SPILL_GB, 1)} GB local spill`
+                        metric: `${formatNumber(s.GB_SPILLED_LOCAL, 1)} GB local spill`
                     });
                 }
             });
