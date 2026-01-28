@@ -82,12 +82,15 @@ class ResourceMonitor:
             'regions': {}
         }
         
+        # Discover S3 once (global service)
+        s3_buckets = self._discover_s3(filters)
+        
         for region in regions:
             logger.info(f"Scanning region: {region}")
             results['regions'][region] = {
                 'ec2': self._discover_ec2(region, filters),
                 'rds': self._discover_rds(region, filters),
-                's3': self._discover_s3(filters),  # S3 is global
+                's3': s3_buckets if region == regions[0] else [],  # Only include in first region
                 'lambda': self._discover_lambda(region, filters),
                 'ebs': self._discover_ebs(region, filters),
                 'eks': self._discover_eks(region, filters),

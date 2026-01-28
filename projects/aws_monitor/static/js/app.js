@@ -120,71 +120,148 @@ function displayResourceSummary(summary) {
 
 function displayResourceList(regionsData) {
     const container = document.getElementById('resource-list');
-    container.innerHTML = '<h3>Resources by Region</h3>';
+    container.innerHTML = '<h3>Resources by Type</h3>';
+    
+    // Group resources by type across all regions
+    const resourcesByType = {};
     
     for (const [region, resourceTypes] of Object.entries(regionsData)) {
         for (const [type, resources] of Object.entries(resourceTypes)) {
             if (resources.length === 0) continue;
             
-            const section = document.createElement('div');
-            section.style.marginTop = '20px';
+            if (!resourcesByType[type]) {
+                resourcesByType[type] = [];
+            }
             
-            const title = document.createElement('h4');
-            title.textContent = `${type.toUpperCase()} in ${region}`;
-            title.style.color = '#667eea';
-            section.appendChild(title);
-            
-            const table = document.createElement('table');
-            table.className = 'resource-table';
-            
-            // Table header
-            const thead = document.createElement('thead');
-            const headerRow = document.createElement('tr');
-            headerRow.innerHTML = `
-                <th><input type="checkbox" class="select-all" data-type="${type}" data-region="${region}"></th>
-                <th>Name/ID</th>
-                <th>Type/Class</th>
-                <th>State/Status</th>
-                <th>Details</th>
-            `;
-            thead.appendChild(headerRow);
-            table.appendChild(thead);
-            
-            // Table body
-            const tbody = document.createElement('tbody');
+            // Add region info to each resource
             resources.forEach(resource => {
-                const row = document.createElement('tr');
-                const resourceId = resource.id || resource.name;
-                
-                row.innerHTML = `
-                    <td><input type="checkbox" class="resource-checkbox" data-type="${type}" data-id="${resourceId}" data-region="${region}"></td>
-                    <td>${resource.name || resource.id || 'N/A'}</td>
-                    <td>${resource.type || resource.class || resource.engine || resource.runtime || 'N/A'}</td>
-                    <td><span class="badge badge-${(resource.state || resource.status || '').toLowerCase()}">${resource.state || resource.status || 'N/A'}</span></td>
-                    <td>${getResourceDetails(type, resource)}</td>
-                `;
-                tbody.appendChild(row);
+                resourcesByType[type].push({...resource, _region: region});
             });
-            table.appendChild(tbody);
-            
-            section.appendChild(table);
-            container.appendChild(section);
         }
+    }
+    
+    // Create collapsible section for each resource type
+    for (const [type, resources] of Object.entries(resourcesByType)) {
+        if (resources.length === 0) continue;
+        
+        const section = document.createElement('div');
+        section.className = 'resource-section';
+        section.style.marginTop = '20px';
+        section.style.border = '1px solid #dee2e6';
+        section.style.borderRadius = '4px';
+        
+        // Collapsible header
+        const header = document.createElement('div');
+        header.className = 'resource-section-header';
+        header.style.padding = '15px';
+        header.style.backgroundColor = '#f8f9fa';
+        header.style.cursor = 'pointer';
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.alignItems = 'center';
+        header.style.borderBottom = '1px solid #dee2e6';
+        
+        const headerText = document.createElement('div');
+        headerText.innerHTML = `
+            <strong>${type.toUpperCase()}</strong>
+            <span style="margin-left: 10px; color: #666;">${resources.length} resources</span>
+        `;
+        
+        const toggleIcon = document.createElement('span');
+        toggleIcon.className = 'toggle-icon';
+        toggleIcon.textContent = '▼';
+        toggleIcon.style.transition = 'transform 0.3s';
+        
+        header.appendChild(headerText);
+        header.appendChild(toggleIcon);
+        
+        // Content area (initially hidden)
+        const content = document.createElement('div');
+        content.className = 'resource-section-content';
+        content.style.display = 'none';
+        content.style.padding = '15px';
+        
+        // Create table
+        const table = document.createElement('table');
+        table.className = 'resource-table';
+        
+        // Table header
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        headerRow.innerHTML = `
+            <th><input type="checkbox" class="select-all" data-type="${type}"></th>
+            <th>Name/ID</th>
+            <th>Type/Class</th>
+            <th>State/Status</th>
+            <th>Region</th>
+            <th>Details</th>
+            <th>Actions</th>
+        `;
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+        
+        // Table body
+        const tbody = document.createElement('tbody');
+        resources.forEach(resource => {
+            const row = document.createElement('tr');
+            const resourceId = resource.id || resource.name;
+            const region = resource._region;
+            
+            row.innerHTML = `
+                <td><input type="checkbox" class="resource-checkbox" data-type="${type}" data-id="${resourceId}" data-region="${region}"></td>
+                <td>${resource.name || resource.id || 'N/A'}</td>
+                <td>${resource.type || resource.class || resource.engine || resource.runtime || 'N/A'}</td>
+                <td><span class="badge badge-${(resource.state || resource.status || '').toLowerCase()}">${resource.state || resource.status || 'N/A'}</span></td>
+                <td>${region}</td>
+                <td>${getResourceDetails(type, resource)}</td>
+                <td><button class="details-btn" data-type="${type}" data-id="${resourceId}" data-region="${region}">Details</button></td>
+            `;
+            tbody.appendChild(row);
+        });
+        table.appendChild(tbody);
+        
+        content.appendChild(table);
+        
+        // Toggle functionality
+        header.addEventListener('click', () => {
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                toggleIcon.style.transform = 'rotate(180deg)';
+            } else {
+                content.style.display = 'none';
+                toggleIcon.style.transform = 'rotate(0deg)';
+            }
+        });
+        
+        section.appendChild(header);
+        section.appendChild(content);
+        container.appendChild(section);
     }
     
     // Add select-all handlers
     document.querySelectorAll('.select-all').forEach(checkbox => {
         checkbox.addEventListener('change', (e) => {
             const type = e.target.dataset.type;
-            const region = e.target.dataset.region;
-            const checkboxes = document.querySelectorAll(`.resource-checkbox[data-type="${type}"][data-region="${region}"]`);
+            const checkboxes = document.querySelectorAll(`.resource-checkbox[data-type="${type}"]`);
             checkboxes.forEach(cb => cb.checked = e.target.checked);
+            updateSelectedResources();
         });
     });
     
     // Track selected resources
     document.querySelectorAll('.resource-checkbox').forEach(checkbox => {
         checkbox.addEventListener('change', updateSelectedResources);
+    });
+    
+    // Add details button handlers
+    document.querySelectorAll('.details-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const type = e.target.dataset.type;
+            const id = e.target.dataset.id;
+            const region = e.target.dataset.region;
+            showResourceDetails(type, id, region);
+        });
     });
 }
 
@@ -212,6 +289,92 @@ function updateSelectedResources() {
             id: cb.dataset.id,
             region: cb.dataset.region
         }));
+}
+
+function showResourceDetails(type, id, region) {
+    // Find the resource in discoveredResources
+    let resource = null;
+    if (discoveredResources && discoveredResources.regions && discoveredResources.regions[region]) {
+        const resourceList = discoveredResources.regions[region][type];
+        if (resourceList) {
+            resource = resourceList.find(r => (r.id || r.name) === id);
+        }
+    }
+    
+    if (!resource) {
+        alert('Resource not found');
+        return;
+    }
+    
+    // Create modal
+    const modal = document.createElement('div');
+    modal.style.position = 'fixed';
+    modal.style.top = '0';
+    modal.style.left = '0';
+    modal.style.width = '100%';
+    modal.style.height = '100%';
+    modal.style.backgroundColor = 'rgba(0,0,0,0.5)';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.zIndex = '1000';
+    
+    const modalContent = document.createElement('div');
+    modalContent.style.backgroundColor = 'white';
+    modalContent.style.padding = '30px';
+    modalContent.style.borderRadius = '8px';
+    modalContent.style.maxWidth = '800px';
+    modalContent.style.maxHeight = '80vh';
+    modalContent.style.overflow = 'auto';
+    modalContent.style.boxShadow = '0 4px 20px rgba(0,0,0,0.3)';
+    
+    // Build details HTML
+    let detailsHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin: 0; color: #667eea;">${type.toUpperCase()} Details</h2>
+            <button id="close-modal" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666;">&times;</button>
+        </div>
+        <div style="border-top: 2px solid #667eea; padding-top: 20px;">
+    `;
+    
+    // Display all resource properties
+    for (const [key, value] of Object.entries(resource)) {
+        if (key.startsWith('_')) continue; // Skip internal properties
+        
+        let displayValue = value;
+        if (typeof value === 'object' && value !== null) {
+            displayValue = '<pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; overflow: auto;">' + 
+                          JSON.stringify(value, null, 2) + '</pre>';
+        } else if (typeof value === 'boolean') {
+            displayValue = value ? 'Yes' : 'No';
+        } else if (value === null || value === undefined) {
+            displayValue = 'N/A';
+        }
+        
+        detailsHTML += `
+            <div style="margin-bottom: 15px; display: grid; grid-template-columns: 200px 1fr; gap: 10px;">
+                <strong style="color: #555;">${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</strong>
+                <span>${displayValue}</span>
+            </div>
+        `;
+    }
+    
+    detailsHTML += '</div>';
+    modalContent.innerHTML = detailsHTML;
+    
+    modal.appendChild(modalContent);
+    document.body.appendChild(modal);
+    
+    // Close handlers
+    document.getElementById('close-modal').addEventListener('click', () => {
+        document.body.removeChild(modal);
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            document.body.removeChild(modal);
+        }
+    });
 }
 
 async function getMetrics() {
@@ -269,6 +432,8 @@ function displayMetrics(metrics) {
             if (typeof metricData === 'object' && metricData !== null) {
                 const item = document.createElement('div');
                 item.className = 'metric-item';
+                item.style.cursor = 'pointer';
+                item.style.transition = 'transform 0.2s, box-shadow 0.2s';
                 
                 let value = metricData.current || metricData.total || metricData.avg || 0;
                 value = typeof value === 'number' ? value.toFixed(2) : value;
@@ -276,7 +441,25 @@ function displayMetrics(metrics) {
                 item.innerHTML = `
                     <div class="label">${formatMetricName(metricName)}</div>
                     <div class="value">${value}</div>
+                    <div style="font-size: 0.8em; color: #999; margin-top: 5px;">Click for details</div>
                 `;
+                
+                // Add hover effect
+                item.addEventListener('mouseenter', () => {
+                    item.style.transform = 'translateY(-2px)';
+                    item.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
+                });
+                
+                item.addEventListener('mouseleave', () => {
+                    item.style.transform = 'translateY(0)';
+                    item.style.boxShadow = 'none';
+                });
+                
+                // Add click handler to show details
+                item.addEventListener('click', () => {
+                    showMetricDetails(resourceKey, metricName, metricData);
+                });
+                
                 grid.appendChild(item);
             }
         }
@@ -284,6 +467,75 @@ function displayMetrics(metrics) {
         card.appendChild(grid);
         container.appendChild(card);
     }
+}
+
+function showMetricDetails(resourceKey, metricName, metricData) {
+    // Create modal
+    const modal = document.createElement('div');
+    modal.style.position = 'fixed';
+    modal.style.top = '0';
+    modal.style.left = '0';
+    modal.style.width = '100%';
+    modal.style.height = '100%';
+    modal.style.backgroundColor = 'rgba(0,0,0,0.5)';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.zIndex = '1000';
+    
+    const modalContent = document.createElement('div');
+    modalContent.style.backgroundColor = 'white';
+    modalContent.style.padding = '30px';
+    modalContent.style.borderRadius = '8px';
+    modalContent.style.maxWidth = '600px';
+    modalContent.style.boxShadow = '0 4px 20px rgba(0,0,0,0.3)';
+    
+    // Build metric details
+    let detailsHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin: 0; color: #667eea;">${formatMetricName(metricName)}</h2>
+            <button id="close-metric-modal" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666;">&times;</button>
+        </div>
+        <h4 style="color: #666; margin-bottom: 15px;">${resourceKey}</h4>
+        <div style="border-top: 2px solid #667eea; padding-top: 20px;">
+    `;
+    
+    // Display all metric data points
+    for (const [key, value] of Object.entries(metricData)) {
+        let displayValue = typeof value === 'number' ? value.toFixed(4) : value;
+        
+        detailsHTML += `
+            <div style="margin-bottom: 15px; display: grid; grid-template-columns: 150px 1fr; gap: 10px;">
+                <strong style="color: #555;">${key.charAt(0).toUpperCase() + key.slice(1)}:</strong>
+                <span style="font-family: monospace; background: #f5f5f5; padding: 5px 10px; border-radius: 4px;">${displayValue}</span>
+            </div>
+        `;
+    }
+    
+    detailsHTML += `
+        </div>
+        <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px;">
+            <p style="margin: 0; font-size: 0.9em; color: #666;">
+                <strong>Note:</strong> These values are from the last monitoring period. 
+                Select this resource and click "Get Metrics" again to refresh.
+            </p>
+        </div>
+    `;
+    
+    modalContent.innerHTML = detailsHTML;
+    modal.appendChild(modalContent);
+    document.body.appendChild(modal);
+    
+    // Close handlers
+    document.getElementById('close-metric-modal').addEventListener('click', () => {
+        document.body.removeChild(modal);
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            document.body.removeChild(modal);
+        }
+    });
 }
 
 function formatMetricName(name) {
