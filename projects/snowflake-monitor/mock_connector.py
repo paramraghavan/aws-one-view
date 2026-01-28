@@ -513,7 +513,7 @@ class MockSnowflakeMonitor:
         ]
         
         return {
-            'summary': summary,
+            'user_summary': summary,
             'failed_logins': failed_logins,
             'hourly_pattern': hourly_pattern
         }

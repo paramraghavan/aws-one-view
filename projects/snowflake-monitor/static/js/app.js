@@ -1390,20 +1390,30 @@ function renderWeekComparison(data) {
 async function loadUsersAndSecurity() {
     showLoading('Loading users & security...');
     try {
-        const [userData, securityData] = await Promise.all([
-            fetchAPI('user-analytics', { days: 30 }),
-            fetchAPI('login-history', { days: 7 })
-        ]);
+        let userData = { top_users: [], activity_trend: [], role_usage: [] };
+        let securityData = { user_summary: [], failed_logins: [], hourly_pattern: [] };
+        
+        try {
+            userData = await fetchAPI('user-analytics', { days: 30 });
+        } catch (e) {
+            console.warn('Failed to load user-analytics:', e);
+        }
+        
+        try {
+            securityData = await fetchAPI('login-history', { days: 7 });
+        } catch (e) {
+            console.warn('Failed to load login-history:', e);
+        }
         
         // User analytics
-        renderUserActivityChart(userData.activity_trend);
-        renderRoleUsageChart(userData.role_usage);
-        renderTopUsersTable(userData.top_users);
+        renderUserActivityChart(userData.activity_trend || []);
+        renderRoleUsageChart(userData.role_usage || []);
+        renderTopUsersTable(userData.top_users || []);
         
         // Security (merged in)
-        renderLoginPatternChart(securityData.hourly_pattern);
-        renderFailedLogins(securityData.failed_logins);
-        renderLoginSummaryTable(securityData.user_summary);
+        renderLoginPatternChart(securityData.hourly_pattern || []);
+        renderFailedLogins(securityData.failed_logins || []);
+        renderLoginSummaryTable(securityData.user_summary || []);
         
         hideLoading();
     } catch (error) {
@@ -1485,15 +1495,21 @@ function renderRoleUsageChart(data) {
 
 function renderTopUsersTable(data) {
     const tbody = document.querySelector('#topUsersTable tbody');
+    
+    if (!data || !Array.isArray(data) || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="no-data">No user data available</td></tr>';
+        return;
+    }
+    
     tbody.innerHTML = data.map(row => `
         <tr>
-            <td><strong>${row.USER_NAME}</strong></td>
+            <td><strong>${row.USER_NAME || '--'}</strong></td>
             <td>${formatNumber(row.QUERY_COUNT, 0)} <span class="unit">queries</span></td>
             <td>${formatNumber(row.TOTAL_HOURS, 1)} <span class="unit">hrs</span></td>
             <td>${formatNumber(row.AVG_QUERY_SEC, 1)} <span class="unit">sec</span></td>
             <td>${formatNumber(row.TB_SCANNED, 2)} <span class="unit">TB</span></td>
             <td>${formatNumber(row.FAILED_QUERIES, 0)}</td>
-            <td>${row.WAREHOUSES_USED}</td>
+            <td>${row.WAREHOUSES_USED || '--'}</td>
         </tr>
     `).join('');
 }
@@ -1712,13 +1728,19 @@ function renderFailedLogins(data) {
 
 function renderLoginSummaryTable(data) {
     const tbody = document.querySelector('#loginSummaryTable tbody');
+    
+    if (!data || !Array.isArray(data) || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="no-data">No login data available</td></tr>';
+        return;
+    }
+    
     tbody.innerHTML = data.map(row => `
         <tr>
-            <td><strong>${row.USER_NAME}</strong></td>
-            <td>${row.LOGIN_COUNT}</td>
-            <td>${row.UNIQUE_IPS}</td>
+            <td><strong>${row.USER_NAME || '--'}</strong></td>
+            <td>${row.LOGIN_COUNT || 0}</td>
+            <td>${row.UNIQUE_IPS || 0}</td>
             <td>${formatDate(row.LAST_LOGIN)}</td>
-            <td><span class="${row.FAILED_LOGINS > 0 ? 'alert-text' : ''}">${row.FAILED_LOGINS}</span></td>
+            <td><span class="${row.FAILED_LOGINS > 0 ? 'alert-text' : ''}">${row.FAILED_LOGINS || 0}</span></td>
         </tr>
     `).join('');
 }

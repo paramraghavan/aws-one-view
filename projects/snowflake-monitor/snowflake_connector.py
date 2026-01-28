@@ -832,7 +832,7 @@ class SnowflakeMonitor:
         """
         
         return {
-            'summary': self._serialize_results(self.execute_query(login_summary_query)),
+            'user_summary': self._serialize_results(self.execute_query(login_summary_query)),
             'failed_logins': self._serialize_results(self.execute_query(failed_logins_query)),
             'hourly_pattern': self._serialize_results(self.execute_query(login_pattern_query))
         }
