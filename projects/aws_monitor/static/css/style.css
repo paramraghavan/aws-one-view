@@ -381,6 +381,34 @@ button {
     font-family: inherit;
 }
 
+button {
+    font-family: inherit;
+}
+
+.details-btn {
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 5px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.2s;
+}
+
+.details-btn:hover {
+    background: #5568d3;
+}
+
+.resource-section-header:hover {
+    background: #e9ecef !important;
+}
+
+.toggle-icon {
+    font-size: 0.8em;
+    color: #667eea;
+}
+
 #load-more-regions {
     grid-column: 1 / -1;
     background: white;

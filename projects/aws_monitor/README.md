@@ -339,6 +339,12 @@ However:
 - Check AWS profile configuration: `aws configure --profile monitor`
 - Verify IAM permissions
 - Ensure resources exist in selected regions
+- Try without filters first
+
+### EKS Not Showing
+- Verify EKS clusters exist: `aws eks list-clusters --region us-east-1 --profile monitor`
+- Check IAM permissions for EKS (ListClusters, DescribeCluster)
+- EKS may not be available in all regions
 
 ### Cost Explorer Error
 - Enable Cost Explorer in AWS Console (takes 24 hours)
@@ -352,6 +358,13 @@ However:
 - Check Python version (3.8+)
 - Install dependencies: `pip install boto3`
 - Verify AWS credentials are configured
+
+### Can't See Resource Details
+- Click "Details" button in the Actions column
+- Resource sections start collapsed - click headers to expand
+- Metric items are clickable - click for detailed information
+
+**See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for complete troubleshooting guide**
 
 ## Development
 
