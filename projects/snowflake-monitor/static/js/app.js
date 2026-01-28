@@ -363,7 +363,7 @@ function renderStorageChart(data) {
         state.charts.storage.destroy();
     }
     
-    // Calculate totals for DB storage vs Failsafe storage
+    // Calculate totals for summary boxes
     let totalDbStorage = 0;
     let totalFailsafeStorage = 0;
     
@@ -372,13 +372,20 @@ function renderStorageChart(data) {
         totalFailsafeStorage += d.FAILSAFE_GB || 0;
     });
     
+    // Update summary boxes
+    document.getElementById('totalDbStorage').textContent = formatStorageSize(totalDbStorage);
+    document.getElementById('totalFailsafeStorage').textContent = formatStorageSize(totalFailsafeStorage);
+    
+    // Sort by total and take top 8 databases
+    const sortedData = data.sort((a, b) => b.TOTAL_GB - a.TOTAL_GB).slice(0, 8);
+    
     state.charts.storage = new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: ['Database Storage', 'Failsafe Storage'],
+            labels: sortedData.map(d => d.DATABASE_NAME || 'Unknown'),
             datasets: [{
-                data: [totalDbStorage, totalFailsafeStorage],
-                backgroundColor: [chartColors.cyan, chartColors.orange],
+                data: sortedData.map(d => d.TOTAL_GB),
+                backgroundColor: chartColorPalette,
                 borderWidth: 0
             }]
         },
@@ -393,11 +400,23 @@ function renderStorageChart(data) {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            const value = context.raw;
-                            if (value >= 1024) {
-                                return `${context.label}: ${(value / 1024).toFixed(2)} TB`;
-                            }
-                            return `${context.label}: ${value.toFixed(1)} GB`;
+                            const dbData = sortedData[context.dataIndex];
+                            const total = dbData.TOTAL_GB || 0;
+                            const dbGb = dbData.DATABASE_GB || 0;
+                            const failsafeGb = dbData.FAILSAFE_GB || 0;
+                            
+                            const totalStr = total >= 1024 ? `${(total / 1024).toFixed(2)} TB` : `${total.toFixed(1)} GB`;
+                            return `${context.label}: ${totalStr}`;
+                        },
+                        afterLabel: function(context) {
+                            const dbData = sortedData[context.dataIndex];
+                            const dbGb = dbData.DATABASE_GB || 0;
+                            const failsafeGb = dbData.FAILSAFE_GB || 0;
+                            
+                            const dbStr = dbGb >= 1024 ? `${(dbGb / 1024).toFixed(2)} TB` : `${dbGb.toFixed(1)} GB`;
+                            const fsStr = failsafeGb >= 1024 ? `${(failsafeGb / 1024).toFixed(2)} TB` : `${failsafeGb.toFixed(1)} GB`;
+                            
+                            return `DB: ${dbStr}\nFailsafe: ${fsStr}`;
                         }
                     }
                 }
