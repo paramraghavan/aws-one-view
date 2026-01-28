@@ -8,12 +8,14 @@ from datetime import datetime
 class ScriptGenerator:
     """Generate Python monitoring scripts for scheduling"""
     
-    def generate(self, config):
+    def generate(self, config, role_arn=None, session_name='AWSMonitorSession'):
         """
         Generate monitoring script based on configuration
         
         Args:
             config: dict with regions, resources, checks, thresholds, notification
+            role_arn: Optional ARN of IAM role to assume
+            session_name: Session name for role assumption
         
         Returns:
             str: Complete Python script content
@@ -26,7 +28,7 @@ class ScriptGenerator:
         
         script = self._generate_header()
         script += self._generate_imports()
-        script += self._generate_config(regions, resources, thresholds, notification)
+        script += self._generate_config(regions, resources, thresholds, notification, role_arn, session_name)
         script += self._generate_monitor_class()
         
         # Add check functions based on requested checks
@@ -108,11 +110,14 @@ logger = logging.getLogger(__name__)
 
 '''
     
-    def _generate_config(self, regions, resources, thresholds, notification):
+    def _generate_config(self, regions, resources, thresholds, notification, role_arn, session_name):
         """Generate configuration section"""
+        role_config = f"ROLE_ARN = '{role_arn}'\nSESSION_NAME = '{session_name}'" if role_arn else "ROLE_ARN = None\nSESSION_NAME = None"
+        
         config_str = f'''
 # ===== CONFIGURATION =====
 AWS_PROFILE = 'monitor'
+{role_config}
 REGIONS = {regions}
 
 # Resource filters
@@ -134,7 +139,40 @@ class AWSMonitor:
     """AWS Resource Monitor"""
     
     def __init__(self):
-        self.session = boto3.Session(profile_name=AWS_PROFILE)
+        # Create base session with profile
+        base_session = boto3.Session(profile_name=AWS_PROFILE)
+        
+        # If role ARN provided, assume the role
+        if ROLE_ARN:
+            logger.info(f"Assuming role: {ROLE_ARN}")
+            try:
+                sts = base_session.client('sts')
+                response = sts.assume_role(
+                    RoleArn=ROLE_ARN,
+                    RoleSessionName=SESSION_NAME,
+                    DurationSeconds=3600
+                )
+                
+                credentials = response['Credentials']
+                
+                # Create new session with assumed role credentials
+                self.session = boto3.Session(
+                    aws_access_key_id=credentials['AccessKeyId'],
+                    aws_secret_access_key=credentials['SecretAccessKey'],
+                    aws_session_token=credentials['SessionToken']
+                )
+                
+                logger.info(f"Successfully assumed role: {ROLE_ARN}")
+                logger.info(f"Session expires at: {credentials['Expiration']}")
+                
+            except Exception as e:
+                logger.error(f"Failed to assume role {ROLE_ARN}: {e}")
+                raise
+        else:
+            # Use base session with profile
+            self.session = base_session
+            logger.info(f"Using base profile: {AWS_PROFILE}")
+        
         self.results = {
             'timestamp': datetime.utcnow().isoformat(),
             'resources': {},

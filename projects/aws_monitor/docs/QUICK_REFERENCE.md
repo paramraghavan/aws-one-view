@@ -10,10 +10,36 @@ aws configure --profile monitor
 pip install -r requirements.txt
 
 # 3. Start application
+
+# Basic (using profile directly)
 python main.py
+
+# With IAM role assumption (recommended for production)
+python main.py --role-arn arn:aws:iam::123456789012:role/MonitoringRole
+
+# With custom options
+python main.py \
+  --role-arn arn:aws:iam::123456789012:role/MonitoringRole \
+  --session-name MySession \
+  --port 8080 \
+  --debug
 
 # 4. Open browser
 http://localhost:5000
+```
+
+## Command Line Options
+
+```bash
+# View all options
+python main.py --help
+
+# Common options
+--role-arn        ARN of IAM role to assume (optional)
+--session-name    Session name for role assumption (default: AWSMonitorSession)
+--port           Port to run on (default: 5000)
+--host           Host to bind to (default: 0.0.0.0)
+--debug          Enable debug mode
 ```
 
 ## Common Tasks

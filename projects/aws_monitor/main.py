@@ -7,6 +7,9 @@ from app.resources import ResourceMonitor
 from app.script_generator import ScriptGenerator
 import logging
 import io
+import argparse
+import sys
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -15,6 +18,10 @@ app = Flask(__name__)
 
 # Default regions (auto-selected when UI starts)
 DEFAULT_REGIONS = ['us-east-1', 'us-west-2']
+
+# Global configuration for role ARN (set from command line)
+ROLE_ARN = None
+SESSION_NAME = None
 
 
 @app.route('/')
@@ -41,7 +48,7 @@ def discover_resources():
     filters = data.get('filters', {})
     
     try:
-        monitor = ResourceMonitor()
+        monitor = ResourceMonitor(role_arn=ROLE_ARN, session_name=SESSION_NAME)
         resources = monitor.discover_all(regions, filters)
         return jsonify(resources)
     except Exception as e:
@@ -63,7 +70,7 @@ def get_metrics():
     period = data.get('period', 300)
     
     try:
-        monitor = ResourceMonitor()
+        monitor = ResourceMonitor(role_arn=ROLE_ARN, session_name=SESSION_NAME)
         metrics = monitor.get_metrics(resources, period)
         return jsonify(metrics)
     except Exception as e:
@@ -85,7 +92,7 @@ def analyze_costs():
     days = data.get('days', 7)
     
     try:
-        monitor = ResourceMonitor()
+        monitor = ResourceMonitor(role_arn=ROLE_ARN, session_name=SESSION_NAME)
         costs = monitor.analyze_costs(regions, days)
         return jsonify(costs)
     except Exception as e:
@@ -107,7 +114,7 @@ def check_alerts():
     thresholds = data.get('thresholds', {})
     
     try:
-        monitor = ResourceMonitor()
+        monitor = ResourceMonitor(role_arn=ROLE_ARN, session_name=SESSION_NAME)
         alerts = monitor.check_alerts(resources, thresholds)
         return jsonify(alerts)
     except Exception as e:
@@ -134,7 +141,7 @@ def generate_script():
     
     try:
         generator = ScriptGenerator()
-        script_content = generator.generate(data)
+        script_content = generator.generate(data, role_arn=ROLE_ARN, session_name=SESSION_NAME)
         
         # Return as downloadable file
         buffer = io.BytesIO(script_content.encode('utf-8'))
@@ -155,12 +162,88 @@ def generate_script():
 def list_regions():
     """Get available AWS regions"""
     try:
-        monitor = ResourceMonitor()
+        monitor = ResourceMonitor(role_arn=ROLE_ARN, session_name=SESSION_NAME)
         regions = monitor.get_regions()
         return jsonify({'regions': regions})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
+def parse_arguments():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(
+        description='AWS Monitor - Multi-region resource monitoring',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  # Run with base profile only
+  python main.py
+  
+  # Run with elevated role assumption
+  python main.py --role-arn arn:aws:iam::123456789012:role/MonitoringRole
+  
+  # Run with custom session name
+  python main.py --role-arn arn:aws:iam::123456789012:role/MonitoringRole --session-name MyMonitorSession
+  
+  # Run on different port
+  python main.py --port 8080
+        '''
+    )
+    
+    parser.add_argument(
+        '--role-arn',
+        type=str,
+        help='ARN of IAM role to assume for elevated permissions (optional)'
+    )
+    
+    parser.add_argument(
+        '--session-name',
+        type=str,
+        default='AWSMonitorSession',
+        help='Session name for role assumption (default: AWSMonitorSession)'
+    )
+    
+    parser.add_argument(
+        '--port',
+        type=int,
+        default=5000,
+        help='Port to run Flask app on (default: 5000)'
+    )
+    
+    parser.add_argument(
+        '--host',
+        type=str,
+        default='0.0.0.0',
+        help='Host to bind Flask app to (default: 0.0.0.0)'
+    )
+    
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Run Flask in debug mode'
+    )
+    
+    return parser.parse_args()
+
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Parse command line arguments
+    args = parse_arguments()
+    
+    # Set global configuration
+    ROLE_ARN = args.role_arn
+    SESSION_NAME = args.session_name
+    
+    # Log configuration
+    if ROLE_ARN:
+        logger.info(f"Starting AWS Monitor with role assumption")
+        logger.info(f"Profile: monitor")
+        logger.info(f"Role ARN: {ROLE_ARN}")
+        logger.info(f"Session Name: {SESSION_NAME}")
+    else:
+        logger.info("Starting AWS Monitor with base profile: monitor")
+    
+    logger.info(f"Server: http://{args.host}:{args.port}")
+    
+    # Run Flask app
+    app.run(host=args.host, port=args.port, debug=args.debug)

@@ -59,12 +59,37 @@ region = us-east-1
 
 ### 3. Run Application
 
+**Basic usage** (using profile directly):
 ```bash
 cd aws_monitor_simple
 python main.py
 ```
 
+**With IAM role assumption** (recommended for production):
+```bash
+python main.py --role-arn arn:aws:iam::123456789012:role/MonitoringRole
+```
+
+**With custom options**:
+```bash
+python main.py \
+  --role-arn arn:aws:iam::123456789012:role/MonitoringRole \
+  --session-name MySession \
+  --port 8080 \
+  --debug
+```
+
 Open browser: `http://localhost:5000`
+
+### 4. Optional: IAM Role Assumption
+
+For enhanced security and cross-account monitoring, you can use IAM role assumption. This allows:
+- ✅ Using temporary credentials (expire after 1 hour)
+- ✅ Separating authentication from authorization
+- ✅ Cross-account resource monitoring
+- ✅ Better audit trail and compliance
+
+See **[docs/ROLE_ASSUMPTION.md](docs/ROLE_ASSUMPTION.md)** for detailed setup guide.
 
 ## Usage Guide
 

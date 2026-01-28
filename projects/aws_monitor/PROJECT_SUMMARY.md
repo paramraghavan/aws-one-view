@@ -43,11 +43,12 @@ This is a **completely rebuilt, simplified** AWS monitoring application based on
 - 60+ API calls documented
 
 ### 6. Removed Unnecessary Documents ✅
-- **DONE**: Consolidated from 15+ docs to just 4:
+- **DONE**: Consolidated from 15+ docs to just 5:
   1. `README.md` - Main guide
   2. `BOTO3_API_REFERENCE.md` - All API calls
-  3. `QUICK_REFERENCE.md` - Quick commands
-  4. `CHANGELOG.md` - What changed
+  3. `ROLE_ASSUMPTION.md` - IAM role assumption guide
+  4. `QUICK_REFERENCE.md` - Quick commands
+  5. `CHANGELOG.md` - What changed
 
 ### 7. Region Auto-Selection Explained ✅
 - **DONE**: Documented in README and BOTO3_API_REFERENCE
@@ -75,6 +76,14 @@ This is a **completely rebuilt, simplified** AWS monitoring application based on
 - Configured in `app/resources.py`
 - Uses `boto3.Session(profile_name='monitor')`
 - Must be configured in `~/.aws/credentials`
+
+### 11. IAM Role Assumption Support ✅ **NEW!**
+- **DONE**: Optional elevated role assumption
+- Command line parameter: `--role-arn`
+- Use temporary credentials (expire after 1 hour)
+- Support cross-account monitoring
+- Enhanced security with least-privilege
+- Fully documented in `docs/ROLE_ASSUMPTION.md`
 
 ---
 
@@ -168,11 +177,61 @@ chmod +x setup.sh
 aws configure --profile monitor
 
 # 4. Start application
+
+# Option A: Basic (using profile directly)
 python3 main.py
+
+# Option B: With IAM role assumption (recommended for production)
+python3 main.py --role-arn arn:aws:iam::123456789012:role/MonitoringRole
+
+# Option C: With all options
+python3 main.py \
+  --role-arn arn:aws:iam::123456789012:role/MonitoringRole \
+  --session-name MySession \
+  --port 8080 \
+  --debug
 
 # 5. Open browser
 http://localhost:5000
 ```
+
+## 🔐 IAM Role Assumption (NEW Feature!)
+
+For enhanced security, you can now use IAM role assumption:
+
+**Benefits:**
+- ✅ Temporary credentials (expire after 1 hour)
+- ✅ Separate authentication from authorization
+- ✅ Cross-account monitoring support
+- ✅ Better audit trail and compliance
+- ✅ Least-privilege security
+
+**Usage:**
+```bash
+# Run with role assumption
+python main.py --role-arn arn:aws:iam::ACCOUNT_ID:role/MonitoringRole
+
+# Custom session name
+python main.py \
+  --role-arn arn:aws:iam::ACCOUNT_ID:role/MonitoringRole \
+  --session-name CustomSessionName
+```
+
+**Cross-Account Monitoring:**
+```bash
+# Monitor Account A
+python main.py --role-arn arn:aws:iam::111111111111:role/MonitoringRole
+
+# Monitor Account B  
+python main.py --role-arn arn:aws:iam::222222222222:role/MonitoringRole
+```
+
+**Generated Scripts:**
+- Role ARN is automatically included in generated scripts
+- Scripts use the same role assumption logic
+- Perfect for cron jobs with elevated permissions
+
+**See:** `docs/ROLE_ASSUMPTION.md` for complete setup guide
 
 ---
 

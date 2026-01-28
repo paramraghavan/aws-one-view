@@ -2,6 +2,7 @@
 Resource Monitor - Core monitoring logic
 Handles: EC2, RDS, S3, Lambda, EBS, Kubernetes (EKS), EMR
 Uses AWS profile: 'monitor'
+Supports optional IAM role assumption for elevated permissions
 """
 import boto3
 from datetime import datetime, timedelta
@@ -16,8 +17,47 @@ AWS_PROFILE = 'monitor'
 class ResourceMonitor:
     """Main resource monitoring class"""
     
-    def __init__(self):
-        self.session = boto3.Session(profile_name=AWS_PROFILE)
+    def __init__(self, role_arn=None, session_name='AWSMonitorSession'):
+        """
+        Initialize ResourceMonitor with optional role assumption
+        
+        Args:
+            role_arn: Optional ARN of IAM role to assume
+            session_name: Session name for role assumption (default: AWSMonitorSession)
+        """
+        # Create base session with profile
+        base_session = boto3.Session(profile_name=AWS_PROFILE)
+        
+        # If role ARN provided, assume the role
+        if role_arn:
+            logger.info(f"Assuming role: {role_arn}")
+            try:
+                sts = base_session.client('sts')
+                response = sts.assume_role(
+                    RoleArn=role_arn,
+                    RoleSessionName=session_name,
+                    DurationSeconds=3600  # 1 hour
+                )
+                
+                credentials = response['Credentials']
+                
+                # Create new session with assumed role credentials
+                self.session = boto3.Session(
+                    aws_access_key_id=credentials['AccessKeyId'],
+                    aws_secret_access_key=credentials['SecretAccessKey'],
+                    aws_session_token=credentials['SessionToken']
+                )
+                
+                logger.info(f"Successfully assumed role: {role_arn}")
+                logger.info(f"Session expires at: {credentials['Expiration']}")
+                
+            except ClientError as e:
+                logger.error(f"Failed to assume role {role_arn}: {e}")
+                raise Exception(f"Role assumption failed: {e.response['Error']['Message']}")
+        else:
+            # Use base session with profile
+            self.session = base_session
+            logger.info(f"Using base profile: {AWS_PROFILE}")
     
     def get_regions(self):
         """Get all available AWS regions"""
