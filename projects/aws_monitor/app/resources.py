@@ -65,37 +65,58 @@ class ResourceMonitor:
         regions = ec2.describe_regions()['Regions']
         return [r['RegionName'] for r in regions]
     
-    def discover_all(self, regions, filters=None):
+    def discover_all(self, regions, filters=None, resource_types=None):
         """
-        Discover all resources across regions
+        Discover resources across regions
         
         Args:
             regions: List of region names
             filters: dict with 'tags', 'names', 'ids'
+            resource_types: List of resource types to discover (e.g., ['ec2', 'rds'])
+                          If None, discovers all types
         
         Returns:
             dict with all discovered resources
         """
         filters = filters or {}
+        resource_types = resource_types or ['ec2', 'rds', 's3', 'lambda', 'ebs', 'eks', 'emr']
+        
         results = {
             'timestamp': datetime.utcnow().isoformat(),
             'regions': {}
         }
         
-        # Discover S3 once (global service)
-        s3_buckets = self._discover_s3(filters)
+        # Discover S3 once if needed (global service)
+        s3_buckets = []
+        if 's3' in resource_types:
+            s3_buckets = self._discover_s3(filters)
         
         for region in regions:
-            logger.info(f"Scanning region: {region}")
-            results['regions'][region] = {
-                'ec2': self._discover_ec2(region, filters),
-                'rds': self._discover_rds(region, filters),
-                's3': s3_buckets if region == regions[0] else [],  # Only include in first region
-                'lambda': self._discover_lambda(region, filters),
-                'ebs': self._discover_ebs(region, filters),
-                'eks': self._discover_eks(region, filters),
-                'emr': self._discover_emr(region, filters)
-            }
+            logger.info(f"Scanning region: {region} for {', '.join(resource_types)}")
+            results['regions'][region] = {}
+            
+            # Only discover requested resource types
+            if 'ec2' in resource_types:
+                results['regions'][region]['ec2'] = self._discover_ec2(region, filters)
+            
+            if 'rds' in resource_types:
+                results['regions'][region]['rds'] = self._discover_rds(region, filters)
+            
+            if 's3' in resource_types:
+                # Only include in first region
+                results['regions'][region]['s3'] = s3_buckets if region == regions[0] else []
+            
+            if 'lambda' in resource_types:
+                results['regions'][region]['lambda'] = self._discover_lambda(region, filters)
+            
+            if 'ebs' in resource_types:
+                results['regions'][region]['ebs'] = self._discover_ebs(region, filters)
+            
+            if 'eks' in resource_types:
+                results['regions'][region]['eks'] = self._discover_eks(region, filters)
+            
+            if 'emr' in resource_types:
+                results['regions'][region]['emr'] = self._discover_emr(region, filters)
         
         # Add summary
         results['summary'] = self._calculate_summary(results['regions'])

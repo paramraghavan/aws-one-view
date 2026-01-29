@@ -65,21 +65,38 @@ cd aws_monitor_simple
 python main.py
 ```
 
+**⚠️ Important for File Downloads:**
+Modern browsers may block file downloads from HTTP connections. For the best experience:
+
+```bash
+# One-time setup: Generate SSL certificate
+./generate_cert.sh
+
+# Run with HTTPS
+python main.py --ssl
+
+# Access: https://localhost:5000
+# (Accept certificate warning first time)
+```
+
 **With IAM role assumption** (recommended for production):
 ```bash
-python main.py --role-arn arn:aws:iam::123456789012:role/MonitoringRole
+python main.py --ssl --role-arn arn:aws:iam::123456789012:role/MonitoringRole
 ```
 
 **With custom options**:
 ```bash
 python main.py \
+  --ssl \
   --role-arn arn:aws:iam::123456789012:role/MonitoringRole \
   --session-name MySession \
-  --port 8080 \
+  --port 8443 \
   --debug
 ```
 
-Open browser: `http://localhost:5000`
+**Having download issues?** See **[QUICK_FIX_DOWNLOADS.md](QUICK_FIX_DOWNLOADS.md)** for detailed solutions.
+
+Open browser: `http://localhost:5000` (or `https://localhost:5000` with --ssl)
 
 ### 4. Optional: IAM Role Assumption
 
@@ -100,13 +117,28 @@ See **[docs/ROLE_ASSUMPTION.md](docs/ROLE_ASSUMPTION.md)** for detailed setup gu
 
 **Note**: Your AWS profile has global access to all regions (if you have permissions)
 
-### Step 2: Filter Resources (Optional)
+### Step 2: Select Resource Types
+- **NEW**: Choose which resource types to discover
+- Options: EC2, RDS, S3, Lambda, EBS, EKS, EMR
+- Quick buttons:
+  - **Select All**: Discover all resource types
+  - **Deselect All**: Clear all selections
+  - **Common Only**: Select EC2, RDS, S3 (most common)
+
+**Benefits**:
+- ⚡ Faster discovery (only scan what you need)
+- 🎯 Focused results (no noise from unused resources)
+- 💰 Fewer API calls (better rate limit usage)
+
+**Example**: Select only EC2 and RDS for 83% faster discovery
+
+### Step 3: Filter Resources (Optional)
 Filter resources by:
 - **Tags**: `Environment=production`, `Team=backend`
 - **Names**: Comma-separated list
 - **IDs**: Comma-separated list (instance IDs, volume IDs, etc.)
 
-### Step 3: Discover Resources
+### Step 4: Discover Resources
 Click "🔍 Discover Resources" to scan selected regions for:
 - EC2 instances
 - RDS databases
@@ -118,10 +150,12 @@ Click "🔍 Discover Resources" to scan selected regions for:
 
 Results show:
 - Resource summary by type
-- Detailed resource tables
+- Detailed resource tables (grouped by type, collapsible)
 - Select specific resources for metrics/alerts
 
-### Step 4: Get Performance Metrics
+**NEW**: Click "Details" button to see complete resource information!
+
+### Step 5: Get Performance Metrics
 1. Select resources using checkboxes
 2. Choose metric period (5min, 15min, 1hr)
 3. Click "📊 Get Metrics"
@@ -132,7 +166,11 @@ View metrics:
 - **Lambda**: Invocations, Errors, Duration, Throttles
 - **EMR**: Cluster idle status, Running apps
 
-### Step 5: Analyze Costs
+**NEW**: Click any metric item to see detailed breakdown!
+
+**NEW**: Click any metric item to see detailed breakdown!
+
+### Step 6: Analyze Costs
 Click "💰 Analyze Costs" to see:
 - Total costs for period (7, 30, or 90 days)
 - Daily average spend
@@ -141,7 +179,7 @@ Click "💰 Analyze Costs" to see:
 
 **Note**: Requires Cost Explorer API access
 
-### Step 6: Check Alerts & Health
+### Step 7: Check Alerts & Health
 1. Select resources using checkboxes
 2. Set thresholds (CPU: 80%, Memory: 85%)
 3. Click "⚠️ Check Alerts"
@@ -153,7 +191,7 @@ Alerts detect:
 - RDS Multi-AZ not configured
 - EKS node group issues
 
-### Step 7: Generate Monitoring Script
+### Step 8: Generate Monitoring Script
 Create a Python script to schedule with cron or Python scheduler:
 
 1. Select regions to monitor
@@ -334,6 +372,18 @@ However:
 ⚠️ EKS metrics require Container Insights to be enabled
 
 ## Troubleshooting
+
+### Download Blocked / Insecure Connection Error
+**Problem:** Browser blocks script downloads with "insecure connection" error
+
+**Solution:** Run with HTTPS
+```bash
+./generate_cert.sh  # One-time setup
+python main.py --ssl
+# Access: https://localhost:5000
+```
+
+**See:** [QUICK_FIX_DOWNLOADS.md](QUICK_FIX_DOWNLOADS.md) for detailed solutions
 
 ### No Resources Found
 - Check AWS profile configuration: `aws configure --profile monitor`

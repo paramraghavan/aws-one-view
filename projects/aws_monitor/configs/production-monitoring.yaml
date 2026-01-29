@@ -1,0 +1,72 @@
+# AWS Monitor Configuration File
+# This config file defines a monitoring job that can be scheduled with cron
+
+# Job identification
+job_name: "production-monitoring"
+description: "Monitor production EC2 and RDS in us-east-1"
+
+# AWS Configuration
+aws_profile: "monitor"
+role_arn: null  # Optional: arn:aws:iam::123456789012:role/MonitoringRole
+session_name: "AWSMonitorSession"
+
+# Regions to monitor
+regions:
+  - us-east-1
+  - us-west-2
+
+# Resource types to discover
+resource_types:
+  - ec2
+  - rds
+  - eks
+
+# Filters (optional)
+filters:
+  tags:
+    Environment: production
+  names: []  # List of resource names
+  ids: []    # List of resource IDs
+
+# Monitoring checks to perform
+checks:
+  performance:
+    enabled: true
+    period: 300  # seconds (5 minutes)
+    
+  cost:
+    enabled: true
+    days: 7  # Last 7 days
+    
+  alerts:
+    enabled: true
+    thresholds:
+      cpu: 80
+      memory: 85
+      storage: 90
+
+# Notifications
+notifications:
+  email:
+    enabled: false
+    to: "ops-team@example.com"
+    
+  slack:
+    enabled: false
+    webhook_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+    
+  sns:
+    enabled: false
+    topic_arn: "arn:aws:sns:us-east-1:123456789012:monitoring-alerts"
+
+# Output options
+output:
+  console: true
+  log_file: "logs/production-monitoring.log"
+  json_file: "output/production-monitoring.json"
+  format: "detailed"  # Options: detailed, summary, json
+
+# Scheduling (documentation only - actual scheduling done via cron)
+schedule:
+  frequency: "*/15 * * * *"  # Every 15 minutes
+  description: "Run every 15 minutes during business hours"

@@ -26,6 +26,22 @@ function setupEventListeners() {
     
     // Load all regions
     document.getElementById('load-more-regions').addEventListener('click', loadAllRegions);
+    
+    // Resource type selection buttons
+    document.getElementById('select-all-types').addEventListener('click', () => {
+        document.querySelectorAll('.resource-type-filter').forEach(cb => cb.checked = true);
+    });
+    
+    document.getElementById('deselect-all-types').addEventListener('click', () => {
+        document.querySelectorAll('.resource-type-filter').forEach(cb => cb.checked = false);
+    });
+    
+    document.getElementById('select-common-types').addEventListener('click', () => {
+        const commonTypes = ['ec2', 'rds', 's3'];
+        document.querySelectorAll('.resource-type-filter').forEach(cb => {
+            cb.checked = commonTypes.includes(cb.value);
+        });
+    });
 }
 
 async function discoverResources() {
@@ -38,6 +54,15 @@ async function discoverResources() {
     
     if (regions.length === 0) {
         showStatus(status, 'Please select at least one region', 'error');
+        return;
+    }
+    
+    // Get selected resource types
+    const resourceTypes = Array.from(document.querySelectorAll('.resource-type-filter:checked'))
+        .map(cb => cb.value);
+    
+    if (resourceTypes.length === 0) {
+        showStatus(status, 'Please select at least one resource type to discover', 'error');
         return;
     }
     
@@ -62,13 +87,13 @@ async function discoverResources() {
     // Show loading
     btn.disabled = true;
     btn.innerHTML = '<span class="loading-spinner"></span> Discovering...';
-    showStatus(status, 'Scanning regions for resources...', 'loading');
+    showStatus(status, `Scanning ${resourceTypes.join(', ')} in ${regions.join(', ')}...`, 'loading');
     
     try {
         const response = await fetch('/api/discover', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({regions, filters})
+            body: JSON.stringify({regions, filters, resource_types: resourceTypes})
         });
         
         if (!response.ok) throw new Error('Discovery failed');
@@ -79,7 +104,8 @@ async function discoverResources() {
         displayResourceSummary(discoveredResources.summary);
         displayResourceList(discoveredResources.regions);
         
-        showStatus(status, `Found ${Object.values(discoveredResources.summary).reduce((a, b) => a + b, 0)} resources`, 'success');
+        const totalResources = Object.values(discoveredResources.summary).reduce((a, b) => a + b, 0);
+        showStatus(status, `Found ${totalResources} resources (${resourceTypes.join(', ')})`, 'success');
         
         // Enable metric and alert buttons
         document.getElementById('metrics-btn').disabled = false;
@@ -120,7 +146,12 @@ function displayResourceSummary(summary) {
 
 function displayResourceList(regionsData) {
     const container = document.getElementById('resource-list');
-    container.innerHTML = '<h3>Resources by Type</h3>';
+    container.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3>Resources by Type</h3>
+            <button id="export-csv-btn" class="secondary-btn">📥 Export to CSV</button>
+        </div>
+    `;
     
     // Group resources by type across all regions
     const resourcesByType = {};
@@ -161,10 +192,17 @@ function displayResourceList(regionsData) {
         header.style.alignItems = 'center';
         header.style.borderBottom = '1px solid #dee2e6';
         
+        // Calculate health score
+        const healthScore = calculateHealthScore(type, resources);
+        const healthColor = healthScore >= 80 ? '#28a745' : healthScore >= 60 ? '#ffc107' : '#dc3545';
+        
         const headerText = document.createElement('div');
         headerText.innerHTML = `
             <strong>${type.toUpperCase()}</strong>
             <span style="margin-left: 10px; color: #666;">${resources.length} resources</span>
+            <span style="margin-left: 10px; padding: 3px 8px; background: ${healthColor}; color: white; border-radius: 3px; font-size: 0.85em;">
+                Health: ${healthScore}%
+            </span>
         `;
         
         const toggleIcon = document.createElement('span');
@@ -181,40 +219,59 @@ function displayResourceList(regionsData) {
         content.style.display = 'none';
         content.style.padding = '15px';
         
-        // Create table
+        // Create table with enhanced columns
         const table = document.createElement('table');
         table.className = 'resource-table';
         
-        // Table header
+        // Table header with enhanced columns
         const thead = document.createElement('thead');
         const headerRow = document.createElement('tr');
         headerRow.innerHTML = `
             <th><input type="checkbox" class="select-all" data-type="${type}"></th>
+            <th>Status</th>
             <th>Name/ID</th>
             <th>Type/Class</th>
-            <th>State/Status</th>
             <th>Region</th>
-            <th>Details</th>
-            <th>Actions</th>
+            <th>Tags</th>
+            <th>Quick Actions</th>
+            <th>Links</th>
         `;
         thead.appendChild(headerRow);
         table.appendChild(thead);
         
-        // Table body
+        // Table body with enhanced cells
         const tbody = document.createElement('tbody');
         resources.forEach(resource => {
             const row = document.createElement('tr');
             const resourceId = resource.id || resource.name;
             const region = resource._region;
             
+            // Status indicator
+            const status = resource.state || resource.status || 'unknown';
+            const statusColor = getStatusColor(status);
+            
+            // Tags display
+            const tags = resource.tags || {};
+            const tagCount = Object.keys(tags).length;
+            const tagDisplay = tagCount > 0 ? `${tagCount} tags` : 'No tags';
+            
             row.innerHTML = `
                 <td><input type="checkbox" class="resource-checkbox" data-type="${type}" data-id="${resourceId}" data-region="${region}"></td>
-                <td>${resource.name || resource.id || 'N/A'}</td>
+                <td><span class="status-indicator" style="background: ${statusColor};" title="${status}"></span></td>
+                <td>
+                    <strong>${resource.name || resource.id || 'N/A'}</strong>
+                    ${getResourceAge(resource)}
+                </td>
                 <td>${resource.type || resource.class || resource.engine || resource.runtime || 'N/A'}</td>
-                <td><span class="badge badge-${(resource.state || resource.status || '').toLowerCase()}">${resource.state || resource.status || 'N/A'}</span></td>
-                <td>${region}</td>
-                <td>${getResourceDetails(type, resource)}</td>
-                <td><button class="details-btn" data-type="${type}" data-id="${resourceId}" data-region="${region}">Details</button></td>
+                <td><span class="region-badge">${region}</span></td>
+                <td>
+                    <span class="tag-count" title="${JSON.stringify(tags, null, 2).replace(/"/g, '&quot;')}">${tagDisplay}</span>
+                </td>
+                <td>${getQuickActions(type, resource, region)}</td>
+                <td>
+                    <button class="link-btn" onclick="openInAWSConsole('${type}', '${resourceId}', '${region}')" title="Open in AWS Console">🔗 Console</button>
+                    <button class="details-btn" data-type="${type}" data-id="${resourceId}" data-region="${region}">Details</button>
+                </td>
             `;
             tbody.appendChild(row);
         });
@@ -263,6 +320,11 @@ function displayResourceList(regionsData) {
             showResourceDetails(type, id, region);
         });
     });
+    
+    // Add export CSV handler
+    document.getElementById('export-csv-btn').addEventListener('click', () => {
+        exportToCSV(resourcesByType);
+    });
 }
 
 function getResourceDetails(type, resource) {
@@ -280,6 +342,144 @@ function getResourceDetails(type, resource) {
         return `${resource.size} GB | ${resource.type} | Encrypted: ${resource.encrypted ? 'Yes' : 'No'}`;
     }
     return 'N/A';
+}
+
+function getStatusColor(status) {
+    const statusLower = (status || '').toLowerCase();
+    if (statusLower === 'running' || statusLower === 'available' || statusLower === 'active') {
+        return '#28a745';  // Green
+    } else if (statusLower === 'stopped' || statusLower === 'stopping') {
+        return '#ffc107';  // Yellow
+    } else if (statusLower === 'terminated' || statusLower === 'failed' || statusLower === 'error') {
+        return '#dc3545';  // Red
+    } else {
+        return '#6c757d';  // Gray
+    }
+}
+
+function calculateHealthScore(type, resources) {
+    // Simple health score based on resource state
+    let healthy = 0;
+    resources.forEach(r => {
+        const status = (r.state || r.status || '').toLowerCase();
+        if (status === 'running' || status === 'available' || status === 'active') {
+            healthy++;
+        }
+    });
+    return Math.round((healthy / resources.length) * 100);
+}
+
+function getResourceAge(resource) {
+    // If resource has created timestamp, show age
+    if (resource.created) {
+        try {
+            const created = new Date(resource.created);
+            const now = new Date();
+            const days = Math.floor((now - created) / (1000 * 60 * 60 * 24));
+            if (days > 0) {
+                return `<br><small style="color: #666;">${days} days old</small>`;
+            }
+        } catch (e) {
+            // Ignore parsing errors
+        }
+    }
+    return '';
+}
+
+function getQuickActions(type, resource, region) {
+    let actions = '';
+    
+    if (type === 'ec2') {
+        if (resource.public_ip) {
+            actions += `<button class="copy-btn" onclick="copyToClipboard('${resource.public_ip}')" title="Copy Public IP">📋 ${resource.public_ip}</button>`;
+        }
+        if (resource.private_ip) {
+            actions += ` <button class="copy-btn" onclick="copyToClipboard('${resource.private_ip}')" title="Copy Private IP">📋 ${resource.private_ip}</button>`;
+        }
+    } else if (type === 'rds') {
+        if (resource.endpoint) {
+            actions += `<button class="copy-btn" onclick="copyToClipboard('${resource.endpoint}')" title="Copy Endpoint">📋 Endpoint</button>`;
+        }
+    } else if (type === 's3') {
+        actions += `<button class="copy-btn" onclick="copyToClipboard('s3://${resource.name}')" title="Copy S3 URI">📋 s3://${resource.name}</button>`;
+    } else if (type === 'eks') {
+        if (resource.endpoint) {
+            actions += `<button class="copy-btn" onclick="copyToClipboard('${resource.endpoint}')" title="Copy Endpoint">📋 Endpoint</button>`;
+        }
+    }
+    
+    return actions || '<small style="color: #999;">-</small>';
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        // Show toast notification
+        const toast = document.createElement('div');
+        toast.textContent = '✅ Copied!';
+        toast.style.position = 'fixed';
+        toast.style.bottom = '20px';
+        toast.style.right = '20px';
+        toast.style.background = '#28a745';
+        toast.style.color = 'white';
+        toast.style.padding = '10px 20px';
+        toast.style.borderRadius = '4px';
+        toast.style.zIndex = '10000';
+        toast.style.animation = 'fadeIn 0.3s, fadeOut 0.3s 2s';
+        
+        document.body.appendChild(toast);
+        setTimeout(() => document.body.removeChild(toast), 2500);
+    }).catch(err => {
+        alert('Failed to copy: ' + err);
+    });
+}
+
+function openInAWSConsole(type, resourceId, region) {
+    let url = '';
+    
+    if (type === 'ec2') {
+        url = `https://console.aws.amazon.com/ec2/v2/home?region=${region}#Instances:instanceId=${resourceId}`;
+    } else if (type === 'rds') {
+        url = `https://console.aws.amazon.com/rds/home?region=${region}#database:id=${resourceId}`;
+    } else if (type === 's3') {
+        url = `https://s3.console.aws.amazon.com/s3/buckets/${resourceId}`;
+    } else if (type === 'lambda') {
+        url = `https://console.aws.amazon.com/lambda/home?region=${region}#/functions/${resourceId}`;
+    } else if (type === 'eks') {
+        url = `https://console.aws.amazon.com/eks/home?region=${region}#/clusters/${resourceId}`;
+    } else if (type === 'emr') {
+        url = `https://console.aws.amazon.com/emr/home?region=${region}#cluster-details/${resourceId}`;
+    }
+    
+    if (url) {
+        window.open(url, '_blank');
+    } else {
+        alert('AWS Console link not available for this resource type');
+    }
+}
+
+function exportToCSV(resourcesByType) {
+    let csv = 'Resource Type,Name/ID,Status,Type/Class,Region,Tags\n';
+    
+    for (const [type, resources] of Object.entries(resourcesByType)) {
+        resources.forEach(resource => {
+            const name = resource.name || resource.id || 'N/A';
+            const status = resource.state || resource.status || 'N/A';
+            const resourceType = resource.type || resource.class || resource.engine || resource.runtime || 'N/A';
+            const region = resource._region || 'N/A';
+            const tags = JSON.stringify(resource.tags || {});
+            
+            csv += `${type},${name},${status},${resourceType},${region},"${tags}"\n`;
+        });
+    }
+    
+    // Download CSV
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `aws-resources-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
 }
 
 function updateSelectedResources() {
@@ -808,16 +1008,29 @@ async function generateScript() {
         
         if (!response.ok) throw new Error('Script generation failed');
         
-        // Download the file
-        const blob = await response.blob();
+        const data = await response.json();
+        
+        if (!data.success || data.error) {
+            showStatus(status, `Error: ${data.error || 'Unknown error'}`, 'error');
+            return;
+        }
+        
+        // Create blob from script content and download using JavaScript
+        // This avoids browser security issues with HTTP file downloads
+        const blob = new Blob([data.script], { type: 'text/x-python' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'aws_monitor_job.py';
+        a.download = data.filename;
+        a.style.display = 'none';
         document.body.appendChild(a);
         a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+        
+        // Cleanup
+        setTimeout(() => {
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }, 100);
         
         showStatus(status, '✅ Script downloaded! Schedule it with cron or Python scheduler.', 'success');
         

@@ -2,7 +2,7 @@
 AWS Monitor - Simplified
 Multi-region resource monitoring with script generation
 """
-from flask import Flask, render_template, jsonify, request, send_file
+from flask import Flask, render_template, jsonify, request, send_file, make_response
 from app.resources import ResourceMonitor
 from app.script_generator import ScriptGenerator
 import logging
@@ -36,6 +36,7 @@ def discover_resources():
     Discover all resources across regions
     POST body: {
         "regions": ["us-east-1", "us-west-2"],
+        "resource_types": ["ec2", "rds", "s3"],  # Optional
         "filters": {
             "tags": {"Environment": "production"},
             "names": ["web-server"],
@@ -46,10 +47,11 @@ def discover_resources():
     data = request.get_json()
     regions = data.get('regions', DEFAULT_REGIONS)
     filters = data.get('filters', {})
+    resource_types = data.get('resource_types', None)  # None = discover all
     
     try:
         monitor = ResourceMonitor(role_arn=ROLE_ARN, session_name=SESSION_NAME)
-        resources = monitor.discover_all(regions, filters)
+        resources = monitor.discover_all(regions, filters, resource_types)
         return jsonify(resources)
     except Exception as e:
         logger.error(f"Discovery error: {e}")
@@ -143,18 +145,39 @@ def generate_script():
         generator = ScriptGenerator()
         script_content = generator.generate(data, role_arn=ROLE_ARN, session_name=SESSION_NAME)
         
-        # Return as downloadable file
-        buffer = io.BytesIO(script_content.encode('utf-8'))
-        buffer.seek(0)
-        
-        return send_file(
-            buffer,
-            mimetype='text/x-python',
-            as_attachment=True,
-            download_name='aws_monitor_job.py'
-        )
+        # Return as JSON with script content
+        # This avoids browser security issues with file downloads over HTTP
+        return jsonify({
+            'success': True,
+            'script': script_content,
+            'filename': 'aws_monitor_job.py'
+        })
     except Exception as e:
         logger.error(f"Script generation error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/download-script', methods=['POST'])
+def download_script():
+    """
+    Alternative endpoint that forces file download
+    For use when browser allows it
+    """
+    data = request.get_json()
+    
+    try:
+        generator = ScriptGenerator()
+        script_content = generator.generate(data, role_arn=ROLE_ARN, session_name=SESSION_NAME)
+        
+        # Create response with proper headers for download
+        response = make_response(script_content)
+        response.headers['Content-Type'] = 'text/plain; charset=utf-8'
+        response.headers['Content-Disposition'] = 'attachment; filename=aws_monitor_job.py'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        
+        return response
+    except Exception as e:
+        logger.error(f"Script download error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -223,6 +246,12 @@ Examples:
         help='Run Flask in debug mode'
     )
     
+    parser.add_argument(
+        '--ssl',
+        action='store_true',
+        help='Run with HTTPS using self-signed certificate (for development)'
+    )
+    
     return parser.parse_args()
 
 
@@ -243,7 +272,30 @@ if __name__ == '__main__':
     else:
         logger.info("Starting AWS Monitor with base profile: monitor")
     
-    logger.info(f"Server: http://{args.host}:{args.port}")
+    # Setup SSL if requested
+    ssl_context = None
+    if args.ssl:
+        import ssl
+        import os
+        
+        cert_file = 'certs/cert.pem'
+        key_file = 'certs/key.pem'
+        
+        if os.path.exists(cert_file) and os.path.exists(key_file):
+            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ssl_context.load_cert_chain(cert_file, key_file)
+            logger.info(f"✅ Running with HTTPS (self-signed certificate)")
+            logger.info(f"Server: https://{args.host}:{args.port}")
+            logger.info(f"⚠️  Browser will show security warning - click 'Advanced' and 'Proceed to localhost'")
+        else:
+            logger.error(f"❌ SSL certificate files not found!")
+            logger.error(f"Expected: {cert_file} and {key_file}")
+            logger.error(f"Run './generate_cert.sh' to create certificates")
+            sys.exit(1)
+    else:
+        logger.info(f"Server: http://{args.host}:{args.port}")
+        logger.info(f"⚠️  Running with HTTP - file downloads may be blocked by browser")
+        logger.info(f"💡 Use --ssl flag for HTTPS: python main.py --ssl")
     
     # Run Flask app
-    app.run(host=args.host, port=args.port, debug=args.debug)
+    app.run(host=args.host, port=args.port, debug=args.debug, ssl_context=ssl_context)

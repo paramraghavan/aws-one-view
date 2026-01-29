@@ -131,6 +131,23 @@ header p {
     cursor: not-allowed;
 }
 
+.secondary-btn {
+    background: white;
+    color: #667eea;
+    border: 2px solid #667eea;
+    padding: 8px 20px;
+    font-size: 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-right: 10px;
+}
+
+.secondary-btn:hover {
+    background: #667eea;
+    color: white;
+}
+
 .options {
     margin-top: 15px;
     display: flex;
@@ -407,6 +424,71 @@ button {
 .toggle-icon {
     font-size: 0.8em;
     color: #667eea;
+}
+
+.status-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 5px;
+}
+
+.region-badge {
+    background: #e3f2fd;
+    color: #1976d2;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.85em;
+    font-weight: 500;
+}
+
+.tag-count {
+    color: #666;
+    cursor: help;
+    text-decoration: underline dotted;
+}
+
+.copy-btn {
+    background: #e9ecef;
+    border: 1px solid #dee2e6;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 0.8em;
+    cursor: pointer;
+    margin-right: 5px;
+    transition: all 0.2s;
+}
+
+.copy-btn:hover {
+    background: #dee2e6;
+    transform: translateY(-1px);
+}
+
+.link-btn {
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.85em;
+    margin-right: 5px;
+    transition: background 0.2s;
+}
+
+.link-btn:hover {
+    background: #5568d3;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
 }
 
 #load-more-regions {
