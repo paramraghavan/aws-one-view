@@ -30,6 +30,57 @@ def index():
     return render_template('index.html')
 
 
+@app.route('/health')
+def health_check():
+    """
+    Health check endpoint for monitoring and load balancers
+    Returns 200 if healthy, 503 if unhealthy
+    """
+    try:
+        from datetime import datetime
+        health_status = {
+            'status': 'healthy',
+            'service': 'aws-monitor',
+            'version': '1.3.0',
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        return jsonify(health_status), 200
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e)
+        }), 503
+
+
+@app.route('/api/status')
+def api_status():
+    """
+    Detailed status endpoint for admins
+    Returns application status and statistics
+    """
+    from datetime import datetime
+    import time
+    
+    try:
+        status = {
+            'service': 'aws-monitor',
+            'version': '1.3.0',
+            'status': 'running',
+            'aws_profile': 'monitor',
+            'role_arn': ROLE_ARN or 'none',
+            'default_regions': DEFAULT_REGIONS,
+            'timestamp': datetime.utcnow().isoformat(),
+            'directories': {
+                'logs': os.path.exists('logs'),
+                'output': os.path.exists('output'),
+                'configs': os.path.exists('configs')
+            }
+        }
+        return jsonify(status)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/discover', methods=['POST'])
 def discover_resources():
     """

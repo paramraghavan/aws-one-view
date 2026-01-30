@@ -27,78 +27,72 @@ This is a **simplified, clean version**:
 
 ## Quick Start
 
-### 1. Prerequisites
+### 1. Setup (First Time)
 
 ```bash
-# Python 3.8+
-python --version
-
-# Install dependencies
-pip install flask boto3
-```
-
-### 2. Configure AWS Profile
-
-Create AWS profile named `monitor`:
-
-```bash
-aws configure --profile monitor
-# Enter your AWS Access Key ID
-# Enter your AWS Secret Access Key
-# Default region: us-east-1
-# Default output format: json
-```
-
-Or manually edit `~/.aws/credentials`:
-```ini
-[monitor]
-aws_access_key_id = YOUR_ACCESS_KEY
-aws_secret_access_key = YOUR_SECRET_KEY
-region = us-east-1
-```
-
-### 3. Run Application
-
-**Basic usage** (using profile directly):
-```bash
+# Extract and enter directory
+tar -xzf aws_monitor_simple.tar.gz
 cd aws_monitor_simple
-python main.py
+
+# Run setup script
+./setup.sh
 ```
 
-**⚠️ Important for File Downloads:**
-Modern browsers may block file downloads from HTTP connections. For the best experience:
+The setup script will:
+- Create virtual environment
+- Install dependencies (Flask, boto3, PyYAML)
+- Create directories (logs, output, configs)
+- Check AWS configuration
+
+### 2. Configure AWS
 
 ```bash
-# One-time setup: Generate SSL certificate
-./generate_cert.sh
-
-# Run with HTTPS
-python main.py --ssl
-
-# Access: https://localhost:5000
-# (Accept certificate warning first time)
+# Configure AWS profile
+aws configure --profile monitor
 ```
 
-**With IAM role assumption** (recommended for production):
+Enter your credentials when prompted:
+- AWS Access Key ID
+- AWS Secret Access Key
+- Default region (e.g., us-east-1)
+- Output format (json)
+
+### 3. Start the App
+
 ```bash
-python main.py --ssl --role-arn arn:aws:iam::123456789012:role/MonitoringRole
+# Start the web UI
+./start.sh
 ```
 
-**With custom options**:
+**Open browser:** `http://localhost:5000`
+
+**To stop:** Press `Ctrl+C`
+
+**That's it! Simple. No services, no Docker, just Flask.**
+
+---
+
+### Optional: Custom Port/Host
+
 ```bash
-python main.py \
-  --ssl \
-  --role-arn arn:aws:iam::123456789012:role/MonitoringRole \
-  --session-name MySession \
-  --port 8443 \
-  --debug
+# Custom port
+./start.sh --port 8080
+
+# Allow network access (WARNING: Use on trusted networks only!)
+./start.sh --host 0.0.0.0 --port 8080
 ```
 
-**Having download issues?** See **[QUICK_FIX_DOWNLOADS.md](QUICK_FIX_DOWNLOADS.md)** for detailed solutions.
+### Optional: IAM Role Assumption
 
-Open browser: `http://localhost:5000` (or `https://localhost:5000` with --ssl)
+For enhanced security (recommended for production):
 
-### 4. Optional: IAM Role Assumption
+```bash
+./start.sh --role-arn arn:aws:iam::123456789012:role/MonitoringRole
+```
+
+See **[docs/ROLE_ASSUMPTION.md](docs/ROLE_ASSUMPTION.md)** for setup.
+
+---
 
 For enhanced security and cross-account monitoring, you can use IAM role assumption. This allows:
 - ✅ Using temporary credentials (expire after 1 hour)
