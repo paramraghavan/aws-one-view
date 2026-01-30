@@ -345,14 +345,36 @@ function getResourceDetails(type, resource) {
 }
 
 function getStatusColor(status) {
-    const statusLower = (status || '').toLowerCase();
-    if (statusLower === 'running' || statusLower === 'available' || statusLower === 'active') {
+    const statusLower = (status || 'unknown').toLowerCase();
+    
+    // Green statuses (healthy/running)
+    if (statusLower === 'running' || 
+        statusLower === 'available' || 
+        statusLower === 'active' ||
+        statusLower === 'waiting' ||      // EMR waiting for work
+        statusLower === 'bootstrapping' || // EMR starting up
+        statusLower === 'starting') {      // EMR/EC2 starting
         return '#28a745';  // Green
-    } else if (statusLower === 'stopped' || statusLower === 'stopping') {
+    }
+    
+    // Yellow statuses (transitioning/stopped)
+    else if (statusLower === 'stopped' || 
+             statusLower === 'stopping' ||
+             statusLower === 'terminating' ||
+             statusLower === 'pending') {
         return '#ffc107';  // Yellow
-    } else if (statusLower === 'terminated' || statusLower === 'failed' || statusLower === 'error') {
+    }
+    
+    // Red statuses (failed/terminated)
+    else if (statusLower === 'terminated' || 
+             statusLower === 'failed' || 
+             statusLower === 'error' ||
+             statusLower === 'terminated_with_errors') {
         return '#dc3545';  // Red
-    } else {
+    }
+    
+    // Gray for unknown/undefined
+    else {
         return '#6c757d';  // Gray
     }
 }
@@ -360,12 +382,25 @@ function getStatusColor(status) {
 function calculateHealthScore(type, resources) {
     // Simple health score based on resource state
     let healthy = 0;
+    
     resources.forEach(r => {
         const status = (r.state || r.status || '').toLowerCase();
-        if (status === 'running' || status === 'available' || status === 'active') {
+        
+        // Lambda functions don't have status - they're always healthy if they exist
+        if (type === 'lambda' || type === 's3') {
+            healthy++;
+        }
+        // For other resources, check status
+        else if (status === 'running' || 
+                 status === 'available' || 
+                 status === 'active' ||
+                 status === 'waiting' ||      // EMR waiting is healthy
+                 status === 'bootstrapping' || // EMR bootstrapping is healthy
+                 status === 'starting') {      // Starting is transitioning to healthy
             healthy++;
         }
     });
+    
     return Math.round((healthy / resources.length) * 100);
 }
 
@@ -632,8 +667,6 @@ function displayMetrics(metrics) {
             if (typeof metricData === 'object' && metricData !== null) {
                 const item = document.createElement('div');
                 item.className = 'metric-item';
-                item.style.cursor = 'pointer';
-                item.style.transition = 'transform 0.2s, box-shadow 0.2s';
                 
                 let value = metricData.current || metricData.total || metricData.avg || 0;
                 value = typeof value === 'number' ? value.toFixed(2) : value;
@@ -641,19 +674,10 @@ function displayMetrics(metrics) {
                 item.innerHTML = `
                     <div class="label">${formatMetricName(metricName)}</div>
                     <div class="value">${value}</div>
-                    <div style="font-size: 0.8em; color: #999; margin-top: 5px;">Click for details</div>
+                    <div style="font-size: 0.85em; color: #667eea; margin-top: 8px; font-weight: 500;">
+                        <span style="opacity: 0.8;">👆</span> Click for details
+                    </div>
                 `;
-                
-                // Add hover effect
-                item.addEventListener('mouseenter', () => {
-                    item.style.transform = 'translateY(-2px)';
-                    item.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
-                });
-                
-                item.addEventListener('mouseleave', () => {
-                    item.style.transform = 'translateY(0)';
-                    item.style.boxShadow = 'none';
-                });
                 
                 // Add click handler to show details
                 item.addEventListener('click', () => {
@@ -787,59 +811,132 @@ function displayCosts(costs) {
     
     container.innerHTML = `
         <div class="cost-summary">
-            <h3>Cost Summary</h3>
-            <div class="cost-number">$${costs.total_cost}</div>
-            <p>Period: ${costs.period.start} to ${costs.period.end}</p>
-            <p>Daily Average: $${costs.daily_average}</p>
+            <h3>Cost Summary (${costs.period.start} to ${costs.period.end})</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0;">
+                <div style="background: #667eea; color: white; padding: 20px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 0.9em; opacity: 0.9; margin-bottom: 5px;">Total Cost</div>
+                    <div style="font-size: 2em; font-weight: bold;">$${costs.total_cost}</div>
+                </div>
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 0.9em; color: #666; margin-bottom: 5px;">Daily Average</div>
+                    <div style="font-size: 2em; font-weight: bold; color: #667eea;">$${costs.daily_average}</div>
+                </div>
+            </div>
         </div>
     `;
     
-    // Top services
+    // Combined breakdown table
     if (costs.by_service && Object.keys(costs.by_service).length > 0) {
-        container.innerHTML += '<h4>Top Services by Cost</h4>';
+        container.innerHTML += '<h4 style="margin-top: 30px;">Cost Breakdown</h4>';
+        
         const table = document.createElement('table');
         table.className = 'resource-table';
         table.innerHTML = `
             <thead>
                 <tr>
                     <th>Service</th>
-                    <th>Cost</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${Object.entries(costs.by_service).map(([service, cost]) => `
-                    <tr>
-                        <td>${service}</td>
-                        <td>$${cost}</td>
-                    </tr>
-                `).join('')}
-            </tbody>
-        `;
-        container.appendChild(table);
-    }
-    
-    // By region
-    if (costs.by_region && Object.keys(costs.by_region).length > 0) {
-        container.innerHTML += '<h4 style="margin-top:20px">Cost by Region</h4>';
-        const table = document.createElement('table');
-        table.className = 'resource-table';
-        table.innerHTML = `
-            <thead>
-                <tr>
                     <th>Region</th>
-                    <th>Cost</th>
+                    <th style="text-align: right;">Cost</th>
+                    <th style="text-align: right;">% of Total</th>
                 </tr>
             </thead>
-            <tbody>
-                ${Object.entries(costs.by_region).map(([region, cost]) => `
-                    <tr>
-                        <td>${region}</td>
-                        <td>$${cost}</td>
-                    </tr>
-                `).join('')}
-            </tbody>
+            <tbody></tbody>
         `;
+        
+        const tbody = table.querySelector('tbody');
+        const totalCost = parseFloat(costs.total_cost);
+        
+        // Create a combined list of all costs by service and region
+        const allCosts = [];
+        
+        // Add by_service costs with breakdown by region if available
+        for (const [service, cost] of Object.entries(costs.by_service)) {
+            // If we have region breakdown for this service, show it
+            let hasRegionBreakdown = false;
+            
+            if (costs.by_region) {
+                for (const [region, regionCost] of Object.entries(costs.by_region)) {
+                    // This is a simplified approach - in reality we'd need the API
+                    // to return service costs broken down by region
+                    // For now, just show service totals
+                }
+            }
+            
+            // Show service total
+            const percentage = ((parseFloat(cost) / totalCost) * 100).toFixed(1);
+            allCosts.push({
+                service: service,
+                region: 'All Regions',
+                cost: parseFloat(cost),
+                percentage: percentage
+            });
+        }
+        
+        // Sort by cost (highest first)
+        allCosts.sort((a, b) => b.cost - a.cost);
+        
+        // Render rows
+        allCosts.forEach(item => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><strong>${item.service}</strong></td>
+                <td><span class="region-badge">${item.region}</span></td>
+                <td style="text-align: right; font-family: monospace;">$${item.cost.toFixed(2)}</td>
+                <td style="text-align: right;">
+                    <span style="background: #e3f2fd; color: #1976d2; padding: 3px 8px; border-radius: 3px; font-size: 0.9em;">
+                        ${item.percentage}%
+                    </span>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+        
         container.appendChild(table);
+        
+        // Add region summary if available
+        if (costs.by_region && Object.keys(costs.by_region).length > 1) {
+            container.innerHTML += '<h4 style="margin-top: 30px;">Regional Summary</h4>';
+            
+            const regionTable = document.createElement('table');
+            regionTable.className = 'resource-table';
+            regionTable.innerHTML = `
+                <thead>
+                    <tr>
+                        <th>Region</th>
+                        <th style="text-align: right;">Cost</th>
+                        <th style="text-align: right;">% of Total</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            `;
+            
+            const regionTbody = regionTable.querySelector('tbody');
+            
+            // Sort regions by cost
+            const sortedRegions = Object.entries(costs.by_region)
+                .map(([region, cost]) => ({
+                    region,
+                    cost: parseFloat(cost),
+                    percentage: ((parseFloat(cost) / totalCost) * 100).toFixed(1)
+                }))
+                .sort((a, b) => b.cost - a.cost);
+            
+            sortedRegions.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><span class="region-badge">${item.region}</span></td>
+                    <td style="text-align: right; font-family: monospace;">$${item.cost.toFixed(2)}</td>
+                    <td style="text-align: right;">
+                        <span style="background: #e3f2fd; color: #1976d2; padding: 3px 8px; border-radius: 3px; font-size: 0.9em;">
+                            ${item.percentage}%
+                        </span>
+                    </td>
+                `;
+                regionTbody.appendChild(row);
+            });
+            
+            container.appendChild(regionTable);
+        }
     }
 }
 

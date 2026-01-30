@@ -307,8 +307,18 @@ header p {
 
 .metric-item {
     background: #f8f9fa;
-    padding: 10px;
+    padding: 15px;
     border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 2px solid transparent;
+}
+
+.metric-item:hover {
+    background: #e9ecef;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.2);
+    border-color: #667eea;
 }
 
 .metric-item .label {

@@ -251,6 +251,7 @@ class ResourceMonitor:
                     'name': name,
                     'creation_date': bucket['CreationDate'].isoformat(),
                     'region': region,
+                    'status': 'Active',  # S3 buckets are always active if they exist
                     'tags': tags
                 })
             
@@ -293,6 +294,7 @@ class ResourceMonitor:
                     'memory': func['MemorySize'],
                     'timeout': func['Timeout'],
                     'last_modified': func['LastModified'],
+                    'status': 'Active',  # Lambda functions are always active if they exist
                     'tags': tags
                 })
             
