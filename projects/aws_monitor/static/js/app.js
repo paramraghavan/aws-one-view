@@ -100,11 +100,43 @@ async function discoverResources() {
         
         discoveredResources = await response.json();
         
+        const totalResources = Object.values(discoveredResources.summary).reduce((a, b) => a + b, 0);
+        
+        if (totalResources === 0) {
+            // Show empty state
+            document.getElementById('resource-summary').innerHTML = '';
+            const container = document.getElementById('resource-list');
+            container.innerHTML = `
+                <div style="text-align: center; padding: 60px 20px; background: #f8f9fa; border-radius: 8px;">
+                    <div style="font-size: 4em; margin-bottom: 20px;">📭</div>
+                    <h2 style="color: #667eea; margin-bottom: 10px;">No Resources Found</h2>
+                    <p style="color: #666; font-size: 1.1em; margin-bottom: 20px;">
+                        No resources were discovered in the selected regions.
+                    </p>
+                    <div style="background: white; padding: 20px; border-radius: 6px; max-width: 500px; margin: 0 auto; text-align: left;">
+                        <p style="margin: 5px 0;"><strong>Possible reasons:</strong></p>
+                        <ul style="color: #666;">
+                            <li>No ${resourceTypes.join(', ')} resources exist in ${regions.join(', ')}</li>
+                            <li>Your AWS credentials don't have permission to view these resources</li>
+                            <li>Filters are too restrictive (try removing filters)</li>
+                            <li>Selected regions don't contain any resources</li>
+                        </ul>
+                    </div>
+                    <p style="margin-top: 30px;">
+                        <button class="btn" onclick="document.getElementById('discover-btn').scrollIntoView({behavior: 'smooth'})">
+                            🔄 Try Different Settings
+                        </button>
+                    </p>
+                </div>
+            `;
+            showStatus(status, 'No resources found with current filters', 'error');
+            return;
+        }
+        
         // Display results
         displayResourceSummary(discoveredResources.summary);
         displayResourceList(discoveredResources.regions);
         
-        const totalResources = Object.values(discoveredResources.summary).reduce((a, b) => a + b, 0);
         showStatus(status, `Found ${totalResources} resources (${resourceTypes.join(', ')})`, 'success');
         
         // Enable metric and alert buttons
@@ -146,10 +178,86 @@ function displayResourceSummary(summary) {
 
 function displayResourceList(regionsData) {
     const container = document.getElementById('resource-list');
+    
+    // Calculate quick stats
+    let totalResources = 0;
+    let runningCount = 0;
+    let stoppedCount = 0;
+    const resourceTypeCounts = {};
+    
+    for (const [region, resourceTypes] of Object.entries(regionsData)) {
+        for (const [type, resources] of Object.entries(resourceTypes)) {
+            totalResources += resources.length;
+            resourceTypeCounts[type] = (resourceTypeCounts[type] || 0) + resources.length;
+            
+            resources.forEach(r => {
+                const status = (r.state || r.status || '').toLowerCase();
+                if (status === 'running' || status === 'available' || status === 'active') {
+                    runningCount++;
+                } else if (status === 'stopped') {
+                    stoppedCount++;
+                }
+            });
+        }
+    }
+    
+    // Quick stats dashboard
     container.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <h3>Resources by Type</h3>
-            <button id="export-csv-btn" class="secondary-btn">📥 Export to CSV</button>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+            <div>
+                <h3 style="margin: 0;">Resources by Type</h3>
+                <small style="color: #666;">Last updated: ${new Date().toLocaleString()}</small>
+            </div>
+            
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <!-- Quick Stats -->
+                <div style="background: #667eea; color: white; padding: 8px 16px; border-radius: 6px; text-align: center; min-width: 100px;">
+                    <div style="font-size: 1.8em; font-weight: bold;">${totalResources}</div>
+                    <div style="font-size: 0.85em; opacity: 0.9;">Total Resources</div>
+                </div>
+                
+                <div style="background: #28a745; color: white; padding: 8px 16px; border-radius: 6px; text-align: center; min-width: 100px;">
+                    <div style="font-size: 1.8em; font-weight: bold;">${runningCount}</div>
+                    <div style="font-size: 0.85em; opacity: 0.9;">Running</div>
+                </div>
+                
+                ${stoppedCount > 0 ? `
+                <div style="background: #ffc107; color: white; padding: 8px 16px; border-radius: 6px; text-align: center; min-width: 100px;">
+                    <div style="font-size: 1.8em; font-weight: bold;">${stoppedCount}</div>
+                    <div style="font-size: 0.85em; opacity: 0.9;">Stopped</div>
+                </div>
+                ` : ''}
+                
+                <!-- Quick Actions -->
+                <button id="refresh-resources-btn" class="secondary-btn" style="margin-left: 10px;">
+                    🔄 Refresh
+                </button>
+                
+                <button id="export-csv-btn" class="secondary-btn">
+                    📥 Export CSV
+                </button>
+                
+                <button id="clear-results-btn" class="secondary-btn" style="background: #dc3545; color: white; border-color: #dc3545;">
+                    🗑️ Clear
+                </button>
+            </div>
+        </div>
+        
+        <!-- Quick Filters -->
+        <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <div>
+                    <strong style="margin-right: 10px;">Quick Filters:</strong>
+                    <button class="filter-btn active" data-filter="all">All (${totalResources})</button>
+                    <button class="filter-btn" data-filter="running">Running (${runningCount})</button>
+                    ${stoppedCount > 0 ? `<button class="filter-btn" data-filter="stopped">Stopped (${stoppedCount})</button>` : ''}
+                    ${Object.entries(resourceTypeCounts).map(([type, count]) => 
+                        `<button class="filter-btn" data-filter="${type}">${type.toUpperCase()} (${count})</button>`
+                    ).join('')}
+                </div>
+                <input type="text" id="resource-search" placeholder="🔍 Search by name or ID..." 
+                    style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; min-width: 250px; font-size: 0.9em;">
+            </div>
         </div>
     `;
     
@@ -170,6 +278,29 @@ function displayResourceList(regionsData) {
             });
         }
     }
+    
+    // Store for filtering
+    window.allResourcesByType = resourcesByType;
+    window.currentFilter = 'all';
+    
+    // Render resources
+    renderResourceSections(resourcesByType);
+    
+    // Add event listeners
+    setupQuickFilters();
+    setupQuickActions();
+}
+
+function renderResourceSections(resourcesByType) {
+    const container = document.getElementById('resource-list');
+    
+    // Find and preserve the stats/header section
+    const statsSection = container.querySelector('div:first-child');
+    const filterSection = container.querySelectorAll('div')[1];
+    
+    // Clear only the resource sections, not the header
+    const resourceSections = container.querySelectorAll('.resource-section');
+    resourceSections.forEach(section => section.remove());
     
     // Create collapsible section for each resource type
     for (const [type, resources] of Object.entries(resourcesByType)) {
@@ -515,6 +646,155 @@ function exportToCSV(resourcesByType) {
     a.download = `aws-resources-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
+}
+
+function setupQuickFilters() {
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            // Update active state
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            
+            // Apply filter
+            const filter = e.target.dataset.filter;
+            window.currentFilter = filter;
+            applyFilter(filter);
+        });
+    });
+}
+
+function setupQuickActions() {
+    // Refresh button
+    const refreshBtn = document.getElementById('refresh-resources-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            discoverResources();
+        });
+    }
+    
+    // Export CSV button
+    const exportBtn = document.getElementById('export-csv-btn');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', () => {
+            exportToCSV(window.allResourcesByType || {});
+        });
+    }
+    
+    // Clear button
+    const clearBtn = document.getElementById('clear-results-btn');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            if (confirm('Clear all results?')) {
+                document.getElementById('resource-list').innerHTML = '';
+                document.getElementById('metrics-results').innerHTML = '';
+                document.getElementById('cost-results').innerHTML = '';
+                document.getElementById('alerts-results').innerHTML = '';
+                discoveredResources = null;
+                selectedResources = [];
+                window.allResourcesByType = null;
+            }
+        });
+    }
+    
+    // Search box
+    const searchBox = document.getElementById('resource-search');
+    if (searchBox) {
+        searchBox.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            applySearch(searchTerm);
+        });
+    }
+}
+
+function applyFilter(filter) {
+    if (!window.allResourcesByType) return;
+    
+    let filteredResources = {};
+    
+    if (filter === 'all') {
+        filteredResources = window.allResourcesByType;
+    } else if (filter === 'running') {
+        // Filter to only running/available/active resources
+        for (const [type, resources] of Object.entries(window.allResourcesByType)) {
+            const filtered = resources.filter(r => {
+                const status = (r.state || r.status || '').toLowerCase();
+                return status === 'running' || status === 'available' || status === 'active' || status === 'waiting';
+            });
+            if (filtered.length > 0) {
+                filteredResources[type] = filtered;
+            }
+        }
+    } else if (filter === 'stopped') {
+        // Filter to only stopped resources
+        for (const [type, resources] of Object.entries(window.allResourcesByType)) {
+            const filtered = resources.filter(r => {
+                const status = (r.state || r.status || '').toLowerCase();
+                return status === 'stopped';
+            });
+            if (filtered.length > 0) {
+                filteredResources[type] = filtered;
+            }
+        }
+    } else {
+        // Filter by resource type
+        if (window.allResourcesByType[filter]) {
+            filteredResources[filter] = window.allResourcesByType[filter];
+        }
+    }
+    
+    // Re-render with filtered resources
+    renderResourceSections(filteredResources);
+}
+
+function applySearch(searchTerm) {
+    if (!window.allResourcesByType) return;
+    
+    // If search is empty, apply current filter
+    if (!searchTerm || searchTerm.trim() === '') {
+        applyFilter(window.currentFilter || 'all');
+        return;
+    }
+    
+    // Search across all resources
+    const searchResults = {};
+    
+    for (const [type, resources] of Object.entries(window.allResourcesByType)) {
+        const matches = resources.filter(r => {
+            const name = (r.name || '').toLowerCase();
+            const id = (r.id || '').toLowerCase();
+            const status = (r.state || r.status || '').toLowerCase();
+            
+            return name.includes(searchTerm) || 
+                   id.includes(searchTerm) || 
+                   status.includes(searchTerm);
+        });
+        
+        if (matches.length > 0) {
+            searchResults[type] = matches;
+        }
+    }
+    
+    // Re-render with search results
+    renderResourceSections(searchResults);
+    
+    // Show message if no results
+    if (Object.keys(searchResults).length === 0) {
+        const container = document.getElementById('resource-list');
+        const resourceSections = container.querySelectorAll('.resource-section');
+        if (resourceSections.length === 0) {
+            const noResults = document.createElement('div');
+            noResults.style.textAlign = 'center';
+            noResults.style.padding = '40px';
+            noResults.style.color = '#666';
+            noResults.innerHTML = `
+                <div style="font-size: 3em; margin-bottom: 10px;">🔍</div>
+                <h3>No resources found</h3>
+                <p>No resources match "${searchTerm}"</p>
+                <p><small>Try a different search term or clear the search box</small></p>
+            `;
+            container.appendChild(noResults);
+        }
+    }
 }
 
 function updateSelectedResources() {

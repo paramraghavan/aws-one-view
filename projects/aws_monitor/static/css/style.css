@@ -148,6 +148,31 @@ header p {
     color: white;
 }
 
+.filter-btn {
+    background: white;
+    color: #667eea;
+    border: 2px solid #dee2e6;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+    margin-right: 8px;
+    margin-bottom: 8px;
+    transition: all 0.2s;
+    display: inline-block;
+}
+
+.filter-btn:hover {
+    border-color: #667eea;
+    background: #f8f9fa;
+}
+
+.filter-btn.active {
+    background: #667eea;
+    color: white;
+    border-color: #667eea;
+}
+
 .options {
     margin-top: 15px;
     display: flex;
