@@ -74,6 +74,13 @@
         
         <div class="sidebar-footer">
             <div class="refresh-control">
+                <button id="settingsBtn" class="btn-settings" title="Configure thresholds">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                    Settings
+                </button>
                 <button id="refreshBtn" class="btn-refresh">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="23 4 23 10 17 10"/>
@@ -105,7 +112,7 @@
                         </svg>
                     </div>
                     <div class="metric-content">
-                        <span class="metric-label">Credits (30d)</span>
+                        <span class="metric-label">Credits (30d) <span class="info-icon" data-tooltip="Snowflake credits consumed for compute. 1 credit ≈ $2-4 depending on your contract. Warehouse size determines credits/hour: X-Small=1, Small=2, Medium=4, Large=8, etc.">ⓘ</span></span>
                         <span class="metric-value" id="totalCredits">--</span>
                         <span class="metric-unit">credits</span>
                     </div>
@@ -120,7 +127,7 @@
                         </svg>
                     </div>
                     <div class="metric-content">
-                        <span class="metric-label">Storage</span>
+                        <span class="metric-label">Storage <span class="info-icon" data-tooltip="Total storage across all databases. Includes active data + Time Travel (default 1 day) + Fail-safe (7 days, cannot be disabled). Billed at ~$23-40/TB/month.">ⓘ</span></span>
                         <span class="metric-value" id="totalStorage">--</span>
                         <span class="metric-unit">TB</span>
                     </div>
@@ -133,7 +140,7 @@
                         </svg>
                     </div>
                     <div class="metric-content">
-                        <span class="metric-label">Queries (24h)</span>
+                        <span class="metric-label">Queries (24h) <span class="info-icon" data-tooltip="Total queries executed in the last 24 hours across all warehouses. Includes SELECT, INSERT, UPDATE, DELETE, and DDL statements.">ⓘ</span></span>
                         <span class="metric-value" id="queryCount">--</span>
                         <span class="metric-unit">queries</span>
                     </div>
@@ -147,7 +154,7 @@
                         </svg>
                     </div>
                     <div class="metric-content">
-                        <span class="metric-label">Active Warehouses</span>
+                        <span class="metric-label">Active Warehouses <span class="info-icon" data-tooltip="Warehouses currently running (STARTED state). Suspended warehouses don't consume credits. Auto-suspend helps reduce costs.">ⓘ</span></span>
                         <span class="metric-value" id="activeWarehouses">--</span>
                     </div>
                 </div>
@@ -160,7 +167,7 @@
                         </svg>
                     </div>
                     <div class="metric-content">
-                        <span class="metric-label">Avg Query Time</span>
+                        <span class="metric-label">Avg Query Time <span class="info-icon" data-tooltip="Average query execution time. Includes queue time + compilation + execution. High values may indicate need for optimization or larger warehouses.">ⓘ</span></span>
                         <span class="metric-value" id="avgQueryTime">--</span>
                         <span class="metric-unit">sec</span>
                     </div>
@@ -175,7 +182,7 @@
                         </svg>
                     </div>
                     <div class="metric-content">
-                        <span class="metric-label">Failed Queries (24h)</span>
+                        <span class="metric-label">Failed Queries (24h) <span class="info-icon" data-tooltip="Queries that failed due to errors. Check error messages for common issues like syntax errors, permission denied, or resource constraints.">ⓘ</span></span>
                         <span class="metric-value" id="failedQueries">--</span>
                         <span class="metric-unit">failed</span>
                     </div>
@@ -593,23 +600,32 @@
                 <p class="section-subtitle">Monitor warehouse configurations and cluster performance</p>
             </div>
             
+            <div class="info-banner">
+                <div class="info-banner-icon">💡</div>
+                <div class="info-banner-content">
+                    <strong>Understanding Warehouse Sizing:</strong> Warehouse size determines compute power and cost. 
+                    Each size doubles both: X-Small (1 credit/hr) → Small (2) → Medium (4) → Large (8) → X-Large (16).
+                    Larger warehouses process data faster but cost more. Use multi-cluster for concurrent query workloads.
+                </div>
+            </div>
+            
             <div class="data-table-card">
                 <div class="table-header">
-                    <h3>Warehouse Configurations</h3>
+                    <h3>Warehouse Configurations <span class="info-icon" data-tooltip="Shows all warehouses in your account. 'STARTED' warehouses are consuming credits. Enable auto-suspend (60-300s recommended) to reduce costs during idle periods.">ⓘ</span></h3>
                 </div>
                 <div class="table-container">
                     <table class="data-table" id="warehouseConfigTable">
                         <thead>
                             <tr>
                                 <th>Warehouse</th>
-                                <th>State</th>
-                                <th>Size</th>
+                                <th>State <span class="info-icon" data-tooltip="STARTED = running and billing. SUSPENDED = not billing. RESIZING = changing size.">ⓘ</span></th>
+                                <th>Size <span class="info-icon" data-tooltip="Compute power. Each size up = 2x performance and 2x cost. X-Small=1 cr/hr, Small=2, Medium=4, Large=8, X-Large=16.">ⓘ</span></th>
                                 <th>Type</th>
-                                <th>Min Clusters</th>
-                                <th>Max Clusters</th>
-                                <th>Scaling Policy</th>
-                                <th>Auto Suspend (s)</th>
-                                <th>Auto Resume</th>
+                                <th>Min Clusters <span class="info-icon" data-tooltip="Minimum clusters always running when warehouse is started. More clusters = handle more concurrent queries.">ⓘ</span></th>
+                                <th>Max Clusters <span class="info-icon" data-tooltip="Maximum clusters for auto-scaling. Set higher to handle query spikes. Each cluster multiplies your cost.">ⓘ</span></th>
+                                <th>Scaling Policy <span class="info-icon" data-tooltip="STANDARD: Scales up quickly, good for interactive workloads. ECONOMY: Waits longer before scaling, saves money for batch jobs.">ⓘ</span></th>
+                                <th>Auto Suspend <span class="info-icon" data-tooltip="Seconds of inactivity before warehouse suspends. 60-300s recommended. Set to 0 to disable (not recommended).">ⓘ</span></th>
+                                <th>Auto Resume <span class="info-icon" data-tooltip="Automatically start warehouse when query arrives. Almost always should be TRUE.">ⓘ</span></th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -620,7 +636,21 @@
             <div class="charts-row">
                 <div class="chart-card wide">
                     <div class="chart-header">
-                        <h3>Cluster Concurrency (7 days)</h3>
+                        <h3>Cluster Concurrency (7 days) <span class="info-icon" data-tooltip="Shows how many queries run simultaneously on each warehouse over time. High concurrency with queuing = need more clusters or larger warehouse. Low concurrency = may be over-provisioned.">ⓘ</span></h3>
+                    </div>
+                    <div class="concurrency-explainer">
+                        <div class="explainer-item">
+                            <span class="explainer-icon">📈</span>
+                            <span><strong>High peaks with queuing?</strong> Enable multi-cluster warehousing or increase max clusters</span>
+                        </div>
+                        <div class="explainer-item">
+                            <span class="explainer-icon">📉</span>
+                            <span><strong>Consistently low (&lt;2)?</strong> Consider downsizing warehouse or reducing auto-suspend time</span>
+                        </div>
+                        <div class="explainer-item">
+                            <span class="explainer-icon">⚡</span>
+                            <span><strong>Spiky pattern?</strong> Use STANDARD scaling policy for fast response to demand</span>
+                        </div>
                     </div>
                     <div class="chart-container">
                         <canvas id="clusterLoadChart"></canvas>
@@ -724,6 +754,177 @@
             </div>
         </section>
     </main>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal settings-modal">
+            <div class="modal-header">
+                <h2>⚙️ Threshold Settings</h2>
+                <button class="modal-close" onclick="closeSettingsModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="settings-intro">Configure warning and critical thresholds for performance monitoring. Changes take effect on next data refresh.</p>
+                
+                <div class="settings-section">
+                    <h3>🔍 Query Performance</h3>
+                    
+                    <div class="setting-row">
+                        <div class="setting-label">
+                            <span>Slow Query Threshold</span>
+                            <span class="setting-help" data-tooltip="Queries taking longer than this are flagged as slow. Consider optimizing queries exceeding this duration.">ⓘ</span>
+                        </div>
+                        <select id="thresholdSlowQuery" class="setting-select">
+                            <option value="10">10 seconds</option>
+                            <option value="30" selected>30 seconds (default)</option>
+                            <option value="60">60 seconds</option>
+                            <option value="120">2 minutes</option>
+                            <option value="300">5 minutes</option>
+                        </select>
+                    </div>
+                    
+                    <div class="setting-row">
+                        <div class="setting-label">
+                            <span>Full Scan Partition Threshold</span>
+                            <span class="setting-help" data-tooltip="Queries scanning more than this percentage of partitions are flagged as full table scans. Add clustering keys to frequently scanned tables.">ⓘ</span>
+                        </div>
+                        <select id="thresholdPartitionScan" class="setting-select">
+                            <option value="50">50% of partitions</option>
+                            <option value="80">80% of partitions</option>
+                            <option value="90" selected>90% of partitions (default)</option>
+                            <option value="95">95% of partitions</option>
+                            <option value="100">100% (all partitions)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="setting-row">
+                        <div class="setting-label">
+                            <span>Compilation Time Warning</span>
+                            <span class="setting-help" data-tooltip="High compilation time indicates complex queries or metadata issues. Simplify queries or check for too many micro-partitions.">ⓘ</span>
+                        </div>
+                        <select id="thresholdCompilation" class="setting-select">
+                            <option value="3">3 seconds</option>
+                            <option value="5" selected>5 seconds (default)</option>
+                            <option value="10">10 seconds</option>
+                            <option value="30">30 seconds</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>⏱️ Queue & Concurrency</h3>
+                    
+                    <div class="setting-row">
+                        <div class="setting-label">
+                            <span>Queue Time Warning</span>
+                            <span class="setting-help" data-tooltip="Queries waiting longer than this in queue indicate warehouse is overloaded. Consider scaling up or enabling multi-cluster.">ⓘ</span>
+                        </div>
+                        <select id="thresholdQueueWarning" class="setting-select">
+                            <option value="5">5 seconds</option>
+                            <option value="10" selected>10 seconds (default)</option>
+                            <option value="20">20 seconds</option>
+                            <option value="30">30 seconds</option>
+                        </select>
+                    </div>
+                    
+                    <div class="setting-row">
+                        <div class="setting-label">
+                            <span>Queue Time Critical</span>
+                            <span class="setting-help" data-tooltip="Queue times exceeding this are critical - users experience significant delays. Immediate action recommended.">ⓘ</span>
+                        </div>
+                        <select id="thresholdQueueCritical" class="setting-select">
+                            <option value="20">20 seconds</option>
+                            <option value="30" selected>30 seconds (default)</option>
+                            <option value="60">60 seconds</option>
+                            <option value="120">2 minutes</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>💾 Memory & Spilling</h3>
+                    
+                    <div class="setting-row">
+                        <div class="setting-label">
+                            <span>Local Spill Warning</span>
+                            <span class="setting-help" data-tooltip="Data spilled to local SSD when memory is full. Moderate performance impact. Consider larger warehouse size.">ⓘ</span>
+                        </div>
+                        <select id="thresholdSpillLocal" class="setting-select">
+                            <option value="10">10 GB</option>
+                            <option value="25">25 GB</option>
+                            <option value="50" selected>50 GB (default)</option>
+                            <option value="100">100 GB</option>
+                        </select>
+                    </div>
+                    
+                    <div class="setting-row">
+                        <div class="setting-label">
+                            <span>Remote Spill Critical</span>
+                            <span class="setting-help" data-tooltip="Data spilled to remote storage (S3/Azure) - VERY slow and expensive! Requires immediate warehouse upsize.">ⓘ</span>
+                        </div>
+                        <select id="thresholdSpillRemote" class="setting-select">
+                            <option value="1">1 GB</option>
+                            <option value="5">5 GB</option>
+                            <option value="10" selected>10 GB (default)</option>
+                            <option value="25">25 GB</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>❌ Failures</h3>
+                    
+                    <div class="setting-row">
+                        <div class="setting-label">
+                            <span>Failed Queries Warning</span>
+                            <span class="setting-help" data-tooltip="Number of query failures before showing a warning. Check error messages for common issues.">ⓘ</span>
+                        </div>
+                        <select id="thresholdFailuresWarning" class="setting-select">
+                            <option value="5">5 failures</option>
+                            <option value="10">10 failures</option>
+                            <option value="20" selected>20 failures (default)</option>
+                            <option value="50">50 failures</option>
+                        </select>
+                    </div>
+                    
+                    <div class="setting-row">
+                        <div class="setting-label">
+                            <span>Failed Queries Critical</span>
+                            <span class="setting-help" data-tooltip="High failure count indicates systemic issues - investigate immediately.">ⓘ</span>
+                        </div>
+                        <select id="thresholdFailuresCritical" class="setting-select">
+                            <option value="50">50 failures</option>
+                            <option value="100" selected>100 failures (default)</option>
+                            <option value="200">200 failures</option>
+                            <option value="500">500 failures</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="resetThresholds()">Reset to Defaults</button>
+                <button class="btn btn-primary" onclick="saveThresholds()">Save & Apply</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Query SQL Modal -->
+    <div class="modal-overlay" id="queryModal">
+        <div class="modal query-modal">
+            <div class="modal-header">
+                <h2>📝 Query Details</h2>
+                <button class="modal-close" onclick="closeQueryModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="query-sql-container">
+                    <pre id="queryModalSQL"></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="copyQueryToClipboard()">📋 Copy to Clipboard</button>
+                <button class="btn btn-primary" onclick="closeQueryModal()">Close</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Loading Overlay with Hourglass -->
     <div class="loading-overlay" id="loadingOverlay">

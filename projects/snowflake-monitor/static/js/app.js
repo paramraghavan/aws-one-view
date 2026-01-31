@@ -18,6 +18,33 @@ const state = {
 };
 
 // ============================================
+// Configurable Thresholds (MVP Feature)
+// ============================================
+
+const defaultThresholds = {
+    slowQuery: 30,           // seconds - queries slower than this are flagged
+    partitionScan: 90,       // percentage - queries scanning more partitions are full scans
+    compilation: 5,          // seconds - high compilation time warning
+    queueWarning: 10,        // seconds - queue time warning threshold
+    queueCritical: 30,       // seconds - queue time critical threshold
+    spillLocal: 50,          // GB - local spill warning
+    spillRemote: 10,         // GB - remote spill critical (very expensive!)
+    failuresWarning: 20,     // count - failure count for warning
+    failuresCritical: 100    // count - failure count for critical
+};
+
+// Load saved thresholds from localStorage or use defaults
+let thresholds = { ...defaultThresholds };
+try {
+    const saved = localStorage.getItem('snowflakeMonitorThresholds');
+    if (saved) {
+        thresholds = { ...defaultThresholds, ...JSON.parse(saved) };
+    }
+} catch (e) {
+    console.warn('Could not load saved thresholds:', e);
+}
+
+// ============================================
 // Chart Configuration
 // ============================================
 
@@ -922,17 +949,6 @@ function hideQueryModal() {
     modal.classList.remove('active');
 }
 
-function attachQueryIdListeners() {
-    document.querySelectorAll('.query-id').forEach(el => {
-        el.addEventListener('click', () => {
-            const queryText = el.dataset.query;
-            if (queryText) {
-                showQueryModal(queryText);
-            }
-        });
-    });
-}
-
 // ============================================
 // NEEDS ATTENTION (Combined: Bottlenecks + Optimization + Recommendations)
 // ============================================
@@ -969,15 +985,16 @@ async function loadAttention() {
         const optimizations = [];
         
         // Process bottlenecks (ensure object exists)
+        // Using configurable thresholds from settings
         if (bottlenecks && typeof bottlenecks === 'object') {
             if (Array.isArray(bottlenecks.queuing)) {
                 bottlenecks.queuing.forEach(q => {
-                    if (q.AVG_QUEUE_TIME_SEC > 30) {
+                    if (q.AVG_QUEUE_TIME_SEC > thresholds.queueCritical) {
                         critical.push({
-                            text: `${q.WAREHOUSE_NAME}: High queue time (avg ${formatNumber(q.AVG_QUEUE_TIME_SEC, 1)}s)`,
+                            text: `${q.WAREHOUSE_NAME}: High queue time (avg ${formatNumber(q.AVG_QUEUE_TIME_SEC, 1)}s) - exceeds ${thresholds.queueCritical}s threshold`,
                             metric: `${formatNumber(q.QUEUED_QUERIES, 0)} queries queued`
                         });
-                    } else if (q.AVG_QUEUE_TIME_SEC > 10) {
+                    } else if (q.AVG_QUEUE_TIME_SEC > thresholds.queueWarning) {
                         warnings.push({
                             text: `${q.WAREHOUSE_NAME}: Moderate queue time (avg ${formatNumber(q.AVG_QUEUE_TIME_SEC, 1)}s)`,
                             metric: `${formatNumber(q.QUEUED_QUERIES, 0)} queries queued`
@@ -988,12 +1005,12 @@ async function loadAttention() {
             
             if (Array.isArray(bottlenecks.spilling)) {
                 bottlenecks.spilling.forEach(s => {
-                    if (s.GB_SPILLED_REMOTE > 10) {
+                    if (s.GB_SPILLED_REMOTE > thresholds.spillRemote) {
                         critical.push({
-                            text: `${s.WAREHOUSE_NAME}: Heavy remote spilling (expensive!)`,
+                            text: `${s.WAREHOUSE_NAME}: Heavy remote spilling (expensive!) - exceeds ${thresholds.spillRemote}GB threshold`,
                             metric: `${formatNumber(s.GB_SPILLED_REMOTE, 1)} GB remote spill`
                         });
-                    } else if (s.GB_SPILLED_LOCAL > 50) {
+                    } else if (s.GB_SPILLED_LOCAL > thresholds.spillLocal) {
                         warnings.push({
                             text: `${s.WAREHOUSE_NAME}: High local spilling`,
                             metric: `${formatNumber(s.GB_SPILLED_LOCAL, 1)} GB local spill`
@@ -1004,12 +1021,12 @@ async function loadAttention() {
             
             if (Array.isArray(bottlenecks.failures) && bottlenecks.failures.length > 0) {
                 bottlenecks.failures.forEach(f => {
-                    if (f.FAILURE_COUNT > 100) {
+                    if (f.FAILURE_COUNT > thresholds.failuresCritical) {
                         critical.push({
                             text: `Query failures: ${truncateText(f.ERROR_MESSAGE, 50)}`,
-                            metric: `${formatNumber(f.FAILURE_COUNT, 0)} failures`
+                            metric: `${formatNumber(f.FAILURE_COUNT, 0)} failures (>${thresholds.failuresCritical})`
                         });
-                    } else if (f.FAILURE_COUNT > 20) {
+                    } else if (f.FAILURE_COUNT > thresholds.failuresWarning) {
                         warnings.push({
                             text: `Query failures: ${truncateText(f.ERROR_MESSAGE, 50)}`,
                             metric: `${formatNumber(f.FAILURE_COUNT, 0)} failures`
@@ -2259,52 +2276,100 @@ function attachQueryIdListeners() {
 }
 
 function showQueryModal(queryText) {
-    // Use existing modal if available, otherwise create one
-    let modal = document.getElementById('queryModal');
+    // Use the modal defined in HTML
+    openQueryModal(queryText);
+}
+
+// ============================================
+// Settings Modal Functions
+// ============================================
+
+function openSettingsModal() {
+    // Populate dropdowns with current threshold values
+    document.getElementById('thresholdSlowQuery').value = thresholds.slowQuery;
+    document.getElementById('thresholdPartitionScan').value = thresholds.partitionScan;
+    document.getElementById('thresholdCompilation').value = thresholds.compilation;
+    document.getElementById('thresholdQueueWarning').value = thresholds.queueWarning;
+    document.getElementById('thresholdQueueCritical').value = thresholds.queueCritical;
+    document.getElementById('thresholdSpillLocal').value = thresholds.spillLocal;
+    document.getElementById('thresholdSpillRemote').value = thresholds.spillRemote;
+    document.getElementById('thresholdFailuresWarning').value = thresholds.failuresWarning;
+    document.getElementById('thresholdFailuresCritical').value = thresholds.failuresCritical;
     
-    if (!modal) {
-        // Create modal dynamically
-        modal = document.createElement('div');
-        modal.id = 'queryModal';
-        modal.className = 'modal';
-        modal.innerHTML = `
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Query Details</h3>
-                    <button class="modal-close">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <pre class="query-text-display"></pre>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn-copy" onclick="copyQueryToClipboard()">Copy to Clipboard</button>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-        
-        // Add close handler
-        modal.querySelector('.modal-close').addEventListener('click', () => {
-            modal.classList.remove('active');
-        });
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) modal.classList.remove('active');
-        });
+    document.getElementById('settingsModal').classList.add('active');
+}
+
+function closeSettingsModal() {
+    document.getElementById('settingsModal').classList.remove('active');
+}
+
+function saveThresholds() {
+    thresholds.slowQuery = parseInt(document.getElementById('thresholdSlowQuery').value);
+    thresholds.partitionScan = parseInt(document.getElementById('thresholdPartitionScan').value);
+    thresholds.compilation = parseInt(document.getElementById('thresholdCompilation').value);
+    thresholds.queueWarning = parseInt(document.getElementById('thresholdQueueWarning').value);
+    thresholds.queueCritical = parseInt(document.getElementById('thresholdQueueCritical').value);
+    thresholds.spillLocal = parseInt(document.getElementById('thresholdSpillLocal').value);
+    thresholds.spillRemote = parseInt(document.getElementById('thresholdSpillRemote').value);
+    thresholds.failuresWarning = parseInt(document.getElementById('thresholdFailuresWarning').value);
+    thresholds.failuresCritical = parseInt(document.getElementById('thresholdFailuresCritical').value);
+    
+    // Save to localStorage
+    try {
+        localStorage.setItem('snowflakeMonitorThresholds', JSON.stringify(thresholds));
+    } catch (e) {
+        console.warn('Could not save thresholds:', e);
     }
     
-    // Update query text and show modal
-    const queryDisplay = modal.querySelector('.query-text-display') || modal.querySelector('#queryText');
-    if (queryDisplay) {
-        queryDisplay.textContent = queryText;
+    closeSettingsModal();
+    showToast('Thresholds saved! Refresh data to apply.', 'success');
+}
+
+function resetThresholds() {
+    thresholds = { ...defaultThresholds };
+    
+    // Update dropdowns
+    document.getElementById('thresholdSlowQuery').value = thresholds.slowQuery;
+    document.getElementById('thresholdPartitionScan').value = thresholds.partitionScan;
+    document.getElementById('thresholdCompilation').value = thresholds.compilation;
+    document.getElementById('thresholdQueueWarning').value = thresholds.queueWarning;
+    document.getElementById('thresholdQueueCritical').value = thresholds.queueCritical;
+    document.getElementById('thresholdSpillLocal').value = thresholds.spillLocal;
+    document.getElementById('thresholdSpillRemote').value = thresholds.spillRemote;
+    document.getElementById('thresholdFailuresWarning').value = thresholds.failuresWarning;
+    document.getElementById('thresholdFailuresCritical').value = thresholds.failuresCritical;
+    
+    // Clear from localStorage
+    try {
+        localStorage.removeItem('snowflakeMonitorThresholds');
+    } catch (e) {
+        console.warn('Could not clear thresholds:', e);
     }
-    modal.classList.add('active');
+    
+    showToast('Thresholds reset to defaults');
+}
+
+// ============================================
+// Query Modal Functions
+// ============================================
+
+function openQueryModal(queryText) {
+    const sql = decodeURIComponent(queryText || '');
+    document.getElementById('queryModalSQL').textContent = sql || 'No query text available';
+    document.getElementById('queryModal').classList.add('active');
+}
+
+function closeQueryModal() {
+    document.getElementById('queryModal').classList.remove('active');
 }
 
 function copyQueryToClipboard() {
-    const modal = document.getElementById('queryModal');
-    const queryText = modal.querySelector('.query-text-display, #queryText').textContent;
-    navigator.clipboard.writeText(queryText).then(() => {
-        showToast('Query copied to clipboard');
+    const sql = document.getElementById('queryModalSQL').textContent;
+    navigator.clipboard.writeText(sql).then(() => {
+        showToast('Query copied to clipboard!', 'success');
+    }).catch(err => {
+        console.error('Could not copy:', err);
+        showToast('Failed to copy', 'error');
     });
 }
 
@@ -2314,6 +2379,28 @@ function copyQueryToClipboard() {
 
 document.addEventListener('DOMContentLoaded', () => {
     initEventListeners();
+    
+    // Settings button
+    document.getElementById('settingsBtn').addEventListener('click', openSettingsModal);
+    
+    // Close modals when clicking overlay
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                overlay.classList.remove('active');
+            }
+        });
+    });
+    
+    // Escape key closes modals
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.modal-overlay.active').forEach(modal => {
+                modal.classList.remove('active');
+            });
+        }
+    });
+    
     loadOverview();
     document.getElementById('lastRefresh').textContent = new Date().toLocaleTimeString();
 });
