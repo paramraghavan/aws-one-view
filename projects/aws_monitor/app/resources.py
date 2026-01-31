@@ -516,10 +516,37 @@ class ResourceMonitor:
         """Get EC2 metrics from CloudWatch"""
         metrics = {}
         
-        for metric_name in ['CPUUtilization', 'NetworkIn', 'NetworkOut', 'DiskReadBytes', 'DiskWriteBytes']:
-            response = cloudwatch.get_metric_statistics(
-                Namespace='AWS/EC2',
-                MetricName=metric_name,
+        # Standard EC2 metrics (always available)
+        standard_metrics = ['CPUUtilization', 'NetworkIn', 'NetworkOut', 'DiskReadBytes', 'DiskWriteBytes']
+        
+        for metric_name in standard_metrics:
+            try:
+                response = cloudwatch.get_metric_statistics(
+                    Namespace='AWS/EC2',
+                    MetricName=metric_name,
+                    Dimensions=[{'Name': 'InstanceId', 'Value': instance_id}],
+                    StartTime=start_time,
+                    EndTime=end_time,
+                    Period=period,
+                    Statistics=['Average', 'Maximum']
+                )
+                
+                datapoints = sorted(response['Datapoints'], key=lambda x: x['Timestamp'])
+                if datapoints:
+                    metrics[metric_name.lower()] = {
+                        'current': datapoints[-1]['Average'],
+                        'max': max(d['Maximum'] for d in datapoints),
+                        'avg': sum(d['Average'] for d in datapoints) / len(datapoints)
+                    }
+            except Exception as e:
+                logger.warning(f"Could not get {metric_name} for {instance_id}: {e}")
+        
+        # Try to get memory metrics from CloudWatch agent (if installed)
+        # These are in the CWAgent namespace
+        try:
+            memory_response = cloudwatch.get_metric_statistics(
+                Namespace='CWAgent',
+                MetricName='mem_used_percent',
                 Dimensions=[{'Name': 'InstanceId', 'Value': instance_id}],
                 StartTime=start_time,
                 EndTime=end_time,
@@ -527,13 +554,17 @@ class ResourceMonitor:
                 Statistics=['Average', 'Maximum']
             )
             
-            datapoints = sorted(response['Datapoints'], key=lambda x: x['Timestamp'])
+            datapoints = sorted(memory_response['Datapoints'], key=lambda x: x['Timestamp'])
             if datapoints:
-                metrics[metric_name.lower()] = {
+                metrics['memory_utilization'] = {
                     'current': datapoints[-1]['Average'],
                     'max': max(d['Maximum'] for d in datapoints),
-                    'avg': sum(d['Average'] for d in datapoints) / len(datapoints)
+                    'avg': sum(d['Average'] for d in datapoints) / len(datapoints),
+                    'note': 'Requires CloudWatch agent'
                 }
+        except Exception:
+            # CloudWatch agent not installed - this is normal
+            pass
         
         return metrics
     
