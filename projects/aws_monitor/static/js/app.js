@@ -804,6 +804,24 @@ function updateSelectedResources() {
             id: cb.dataset.id,
             region: cb.dataset.region
         }));
+    
+    // Update metrics button text to show selection count
+    const metricsBtn = document.getElementById('metrics-btn');
+    if (metricsBtn) {
+        if (selectedResources.length > 0) {
+            metricsBtn.textContent = `📊 Get Metrics (${selectedResources.length} selected)`;
+        } else {
+            metricsBtn.textContent = '📊 Get Metrics';
+        }
+    }
+    
+    // Update alerts button text
+    const alertsBtn = document.getElementById('alerts-btn');
+    if (alertsBtn && selectedResources.length > 0) {
+        alertsBtn.textContent = `⚠️ Check Alerts (${selectedResources.length} selected)`;
+    } else if (alertsBtn) {
+        alertsBtn.textContent = '⚠️ Check Alerts';
+    }
 }
 
 function showResourceDetails(type, id, region) {
@@ -894,7 +912,28 @@ function showResourceDetails(type, id, region) {
 
 async function getMetrics() {
     if (selectedResources.length === 0) {
-        alert('Please select resources first');
+        // Show helpful message instead of alert
+        const results = document.getElementById('metrics-results');
+        results.innerHTML = `
+            <div style="text-align: center; padding: 40px 20px; background: #f8f9fa; border-radius: 8px; border: 2px dashed #667eea;">
+                <div style="font-size: 3em; margin-bottom: 15px;">☑️</div>
+                <h3 style="color: #667eea; margin-bottom: 10px;">Select Resources First</h3>
+                <p style="color: #666; font-size: 1.1em; margin-bottom: 20px;">
+                    Please check the boxes next to resources to get their metrics
+                </p>
+                <div style="background: white; padding: 20px; border-radius: 6px; max-width: 500px; margin: 0 auto; text-align: left;">
+                    <p style="margin: 5px 0;"><strong>How to get metrics:</strong></p>
+                    <ol style="color: #666; margin: 10px 0; padding-left: 20px;">
+                        <li>Scroll up to the discovered resources</li>
+                        <li>Check the boxes ☑️ next to resources you want to monitor</li>
+                        <li>Come back here and click "Get Metrics"</li>
+                    </ol>
+                    <p style="margin: 10px 0 5px 0; color: #999; font-size: 0.9em;">
+                        💡 Tip: You can select multiple resources at once
+                    </p>
+                </div>
+            </div>
+        `;
         return;
     }
     
@@ -936,20 +975,160 @@ function displayMetrics(metrics) {
             continue;
         }
         
+        // Parse resource type and ID
+        const [resourceType, resourceId] = resourceKey.split(':');
+        
         const card = document.createElement('div');
         card.className = 'metric-card';
-        card.innerHTML = `<h4>${resourceKey}</h4>`;
+        
+        // Create clickable header
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.alignItems = 'center';
+        header.style.marginBottom = '10px';
+        
+        const title = document.createElement('h4');
+        title.style.margin = '0';
+        title.textContent = resourceKey;
+        
+        const consoleButton = document.createElement('a');
+        consoleButton.href = '#';
+        consoleButton.innerHTML = '🔗 AWS Console';
+        consoleButton.style.color = '#667eea';
+        consoleButton.style.textDecoration = 'none';
+        consoleButton.style.fontSize = '0.9em';
+        consoleButton.style.fontWeight = '500';
+        consoleButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            // Get region from selected resources
+            let resourceRegion = 'us-east-1';
+            if (selectedResources && selectedResources.length > 0) {
+                const resource = selectedResources.find(r => 
+                    r.id === resourceId || r.name === resourceId
+                );
+                if (resource && resource.region) {
+                    resourceRegion = resource.region;
+                }
+            }
+            openInAWSConsole(resourceType, resourceId, resourceRegion);
+        });
+        
+        header.appendChild(title);
+        header.appendChild(consoleButton);
+        card.appendChild(header);
+        
+        // Check if resource has a note (no data or special condition)
+        if (resourceMetrics._note) {
+            const noDataDiv = document.createElement('div');
+            noDataDiv.style.padding = '20px';
+            noDataDiv.style.borderRadius = '6px';
+            noDataDiv.style.textAlign = 'center';
+            
+            // Choose icon and color based on resource type or message
+            let icon = '⏱️';
+            let bgColor = '#fff3cd';
+            let borderColor = '#ffc107';
+            let textColor = '#856404';
+            let extraInfo = '';
+            
+            if (resourceType === 'lambda') {
+                icon = '⏱️';
+                extraInfo = `
+                    <div style="margin-top: 15px; padding: 10px; background: white; border-radius: 4px; font-size: 0.9em; color: #666;">
+                        <strong>Why?</strong> Lambda metrics only appear when the function is invoked.<br>
+                        Try: Invoke the function or select "1 hour" period above.
+                    </div>
+                `;
+            } else if (resourceType === 's3') {
+                icon = '🪣';
+                bgColor = '#d1ecf1';
+                borderColor = '#17a2b8';
+                textColor = '#0c5460';
+                extraInfo = `
+                    <div style="margin-top: 15px; padding: 10px; background: white; border-radius: 4px; font-size: 0.9em; color: #666;">
+                        <strong>Note:</strong> S3 storage metrics (size, object count) update once per day.<br>
+                        Request metrics require enabling CloudWatch request metrics on the bucket.
+                    </div>
+                `;
+            } else if (resourceType === 'ebs') {
+                icon = '💾';
+                extraInfo = `
+                    <div style="margin-top: 15px; padding: 10px; background: white; border-radius: 4px; font-size: 0.9em; color: #666;">
+                        <strong>Note:</strong> EBS metrics require the volume to be attached to a running instance.
+                    </div>
+                `;
+            } else if (resourceType === 'eks') {
+                icon = '☸️';
+                bgColor = '#d1ecf1';
+                borderColor = '#17a2b8';
+                textColor = '#0c5460';
+                extraInfo = `
+                    <div style="margin-top: 15px; padding: 10px; background: white; border-radius: 4px; font-size: 0.9em; color: #666;">
+                        <strong>How to enable:</strong> Install Container Insights on your EKS cluster.<br>
+                        See: <a href="https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Container-Insights-setup-EKS-quickstart.html" target="_blank">AWS Documentation</a>
+                    </div>
+                `;
+            } else if (resourceType === 'emr') {
+                icon = '📊';
+            } else {
+                icon = 'ℹ️';
+                bgColor = '#d1ecf1';
+                borderColor = '#17a2b8';
+                textColor = '#0c5460';
+            }
+            
+            noDataDiv.style.background = bgColor;
+            noDataDiv.style.border = `2px solid ${borderColor}`;
+            noDataDiv.innerHTML = `
+                <div style="font-size: 2em; margin-bottom: 10px;">${icon}</div>
+                <div style="font-weight: 600; color: ${textColor}; margin-bottom: 8px;">${resourceMetrics._note}</div>
+                <div style="color: ${textColor}; font-size: 0.9em;">${resourceMetrics._help || ''}</div>
+                ${extraInfo}
+            `;
+            card.appendChild(noDataDiv);
+            container.appendChild(card);
+            continue;
+        }
         
         const grid = document.createElement('div');
         grid.className = 'metric-grid';
         
+        let hasMetrics = false;
         for (const [metricName, metricData] of Object.entries(resourceMetrics)) {
+            // Skip special keys like _note, _help
+            if (metricName.startsWith('_')) continue;
+            
             if (typeof metricData === 'object' && metricData !== null) {
+                hasMetrics = true;
                 const item = document.createElement('div');
                 item.className = 'metric-item';
                 
                 let value = metricData.current || metricData.total || metricData.avg || 0;
-                value = typeof value === 'number' ? value.toFixed(2) : value;
+                
+                // Format value based on metric type and unit
+                if (metricName === 'duration') {
+                    value = value.toFixed(2) + ' ms';
+                } else if (['invocations', 'errors', 'throttles'].includes(metricName)) {
+                    value = Math.round(value);
+                } else if (metricName === 'bucket_size' && metricData.unit === 'GB') {
+                    value = value.toFixed(2) + ' GB';
+                } else if (metricName === 'object_count') {
+                    value = Math.round(value) + ' objects';
+                } else if (metricName === 'requests') {
+                    value = Math.round(value) + ' requests';
+                } else if (['read_bytes', 'write_bytes'].includes(metricName) && metricData.unit === 'MB') {
+                    value = value.toFixed(2) + ' MB';
+                } else if (['read_ops', 'write_ops'].includes(metricName)) {
+                    value = Math.round(value) + ' ops';
+                } else if (metricName === 'idle_time') {
+                    value = Math.round(value) + ' sec';
+                } else if (metricData.unit) {
+                    // Generic handling for metrics with units
+                    value = typeof value === 'number' ? value.toFixed(2) + ' ' + metricData.unit : value;
+                } else {
+                    value = typeof value === 'number' ? value.toFixed(2) : value;
+                }
                 
                 item.innerHTML = `
                     <div class="label">${formatMetricName(metricName)}</div>
@@ -968,12 +1147,30 @@ function displayMetrics(metrics) {
             }
         }
         
-        card.appendChild(grid);
+        // If no metrics were added, show a message
+        if (!hasMetrics) {
+            const noMetricsDiv = document.createElement('div');
+            noMetricsDiv.style.padding = '20px';
+            noMetricsDiv.style.textAlign = 'center';
+            noMetricsDiv.style.color = '#666';
+            noMetricsDiv.innerHTML = `
+                <div style="font-size: 2em; margin-bottom: 10px;">📊</div>
+                <div>No metric data available for the selected time period</div>
+                <div style="font-size: 0.9em; margin-top: 8px;">Try selecting a longer time period (15 min or 1 hour)</div>
+            `;
+            card.appendChild(noMetricsDiv);
+        } else {
+            card.appendChild(grid);
+        }
+        
         container.appendChild(card);
     }
 }
 
 function showMetricDetails(resourceKey, metricName, metricData) {
+    // Parse resource type and ID from resourceKey (format: "type:id")
+    const [resourceType, resourceId] = resourceKey.split(':');
+    
     // Create modal
     const modal = document.createElement('div');
     modal.style.position = 'fixed';
@@ -1000,13 +1197,26 @@ function showMetricDetails(resourceKey, metricName, metricData) {
             <h2 style="margin: 0; color: #667eea;">${formatMetricName(metricName)}</h2>
             <button id="close-metric-modal" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #666;">&times;</button>
         </div>
-        <h4 style="color: #666; margin-bottom: 15px;">${resourceKey}</h4>
+        <div style="margin-bottom: 15px;">
+            <strong style="color: #666;">Resource:</strong>
+            <div style="margin-top: 5px;">
+                <span style="font-family: monospace; background: #f5f5f5; padding: 5px 10px; border-radius: 4px; margin-right: 10px;">${resourceKey}</span>
+                <a href="#" id="open-console-link" style="color: #667eea; text-decoration: none; font-weight: 500;">
+                    🔗 Open in AWS Console
+                </a>
+            </div>
+        </div>
         <div style="border-top: 2px solid #667eea; padding-top: 20px;">
     `;
     
     // Display all metric data points
     for (const [key, value] of Object.entries(metricData)) {
         let displayValue = typeof value === 'number' ? value.toFixed(4) : value;
+        
+        // Check if value looks like a URL and make it clickable
+        if (typeof displayValue === 'string' && (displayValue.startsWith('http://') || displayValue.startsWith('https://'))) {
+            displayValue = `<a href="${displayValue}" target="_blank" style="color: #667eea; text-decoration: underline;">${displayValue}</a>`;
+        }
         
         detailsHTML += `
             <div style="margin-bottom: 15px; display: grid; grid-template-columns: 150px 1fr; gap: 10px;">
@@ -1029,6 +1239,26 @@ function showMetricDetails(resourceKey, metricName, metricData) {
     modalContent.innerHTML = detailsHTML;
     modal.appendChild(modalContent);
     document.body.appendChild(modal);
+    
+    // Get region from selected resources (we need to find the region for this resource)
+    let resourceRegion = 'us-east-1'; // default
+    if (selectedResources && selectedResources.length > 0) {
+        const resource = selectedResources.find(r => 
+            r.id === resourceId || r.name === resourceId
+        );
+        if (resource && resource.region) {
+            resourceRegion = resource.region;
+        }
+    }
+    
+    // AWS Console link handler
+    const consoleLink = document.getElementById('open-console-link');
+    if (consoleLink) {
+        consoleLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            openInAWSConsole(resourceType, resourceId, resourceRegion);
+        });
+    }
     
     // Close handlers
     document.getElementById('close-metric-modal').addEventListener('click', () => {
@@ -1222,7 +1452,28 @@ function displayCosts(costs) {
 
 async function checkAlerts() {
     if (selectedResources.length === 0) {
-        alert('Please select resources first');
+        // Show helpful message instead of alert
+        const results = document.getElementById('alerts-results');
+        results.innerHTML = `
+            <div style="text-align: center; padding: 40px 20px; background: #f8f9fa; border-radius: 8px; border: 2px dashed #667eea;">
+                <div style="font-size: 3em; margin-bottom: 15px;">☑️</div>
+                <h3 style="color: #667eea; margin-bottom: 10px;">Select Resources First</h3>
+                <p style="color: #666; font-size: 1.1em; margin-bottom: 20px;">
+                    Please check the boxes next to resources to check their alerts
+                </p>
+                <div style="background: white; padding: 20px; border-radius: 6px; max-width: 500px; margin: 0 auto; text-align: left;">
+                    <p style="margin: 5px 0;"><strong>How to check alerts:</strong></p>
+                    <ol style="color: #666; margin: 10px 0; padding-left: 20px;">
+                        <li>Scroll up to the discovered resources</li>
+                        <li>Check the boxes ☑️ next to resources you want to monitor</li>
+                        <li>Come back here and click "Check Alerts"</li>
+                    </ol>
+                    <p style="margin: 10px 0 5px 0; color: #999; font-size: 0.9em;">
+                        💡 Tip: Adjust CPU and Memory thresholds before checking
+                    </p>
+                </div>
+            </div>
+        `;
         return;
     }
     
@@ -1254,7 +1505,13 @@ async function checkAlerts() {
         results.innerHTML = `<p class="status error">Error: ${error.message}</p>`;
     } finally {
         btn.disabled = false;
-        btn.textContent = '⚠️ Check Alerts';
+        
+        // Restore button text with selection count
+        if (selectedResources.length > 0) {
+            btn.textContent = `⚠️ Check Alerts (${selectedResources.length} selected)`;
+        } else {
+            btn.textContent = '⚠️ Check Alerts';
+        }
     }
 }
 
