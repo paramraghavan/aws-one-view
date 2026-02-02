@@ -201,15 +201,19 @@
                 
                 <div class="chart-card">
                     <div class="chart-header">
-                        <h3>Storage Breakdown</h3>
+                        <h3>Storage Breakdown <span class="info-icon" data-tooltip="Storage costs ~$23-40/TB/month. Active = current data. Time Travel = historical versions for recovery (default 1 day, up to 90). Failsafe = 7-day disaster recovery (cannot be disabled).">ⓘ</span></h3>
                     </div>
                     <div class="storage-summary-row">
-                        <div class="storage-summary-box">
-                            <span class="storage-label">Total DB Storage</span>
-                            <span class="storage-value" id="totalDbStorage">--</span>
+                        <div class="storage-summary-box active">
+                            <span class="storage-label">Active Data</span>
+                            <span class="storage-value" id="totalActiveStorage">--</span>
+                        </div>
+                        <div class="storage-summary-box timetravel">
+                            <span class="storage-label">Time Travel</span>
+                            <span class="storage-value" id="totalTimeTravelStorage">--</span>
                         </div>
                         <div class="storage-summary-box failsafe">
-                            <span class="storage-label">Total Failsafe</span>
+                            <span class="storage-label">Failsafe</span>
                             <span class="storage-value" id="totalFailsafeStorage">--</span>
                         </div>
                     </div>
@@ -338,12 +342,13 @@
                     </div>
                     <div class="metric-card storage-breakdown">
                         <div class="metric-content">
-                            <span class="metric-label">Storage</span>
+                            <span class="metric-label">Storage <span class="info-icon" data-tooltip="Active = current data. Time Travel = point-in-time recovery data. Failsafe = 7-day disaster recovery.">ⓘ</span></span>
                             <span class="metric-value" id="dbStorage">--</span>
                             <span class="metric-unit" id="dbStorageUnit">GB</span>
                             <div class="storage-details">
-                                <span class="storage-item">DB: <span id="dbStorageDb">--</span></span>
-                                <span class="storage-item">Failsafe: <span id="dbStorageFailsafe">--</span></span>
+                                <span class="storage-item active">Active: <span id="dbStorageActive">--</span></span>
+                                <span class="storage-item timetravel">TT: <span id="dbStorageTimeTravel">--</span></span>
+                                <span class="storage-item failsafe">FS: <span id="dbStorageFailsafe">--</span></span>
                             </div>
                         </div>
                     </div>

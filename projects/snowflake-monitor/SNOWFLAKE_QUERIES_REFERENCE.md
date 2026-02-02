@@ -115,16 +115,19 @@ ORDER BY DATE
 
 ---
 
-### 1.6 Storage Breakdown (Per-Database with DB/Failsafe Details)
+### 1.6 Storage Breakdown (Per-Database with Active/Time Travel/Failsafe)
 
 ```sql
 SELECT 
-    DATABASE_NAME,
-    AVERAGE_DATABASE_BYTES / POWER(1024, 3) as DATABASE_GB,
-    AVERAGE_FAILSAFE_BYTES / POWER(1024, 3) as FAILSAFE_GB,
-    (AVERAGE_DATABASE_BYTES + AVERAGE_FAILSAFE_BYTES) / POWER(1024, 3) as TOTAL_GB
-FROM SNOWFLAKE.ACCOUNT_USAGE.DATABASE_STORAGE_USAGE_HISTORY
-WHERE USAGE_DATE = (SELECT MAX(USAGE_DATE) FROM SNOWFLAKE.ACCOUNT_USAGE.DATABASE_STORAGE_USAGE_HISTORY)
+    TABLE_CATALOG as DATABASE_NAME,
+    SUM(ACTIVE_BYTES) / POWER(1024, 3) as ACTIVE_GB,
+    SUM(TIME_TRAVEL_BYTES) / POWER(1024, 3) as TIME_TRAVEL_GB,
+    SUM(FAILSAFE_BYTES) / POWER(1024, 3) as FAILSAFE_GB,
+    SUM(ACTIVE_BYTES + TIME_TRAVEL_BYTES + FAILSAFE_BYTES) / POWER(1024, 3) as TOTAL_GB
+FROM SNOWFLAKE.ACCOUNT_USAGE.TABLE_STORAGE_METRICS
+WHERE DELETED IS NULL
+AND TABLE_CATALOG IS NOT NULL
+GROUP BY TABLE_CATALOG
 ORDER BY TOTAL_GB DESC
 ```
 
@@ -133,14 +136,21 @@ ORDER BY TOTAL_GB DESC
 
 **Display Components:**
 1. **Summary Boxes** (top row):
-   - **Total DB Storage** (cyan) - Sum of all active database storage
-   - **Total Failsafe** (orange) - Sum of all fail-safe storage (7-day recovery)
+   - **Active Data** (cyan) - Current live data in all databases
+   - **Time Travel** (purple) - Historical data retained for point-in-time recovery (default 1 day, configurable 0-90 days)
+   - **Failsafe** (orange) - 7-day disaster recovery data (cannot be disabled)
 
 2. **Doughnut Chart** - Top 8 databases by total storage
    - **On Hover:** Shows detailed breakdown per database:
      - Total storage for that database
-     - DB storage (active data)
-     - Failsafe storage (recovery data)
+     - Active storage (current data)
+     - Time Travel storage (recovery versions)
+     - Failsafe storage (disaster recovery)
+
+**Cost Optimization Tips:**
+- Reduce Time Travel retention on non-critical tables (SET DATA_RETENTION_TIME_IN_DAYS = 0)
+- Use TRANSIENT tables for staging data (no Time Travel or Failsafe)
+- Monitor large tables with high Time Travel - indicates frequent updates
 
 ---
 

@@ -390,17 +390,20 @@ function renderStorageChart(data) {
         state.charts.storage.destroy();
     }
     
-    // Calculate totals for summary boxes
-    let totalDbStorage = 0;
+    // Calculate totals for summary boxes (Active, Time Travel, Failsafe)
+    let totalActiveStorage = 0;
+    let totalTimeTravelStorage = 0;
     let totalFailsafeStorage = 0;
     
     data.forEach(d => {
-        totalDbStorage += d.DATABASE_GB || 0;
+        totalActiveStorage += d.ACTIVE_GB || d.DATABASE_GB || 0;
+        totalTimeTravelStorage += d.TIME_TRAVEL_GB || 0;
         totalFailsafeStorage += d.FAILSAFE_GB || 0;
     });
     
     // Update summary boxes
-    document.getElementById('totalDbStorage').textContent = formatStorageSize(totalDbStorage);
+    document.getElementById('totalActiveStorage').textContent = formatStorageSize(totalActiveStorage);
+    document.getElementById('totalTimeTravelStorage').textContent = formatStorageSize(totalTimeTravelStorage);
     document.getElementById('totalFailsafeStorage').textContent = formatStorageSize(totalFailsafeStorage);
     
     // Sort by total and take top 8 databases
@@ -429,21 +432,21 @@ function renderStorageChart(data) {
                         label: function(context) {
                             const dbData = sortedData[context.dataIndex];
                             const total = dbData.TOTAL_GB || 0;
-                            const dbGb = dbData.DATABASE_GB || 0;
-                            const failsafeGb = dbData.FAILSAFE_GB || 0;
                             
                             const totalStr = total >= 1024 ? `${(total / 1024).toFixed(2)} TB` : `${total.toFixed(1)} GB`;
                             return `${context.label}: ${totalStr}`;
                         },
                         afterLabel: function(context) {
                             const dbData = sortedData[context.dataIndex];
-                            const dbGb = dbData.DATABASE_GB || 0;
+                            const activeGb = dbData.ACTIVE_GB || dbData.DATABASE_GB || 0;
+                            const ttGb = dbData.TIME_TRAVEL_GB || 0;
                             const failsafeGb = dbData.FAILSAFE_GB || 0;
                             
-                            const dbStr = dbGb >= 1024 ? `${(dbGb / 1024).toFixed(2)} TB` : `${dbGb.toFixed(1)} GB`;
+                            const activeStr = activeGb >= 1024 ? `${(activeGb / 1024).toFixed(2)} TB` : `${activeGb.toFixed(1)} GB`;
+                            const ttStr = ttGb >= 1024 ? `${(ttGb / 1024).toFixed(2)} TB` : `${ttGb.toFixed(1)} GB`;
                             const fsStr = failsafeGb >= 1024 ? `${(failsafeGb / 1024).toFixed(2)} TB` : `${failsafeGb.toFixed(1)} GB`;
                             
-                            return `DB: ${dbStr}\nFailsafe: ${fsStr}`;
+                            return `Active: ${activeStr}\nTime Travel: ${ttStr}\nFailsafe: ${fsStr}`;
                         }
                     }
                 }
@@ -1844,7 +1847,8 @@ async function loadDatabaseAnalysis() {
         
         // Storage with smart units and breakdown
         const totalGb = st.TOTAL_GB || 0;
-        const dbGb = st.DATABASE_GB || 0;
+        const activeGb = st.ACTIVE_GB || st.DATABASE_GB || 0;
+        const timeTravelGb = st.TIME_TRAVEL_GB || 0;
         const failsafeGb = st.FAILSAFE_GB || 0;
         
         if (totalGb >= 1024) {
@@ -1855,8 +1859,9 @@ async function loadDatabaseAnalysis() {
             document.getElementById('dbStorageUnit').textContent = 'GB';
         }
         
-        // Storage breakdown
-        document.getElementById('dbStorageDb').textContent = formatStorageSize(dbGb);
+        // Storage breakdown (Active, Time Travel, Failsafe)
+        document.getElementById('dbStorageActive').textContent = formatStorageSize(activeGb);
+        document.getElementById('dbStorageTimeTravel').textContent = formatStorageSize(timeTravelGb);
         document.getElementById('dbStorageFailsafe').textContent = formatStorageSize(failsafeGb);
         
         // Render all tabs

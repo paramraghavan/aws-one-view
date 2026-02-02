@@ -109,17 +109,21 @@ class MockSnowflakeMonitor:
         ]
     
     def get_storage_usage(self) -> List[Dict]:
-        """Get storage usage by database."""
+        """Get storage usage by database with Active, Time Travel, and Failsafe breakdown."""
         databases = ['ANALYTICS_DB', 'RAW_DATA', 'WAREHOUSE_DB', 'REPORTING_DB', 'DEV_DB', 'STAGING_DB']
-        return [
-            {
+        results = []
+        for db in databases:
+            active = random.uniform(50, 1500)
+            time_travel = random.uniform(5, active * 0.15)  # Time Travel typically 5-15% of active
+            failsafe = random.uniform(10, active * 0.1)     # Failsafe typically 5-10% of active
+            results.append({
                 'DATABASE_NAME': db,
-                'DATABASE_GB': random.uniform(50, 2000),
-                'FAILSAFE_GB': random.uniform(10, 400),
-                'TOTAL_GB': random.uniform(60, 2400)
-            }
-            for db in databases
-        ]
+                'ACTIVE_GB': active,
+                'TIME_TRAVEL_GB': time_travel,
+                'FAILSAFE_GB': failsafe,
+                'TOTAL_GB': active + time_travel + failsafe
+            })
+        return results
     
     def get_cluster_load(self, days: int = 7) -> List[Dict]:
         """Get cluster load and concurrency metrics."""
@@ -636,8 +640,9 @@ class MockSnowflakeMonitor:
     
     def get_database_overview(self, database_name: str, days: int = 30) -> Dict:
         """Get comprehensive overview metrics for a specific database."""
-        db_gb = random.uniform(50, 2000)
-        failsafe_gb = random.uniform(5, db_gb * 0.1)
+        active_gb = random.uniform(50, 1500)
+        time_travel_gb = random.uniform(5, active_gb * 0.15)  # Typically 5-15% of active
+        failsafe_gb = random.uniform(5, active_gb * 0.1)      # Typically 5-10% of active
         return {
             'query_metrics': {
                 'TOTAL_QUERIES': random.randint(50000, 200000),
@@ -651,9 +656,10 @@ class MockSnowflakeMonitor:
                 'AVG_QUEUE_SEC': random.uniform(0, 8)
             },
             'storage': {
-                'DATABASE_GB': db_gb,
+                'ACTIVE_GB': active_gb,
+                'TIME_TRAVEL_GB': time_travel_gb,
                 'FAILSAFE_GB': failsafe_gb,
-                'TOTAL_GB': db_gb + failsafe_gb
+                'TOTAL_GB': active_gb + time_travel_gb + failsafe_gb
             },
             'objects': {
                 'SCHEMA_COUNT': random.randint(3, 12),
