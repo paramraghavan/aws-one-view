@@ -3,6 +3,7 @@ Script Generator - Creates standalone monitoring scripts
 Users can schedule generated scripts with cron or task scheduler
 """
 from datetime import datetime
+import json
 
 
 class ScriptGenerator:

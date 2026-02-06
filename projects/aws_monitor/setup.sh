@@ -19,9 +19,21 @@ fi
 echo "✅ Python $python_version found"
 echo ""
 
-# Install dependencies
+# Create virtual environment
+if [ ! -d "venv" ]; then
+    echo "Creating virtual environment..."
+    python3 -m venv venv
+    echo "✅ Virtual environment created"
+else
+    echo "✅ Virtual environment exists"
+fi
+
+# Activate and install dependencies
+echo ""
 echo "Installing Python dependencies..."
-pip3 install -r requirements.txt
+source venv/bin/activate
+pip install --upgrade pip -q
+pip install -r requirements.txt -q
 
 if [ $? -ne 0 ]; then
     echo "❌ Failed to install dependencies"
@@ -29,6 +41,12 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "✅ Dependencies installed"
+echo ""
+
+# Create directories
+echo "Creating directories..."
+mkdir -p logs output configs
+echo "✅ Directories created"
 echo ""
 
 # Check AWS CLI
@@ -61,8 +79,20 @@ echo "============================================"
 echo "Setup Complete!"
 echo "============================================"
 echo ""
-echo "To start the monitor:"
-echo "  python3 main.py"
+echo "Quick start:"
 echo ""
-echo "Then open: http://localhost:5000"
+echo "  1. Start the web UI:"
+echo "     ./start.sh"
 echo ""
+echo "  2. Open browser:"
+echo "     http://localhost:5000"
+echo ""
+echo "  3. Or run config-based monitoring:"
+echo "     python run_monitor.py configs/production-monitoring.yaml"
+echo ""
+echo "For help:"
+echo "  - README.md - User guide"
+echo "  - docs/CONFIG_CHEATSHEET.md - Config quick reference"
+echo "  - docs/ADMIN_QUICKREF.md - Admin commands"
+echo ""
+

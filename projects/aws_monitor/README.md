@@ -1,92 +1,327 @@
-# AWS Monitor - Simplified
+# AWS Monitor - Simple & Powerful
 
-A clean, simple AWS multi-region monitoring tool with support for EC2, RDS, S3, Lambda, EBS, Kubernetes (EKS), and EMR.
+A clean, production-ready AWS monitoring tool with web UI and scheduled monitoring support.
 
-## Features
+## ✨ Features
 
-✅ **Multi-Region Monitoring**: Monitor resources across multiple AWS regions  
-✅ **7 Resource Types**: EC2, RDS, S3, Lambda, EBS, Kubernetes (EKS), EMR  
-✅ **Performance Metrics**: Real-time CloudWatch metrics  
-✅ **Cost Analysis**: Track spending by service and region  
-✅ **Alerts & Health**: Detect issues and failures  
-✅ **Script Generator**: Create Python scripts for cron/scheduler  
-✅ **Flexible Filtering**: Filter by tags, names, or IDs  
-✅ **No Background Jobs**: On-demand monitoring only
+✅ **Multi-Region Discovery** - Monitor EC2, RDS, S3, Lambda, EBS, EKS, EMR across all regions  
+✅ **Performance Metrics** - CPU, Network, Disk, Memory* (*with CloudWatch agent)  
+✅ **Cost Analysis** - Track spending by service and region  
+✅ **Health Dashboard** - Instant overview with stats and filters  
+✅ **Real-Time Search** - Find resources by name or ID in seconds  
+✅ **Quick Filters** - Filter by status (Running/Stopped) or resource type  
+✅ **CSV Export** - Download all data to Excel with one click  
+✅ **Config-Based** - YAML configs for scheduled monitoring with cron  
+✅ **IAM Role Support** - Cross-account monitoring via role assumption  
 
-## What's Different from Complex Versions?
+---
 
-This is a **simplified, clean version**:
-- ❌ No background monitoring
-- ❌ No database required
-- ❌ No complex configuration files
-- ❌ No automated actions (start/stop instances)
-- ✅ Simple on-demand monitoring
-- ✅ Easy script generation for scheduling
-- ✅ Clean, focused UI
-- ✅ Clear documentation
-
-## Quick Start
-
-### 1. Prerequisites
+## 🚀 Quick Start (30 Seconds)
 
 ```bash
-# Python 3.8+
-python --version
-
-# Install dependencies
-pip install flask boto3
-```
-
-### 2. Configure AWS Profile
-
-Create AWS profile named `monitor`:
-
-```bash
-aws configure --profile monitor
-# Enter your AWS Access Key ID
-# Enter your AWS Secret Access Key
-# Default region: us-east-1
-# Default output format: json
-```
-
-Or manually edit `~/.aws/credentials`:
-```ini
-[monitor]
-aws_access_key_id = YOUR_ACCESS_KEY
-aws_secret_access_key = YOUR_SECRET_KEY
-region = us-east-1
-```
-
-### 3. Run Application
-
-**Basic usage** (using profile directly):
-```bash
+# 1. Extract and setup
+tar -xzf aws_monitor_simple.tar.gz
 cd aws_monitor_simple
-python main.py
+./setup.sh
+
+# 2. Configure AWS credentials
+aws configure --profile monitor
+
+# 3. Start the web UI
+./start.sh
+
+# 4. Open browser
+http://localhost:5000
 ```
 
-**With IAM role assumption** (recommended for production):
+**That's it!** No Docker, no services, just a simple Flask app.
+
+---
+
+## 📖 Documentation
+
+### Essential Guides
+
+| Document | Description |
+|----------|-------------|
+| **[COMPLETE_GUIDE.md](docs/COMPLETE_GUIDE.md)** | Complete user guide - everything you need |
+| **[BOTO3_REFERENCE.md](docs/BOTO3_REFERENCE.md)** | All boto3 APIs used, with examples |
+| **[CONFIG_MONITORING.md](docs/CONFIG_MONITORING.md)** | Schedule monitoring with YAML configs |
+| **[ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)** | Deployment and maintenance guide |
+
+### Quick References
+
+| Document | Description |
+|----------|-------------|
+| **[ADMIN_QUICKREF.md](docs/ADMIN_QUICKREF.md)** | One-page admin command reference |
+| **[CONFIG_CHEATSHEET.md](docs/CONFIG_CHEATSHEET.md)** | Quick config examples |
+| **[docs/README.md](docs/README.md)** | Complete documentation index |
+
+### Specialized Topics
+
+| Document | Description |
+|----------|-------------|
+| **[ROLE_ASSUMPTION.md](docs/ROLE_ASSUMPTION.md)** | Cross-account monitoring setup |
+| **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** | Common issues and solutions |
+| **[MVP_FEATURES.md](docs/MVP_FEATURES.md)** | All MVP features explained |
+
+---
+
+## 💡 Common Tasks
+
+### Start the App
+
 ```bash
-python main.py --role-arn arn:aws:iam::123456789012:role/MonitoringRole
+# Basic
+./start.sh
+
+# Custom port
+./start.sh --port 8080
+
+# With IAM role
+./start.sh --role-arn arn:aws:iam::123456:role/MonitoringRole
 ```
 
-**With custom options**:
+### Schedule Monitoring
+
 ```bash
-python main.py \
-  --role-arn arn:aws:iam::123456789012:role/MonitoringRole \
-  --session-name MySession \
-  --port 8080 \
-  --debug
+# Create config file
+cp configs/production-monitoring.yaml configs/my-monitoring.yaml
+# Edit config as needed
+
+# Run manually
+python run_monitor.py configs/my-monitoring.yaml
+
+# Schedule with cron
+crontab -e
+# Add: */15 * * * * cd /path/to/aws-monitor && python run_monitor.py configs/my-monitoring.yaml
 ```
 
-Open browser: `http://localhost:5000`
+### Use the Web UI
 
-### 4. Optional: IAM Role Assumption
+1. **Discover** - Select regions and resource types, click "Discover Resources"
+2. **View Stats** - See total resources, running count, stopped count
+3. **Filter** - Click "Running", "Stopped", or resource type (EC2, RDS, etc.)
+4. **Search** - Type name or ID in search box
+5. **Export** - Click "Export CSV" to download data
+6. **Refresh** - Click "Refresh" to update data
 
-For enhanced security and cross-account monitoring, you can use IAM role assumption. This allows:
-- ✅ Using temporary credentials (expire after 1 hour)
-- ✅ Separating authentication from authorization
-- ✅ Cross-account resource monitoring
+---
+
+## 🔧 Requirements
+
+- **Python 3.8+**
+- **AWS CLI** (optional but recommended)
+- **AWS Credentials** configured
+
+### IAM Permissions Needed
+
+```json
+{
+    "Effect": "Allow",
+    "Action": [
+        "ec2:DescribeRegions",
+        "ec2:DescribeInstances",
+        "ec2:DescribeVolumes",
+        "rds:DescribeDBInstances",
+        "s3:ListAllMyBuckets",
+        "s3:GetBucketLocation",
+        "s3:GetBucketTagging",
+        "lambda:ListFunctions",
+        "lambda:ListTags",
+        "eks:ListClusters",
+        "eks:DescribeCluster",
+        "elasticmapreduce:ListClusters",
+        "elasticmapreduce:DescribeCluster",
+        "cloudwatch:GetMetricStatistics",
+        "ce:GetCostAndUsage"
+    ],
+    "Resource": "*"
+}
+```
+
+See **[COMPLETE_GUIDE.md](docs/COMPLETE_GUIDE.md)** for complete IAM policy.
+
+---
+
+## 📊 CloudWatch Metrics
+
+### Available by Default
+
+**EC2**: CPU, Network, Disk  
+**RDS**: CPU, Connections, Storage, Latency, **Memory** ✅  
+**Lambda**: Invocations, Errors, Duration, Throttles  
+
+### Memory Metrics for EC2
+
+**⚠️ EC2 memory requires CloudWatch agent installation.**
+
+EC2 instances are customer-managed, so AWS doesn't have access to memory metrics by default.
+
+**Quick setup:**
+```bash
+# On EC2 instance
+wget https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
+sudo rpm -i amazon-cloudwatch-agent.rpm
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-config-wizard
+```
+
+After installation, memory metrics appear automatically in AWS Monitor.
+
+See **[BOTO3_REFERENCE.md](docs/BOTO3_REFERENCE.md)** for complete setup instructions.
+
+---
+
+## 🎯 Use Cases
+
+### Interactive Monitoring
+Start the web UI and explore your infrastructure visually.
+
+### Scheduled Monitoring  
+Create YAML configs and schedule with cron for automated monitoring.
+
+### Cost Tracking
+Run cost analysis daily to track spending trends.
+
+### Cross-Account Monitoring
+Use IAM role assumption to monitor multiple AWS accounts.
+
+### Health Checks
+Quick filters show running vs stopped resources at a glance.
+
+### Compliance Auditing
+Export all resources to CSV for compliance reports.
+
+---
+
+## 🏗️ Architecture
+
+**Simple & Clean**:
+- Flask web application (main.py)
+- Boto3 for AWS API calls
+- YAML configs for scheduled jobs
+- No database required
+- No background processes
+- All data in memory or JSON files
+
+---
+
+## 🔐 Security
+
+- ✅ **Read-only** - Never modifies AWS resources
+- ✅ **Local** - All data stays on your machine
+- ✅ **IAM Roles** - Support for temporary credentials
+- ✅ **No External** - No data sent to external servers
+- ✅ **Credentials** - Uses standard AWS credential chain
+
+---
+
+## 🐛 Troubleshooting
+
+### App Won't Start
+
+```bash
+# Check Python version
+python3 --version  # Need 3.8+
+
+# Check dependencies
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Check port
+lsof -i :5000  # See if port in use
+./start.sh --port 8080  # Use different port
+```
+
+### No Resources Found
+
+- Check AWS credentials: `aws sts get-caller-identity --profile monitor`
+- Check IAM permissions (see above)
+- Try different regions
+- Remove filters
+
+### Memory Metrics Missing
+
+- **EC2**: Requires CloudWatch agent (see above)
+- **RDS**: Available by default
+
+See **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** for complete guide.
+
+---
+
+## 📦 What's Included
+
+```
+aws_monitor_simple/
+├── start.sh                 # Start the web UI
+├── setup.sh                 # First-time setup
+├── main.py                  # Flask application
+├── run_monitor.py           # Config-based monitoring
+├── app/                     # Application code
+│   └── resources.py         # AWS API calls (boto3)
+├── configs/                 # Example YAML configs
+├── docs/                    # Complete documentation
+│   ├── COMPLETE_GUIDE.md   # Master guide
+│   ├── BOTO3_REFERENCE.md  # API reference
+│   ├── ADMIN_GUIDE.md      # Admin manual
+│   └── ...more docs
+├── deployment/              # Helper scripts
+│   ├── backup.sh
+│   ├── cleanup-logs.sh
+│   ├── check-status.sh
+│   └── validate-config.py
+└── static/                  # Web UI assets
+```
+
+---
+
+## 📈 Version
+
+**Current**: 1.4.0 (MVP Release)
+
+**New in 1.4.0**:
+- Quick stats dashboard (Total, Running, Stopped)
+- Real-time search (find resources instantly)
+- Quick filters (Running, Stopped, by type)
+- Quick actions (Refresh, Export CSV, Clear)
+- Empty state handling
+- Memory metrics support (with CloudWatch agent)
+- Improved cost analysis display
+- Enhanced clickable metrics
+- Complete boto3 API reference
+- Consolidated documentation
+
+---
+
+## 🎉 Why AWS Monitor?
+
+**Simple**: No Docker, no database, no complex setup  
+**Fast**: Discover resources in seconds  
+**Powerful**: Production-ready features  
+**Flexible**: Web UI or config-based monitoring  
+**Complete**: Comprehensive documentation  
+**Safe**: Read-only, no resource modifications  
+
+---
+
+## 📚 Learn More
+
+- **New User?** Start with **[COMPLETE_GUIDE.md](docs/COMPLETE_GUIDE.md)**
+- **Deploying?** Read **[ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)**
+- **Scheduling?** See **[CONFIG_MONITORING.md](docs/CONFIG_MONITORING.md)**
+- **Developing?** Check **[BOTO3_REFERENCE.md](docs/BOTO3_REFERENCE.md)**
+- **All Docs**: **[docs/README.md](docs/README.md)**
+
+---
+
+**Get started in 30 seconds!**
+
+```bash
+./setup.sh && ./start.sh
+```
+
+**Happy monitoring!** 🚀
+
 - ✅ Better audit trail and compliance
 
 See **[docs/ROLE_ASSUMPTION.md](docs/ROLE_ASSUMPTION.md)** for detailed setup guide.
@@ -100,13 +335,28 @@ See **[docs/ROLE_ASSUMPTION.md](docs/ROLE_ASSUMPTION.md)** for detailed setup gu
 
 **Note**: Your AWS profile has global access to all regions (if you have permissions)
 
-### Step 2: Filter Resources (Optional)
+### Step 2: Select Resource Types
+- **NEW**: Choose which resource types to discover
+- Options: EC2, RDS, S3, Lambda, EBS, EKS, EMR
+- Quick buttons:
+  - **Select All**: Discover all resource types
+  - **Deselect All**: Clear all selections
+  - **Common Only**: Select EC2, RDS, S3 (most common)
+
+**Benefits**:
+- ⚡ Faster discovery (only scan what you need)
+- 🎯 Focused results (no noise from unused resources)
+- 💰 Fewer API calls (better rate limit usage)
+
+**Example**: Select only EC2 and RDS for 83% faster discovery
+
+### Step 3: Filter Resources (Optional)
 Filter resources by:
 - **Tags**: `Environment=production`, `Team=backend`
 - **Names**: Comma-separated list
 - **IDs**: Comma-separated list (instance IDs, volume IDs, etc.)
 
-### Step 3: Discover Resources
+### Step 4: Discover Resources
 Click "🔍 Discover Resources" to scan selected regions for:
 - EC2 instances
 - RDS databases
@@ -118,10 +368,12 @@ Click "🔍 Discover Resources" to scan selected regions for:
 
 Results show:
 - Resource summary by type
-- Detailed resource tables
+- Detailed resource tables (grouped by type, collapsible)
 - Select specific resources for metrics/alerts
 
-### Step 4: Get Performance Metrics
+**NEW**: Click "Details" button to see complete resource information!
+
+### Step 5: Get Performance Metrics
 1. Select resources using checkboxes
 2. Choose metric period (5min, 15min, 1hr)
 3. Click "📊 Get Metrics"
@@ -132,7 +384,11 @@ View metrics:
 - **Lambda**: Invocations, Errors, Duration, Throttles
 - **EMR**: Cluster idle status, Running apps
 
-### Step 5: Analyze Costs
+**NEW**: Click any metric item to see detailed breakdown!
+
+**NEW**: Click any metric item to see detailed breakdown!
+
+### Step 6: Analyze Costs
 Click "💰 Analyze Costs" to see:
 - Total costs for period (7, 30, or 90 days)
 - Daily average spend
@@ -141,7 +397,7 @@ Click "💰 Analyze Costs" to see:
 
 **Note**: Requires Cost Explorer API access
 
-### Step 6: Check Alerts & Health
+### Step 7: Check Alerts & Health
 1. Select resources using checkboxes
 2. Set thresholds (CPU: 80%, Memory: 85%)
 3. Click "⚠️ Check Alerts"
@@ -153,7 +409,7 @@ Alerts detect:
 - RDS Multi-AZ not configured
 - EKS node group issues
 
-### Step 7: Generate Monitoring Script
+### Step 8: Generate Monitoring Script
 Create a Python script to schedule with cron or Python scheduler:
 
 1. Select regions to monitor
@@ -335,10 +591,28 @@ However:
 
 ## Troubleshooting
 
+### Download Blocked / Insecure Connection Error
+**Problem:** Browser blocks script downloads with "insecure connection" error
+
+**Solution:** Run with HTTPS
+```bash
+./generate_cert.sh  # One-time setup
+python main.py --ssl
+# Access: https://localhost:5000
+```
+
+**See:** [QUICK_FIX_DOWNLOADS.md](QUICK_FIX_DOWNLOADS.md) for detailed solutions
+
 ### No Resources Found
 - Check AWS profile configuration: `aws configure --profile monitor`
 - Verify IAM permissions
 - Ensure resources exist in selected regions
+- Try without filters first
+
+### EKS Not Showing
+- Verify EKS clusters exist: `aws eks list-clusters --region us-east-1 --profile monitor`
+- Check IAM permissions for EKS (ListClusters, DescribeCluster)
+- EKS may not be available in all regions
 
 ### Cost Explorer Error
 - Enable Cost Explorer in AWS Console (takes 24 hours)
@@ -352,6 +626,13 @@ However:
 - Check Python version (3.8+)
 - Install dependencies: `pip install boto3`
 - Verify AWS credentials are configured
+
+### Can't See Resource Details
+- Click "Details" button in the Actions column
+- Resource sections start collapsed - click headers to expand
+- Metric items are clickable - click for detailed information
+
+**See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for complete troubleshooting guide**
 
 ## Development
 

@@ -1,0 +1,63 @@
+# AWS Monitor Configuration File
+# Database-focused monitoring
+
+job_name: "database-monitoring"
+description: "Monitor all RDS databases across regions"
+
+aws_profile: "monitor"
+role_arn: null
+session_name: "DBMonitorSession"
+
+regions:
+  - us-east-1
+  - us-west-2
+  - eu-west-1
+
+# Only monitor databases
+resource_types:
+  - rds
+
+filters:
+  tags: {}
+  names: []
+  ids: []
+
+checks:
+  performance:
+    enabled: true
+    period: 900  # 15 minutes
+    
+  cost:
+    enabled: true
+    days: 30  # Last 30 days
+    
+  alerts:
+    enabled: true
+    thresholds:
+      cpu: 75
+      memory: 80
+      storage: 85
+      connections: 90  # % of max connections
+
+notifications:
+  email:
+    enabled: true
+    to: "dba-team@example.com"
+    
+  slack:
+    enabled: false
+    webhook_url: ""
+    
+  sns:
+    enabled: false
+    topic_arn: ""
+
+output:
+  console: true
+  log_file: "logs/database-monitoring.log"
+  json_file: "output/database-monitoring.json"
+  format: "detailed"
+
+schedule:
+  frequency: "*/30 * * * *"  # Every 30 minutes
+  description: "Database health check every 30 minutes"

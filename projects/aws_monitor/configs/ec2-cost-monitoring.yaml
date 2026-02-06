@@ -1,0 +1,60 @@
+# AWS Monitor Configuration File
+# EC2-focused monitoring with cost tracking
+
+job_name: "ec2-cost-monitoring"
+description: "Monitor EC2 instances and track costs"
+
+aws_profile: "monitor"
+role_arn: "arn:aws:iam::123456789012:role/MonitoringRole"  # Example role
+session_name: "EC2MonitorSession"
+
+regions:
+  - us-east-1
+
+# Only EC2 instances
+resource_types:
+  - ec2
+
+filters:
+  tags:
+    CostCenter: "engineering"
+  names: []
+  ids: []
+
+checks:
+  performance:
+    enabled: true
+    period: 300  # 5 minutes
+    
+  cost:
+    enabled: true
+    days: 7
+    
+  alerts:
+    enabled: true
+    thresholds:
+      cpu: 85
+      memory: 90
+
+notifications:
+  email:
+    enabled: true
+    to: "engineering-ops@example.com"
+    
+  slack:
+    enabled: true
+    webhook_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+    
+  sns:
+    enabled: false
+    topic_arn: ""
+
+output:
+  console: false
+  log_file: "logs/ec2-cost-monitoring.log"
+  json_file: "output/ec2-cost-monitoring.json"
+  format: "summary"
+
+schedule:
+  frequency: "0 */6 * * *"  # Every 6 hours
+  description: "Cost and performance check every 6 hours"

@@ -65,34 +65,58 @@ class ResourceMonitor:
         regions = ec2.describe_regions()['Regions']
         return [r['RegionName'] for r in regions]
     
-    def discover_all(self, regions, filters=None):
+    def discover_all(self, regions, filters=None, resource_types=None):
         """
-        Discover all resources across regions
+        Discover resources across regions
         
         Args:
             regions: List of region names
             filters: dict with 'tags', 'names', 'ids'
+            resource_types: List of resource types to discover (e.g., ['ec2', 'rds'])
+                          If None, discovers all types
         
         Returns:
             dict with all discovered resources
         """
         filters = filters or {}
+        resource_types = resource_types or ['ec2', 'rds', 's3', 'lambda', 'ebs', 'eks', 'emr']
+        
         results = {
             'timestamp': datetime.utcnow().isoformat(),
             'regions': {}
         }
         
+        # Discover S3 once if needed (global service)
+        s3_buckets = []
+        if 's3' in resource_types:
+            s3_buckets = self._discover_s3(filters)
+        
         for region in regions:
-            logger.info(f"Scanning region: {region}")
-            results['regions'][region] = {
-                'ec2': self._discover_ec2(region, filters),
-                'rds': self._discover_rds(region, filters),
-                's3': self._discover_s3(filters),  # S3 is global
-                'lambda': self._discover_lambda(region, filters),
-                'ebs': self._discover_ebs(region, filters),
-                'eks': self._discover_eks(region, filters),
-                'emr': self._discover_emr(region, filters)
-            }
+            logger.info(f"Scanning region: {region} for {', '.join(resource_types)}")
+            results['regions'][region] = {}
+            
+            # Only discover requested resource types
+            if 'ec2' in resource_types:
+                results['regions'][region]['ec2'] = self._discover_ec2(region, filters)
+            
+            if 'rds' in resource_types:
+                results['regions'][region]['rds'] = self._discover_rds(region, filters)
+            
+            if 's3' in resource_types:
+                # Only include in first region
+                results['regions'][region]['s3'] = s3_buckets if region == regions[0] else []
+            
+            if 'lambda' in resource_types:
+                results['regions'][region]['lambda'] = self._discover_lambda(region, filters)
+            
+            if 'ebs' in resource_types:
+                results['regions'][region]['ebs'] = self._discover_ebs(region, filters)
+            
+            if 'eks' in resource_types:
+                results['regions'][region]['eks'] = self._discover_eks(region, filters)
+            
+            if 'emr' in resource_types:
+                results['regions'][region]['emr'] = self._discover_emr(region, filters)
         
         # Add summary
         results['summary'] = self._calculate_summary(results['regions'])
@@ -227,6 +251,7 @@ class ResourceMonitor:
                     'name': name,
                     'creation_date': bucket['CreationDate'].isoformat(),
                     'region': region,
+                    'status': 'Active',  # S3 buckets are always active if they exist
                     'tags': tags
                 })
             
@@ -269,6 +294,7 @@ class ResourceMonitor:
                     'memory': func['MemorySize'],
                     'timeout': func['Timeout'],
                     'last_modified': func['LastModified'],
+                    'status': 'Active',  # Lambda functions are always active if they exist
                     'tags': tags
                 })
             
@@ -475,8 +501,15 @@ class ResourceMonitor:
                     metrics = self._get_eks_metrics(cloudwatch, resource_id, start_time, end_time, period)
                 elif resource_type == 'emr':
                     metrics = self._get_emr_metrics(cloudwatch, resource_id, start_time, end_time, period)
+                elif resource_type == 's3':
+                    metrics = self._get_s3_metrics(cloudwatch, resource_id, start_time, end_time, period)
+                elif resource_type == 'ebs':
+                    metrics = self._get_ebs_metrics(cloudwatch, resource_id, start_time, end_time, period)
                 else:
-                    metrics = {}
+                    metrics = {
+                        '_note': f'{resource_type.upper()} metrics not yet implemented',
+                        '_help': 'Metrics collection for this resource type is coming soon'
+                    }
                 
                 results[f"{resource_type}:{resource_id}"] = metrics
                 
@@ -490,10 +523,37 @@ class ResourceMonitor:
         """Get EC2 metrics from CloudWatch"""
         metrics = {}
         
-        for metric_name in ['CPUUtilization', 'NetworkIn', 'NetworkOut', 'DiskReadBytes', 'DiskWriteBytes']:
-            response = cloudwatch.get_metric_statistics(
-                Namespace='AWS/EC2',
-                MetricName=metric_name,
+        # Standard EC2 metrics (always available)
+        standard_metrics = ['CPUUtilization', 'NetworkIn', 'NetworkOut', 'DiskReadBytes', 'DiskWriteBytes']
+        
+        for metric_name in standard_metrics:
+            try:
+                response = cloudwatch.get_metric_statistics(
+                    Namespace='AWS/EC2',
+                    MetricName=metric_name,
+                    Dimensions=[{'Name': 'InstanceId', 'Value': instance_id}],
+                    StartTime=start_time,
+                    EndTime=end_time,
+                    Period=period,
+                    Statistics=['Average', 'Maximum']
+                )
+                
+                datapoints = sorted(response['Datapoints'], key=lambda x: x['Timestamp'])
+                if datapoints:
+                    metrics[metric_name.lower()] = {
+                        'current': datapoints[-1]['Average'],
+                        'max': max(d['Maximum'] for d in datapoints),
+                        'avg': sum(d['Average'] for d in datapoints) / len(datapoints)
+                    }
+            except Exception as e:
+                logger.warning(f"Could not get {metric_name} for {instance_id}: {e}")
+        
+        # Try to get memory metrics from CloudWatch agent (if installed)
+        # These are in the CWAgent namespace
+        try:
+            memory_response = cloudwatch.get_metric_statistics(
+                Namespace='CWAgent',
+                MetricName='mem_used_percent',
                 Dimensions=[{'Name': 'InstanceId', 'Value': instance_id}],
                 StartTime=start_time,
                 EndTime=end_time,
@@ -501,13 +561,17 @@ class ResourceMonitor:
                 Statistics=['Average', 'Maximum']
             )
             
-            datapoints = sorted(response['Datapoints'], key=lambda x: x['Timestamp'])
+            datapoints = sorted(memory_response['Datapoints'], key=lambda x: x['Timestamp'])
             if datapoints:
-                metrics[metric_name.lower()] = {
+                metrics['memory_utilization'] = {
                     'current': datapoints[-1]['Average'],
                     'max': max(d['Maximum'] for d in datapoints),
-                    'avg': sum(d['Average'] for d in datapoints) / len(datapoints)
+                    'avg': sum(d['Average'] for d in datapoints) / len(datapoints),
+                    'note': 'Requires CloudWatch agent'
                 }
+        except Exception:
+            # CloudWatch agent not installed - this is normal
+            pass
         
         return metrics
     
@@ -539,25 +603,48 @@ class ResourceMonitor:
     def _get_lambda_metrics(self, cloudwatch, function_name, start_time, end_time, period):
         """Get Lambda metrics from CloudWatch"""
         metrics = {}
+        has_any_data = False
         
         for metric_name in ['Invocations', 'Errors', 'Duration', 'Throttles']:
-            response = cloudwatch.get_metric_statistics(
-                Namespace='AWS/Lambda',
-                MetricName=metric_name,
-                Dimensions=[{'Name': 'FunctionName', 'Value': function_name}],
-                StartTime=start_time,
-                EndTime=end_time,
-                Period=period,
-                Statistics=['Sum'] if metric_name in ['Invocations', 'Errors', 'Throttles'] else ['Average']
-            )
-            
-            datapoints = sorted(response['Datapoints'], key=lambda x: x['Timestamp'])
-            if datapoints:
-                stat_key = 'Sum' if metric_name in ['Invocations', 'Errors', 'Throttles'] else 'Average'
-                metrics[metric_name.lower()] = {
-                    'current': datapoints[-1][stat_key],
-                    'total': sum(d[stat_key] for d in datapoints)
-                }
+            try:
+                response = cloudwatch.get_metric_statistics(
+                    Namespace='AWS/Lambda',
+                    MetricName=metric_name,
+                    Dimensions=[{'Name': 'FunctionName', 'Value': function_name}],
+                    StartTime=start_time,
+                    EndTime=end_time,
+                    Period=period,
+                    Statistics=['Sum'] if metric_name in ['Invocations', 'Errors', 'Throttles'] else ['Average', 'Maximum']
+                )
+                
+                datapoints = sorted(response['Datapoints'], key=lambda x: x['Timestamp'])
+                if datapoints:
+                    has_any_data = True
+                    stat_key = 'Sum' if metric_name in ['Invocations', 'Errors', 'Throttles'] else 'Average'
+                    
+                    if metric_name in ['Invocations', 'Errors', 'Throttles']:
+                        # For count metrics
+                        metrics[metric_name.lower()] = {
+                            'current': datapoints[-1][stat_key],
+                            'total': sum(d[stat_key] for d in datapoints),
+                            'max': max(d[stat_key] for d in datapoints),
+                            'avg': sum(d[stat_key] for d in datapoints) / len(datapoints)
+                        }
+                    else:
+                        # For duration
+                        metrics[metric_name.lower()] = {
+                            'current': datapoints[-1]['Average'],
+                            'avg': sum(d['Average'] for d in datapoints) / len(datapoints),
+                            'max': max(d['Maximum'] for d in datapoints),
+                            'min': min(d.get('Average', 0) for d in datapoints)
+                        }
+            except Exception as e:
+                logger.warning(f"Could not get {metric_name} for Lambda {function_name}: {e}")
+        
+        # If no metrics data at all, provide explanation
+        if not has_any_data:
+            metrics['_note'] = 'No recent invocations - Lambda metrics only appear when function is called'
+            metrics['_help'] = 'Try invoking the function or selecting a longer time period'
         
         return metrics
     
@@ -565,28 +652,180 @@ class ResourceMonitor:
         """Get EKS metrics from CloudWatch"""
         # EKS metrics are collected via Container Insights
         # This is a placeholder - actual implementation would query container metrics
-        return {'note': 'Enable Container Insights for EKS metrics'}
+        return {
+            '_note': 'EKS metrics require Container Insights',
+            '_help': 'Enable Container Insights on your EKS cluster to see metrics'
+        }
     
-    def _get_emr_metrics(self, cloudwatch, cluster_id, start_time, end_time, period):
-        """Get EMR metrics from CloudWatch"""
+    def _get_s3_metrics(self, cloudwatch, bucket_name, start_time, end_time, period):
+        """Get S3 metrics from CloudWatch"""
         metrics = {}
+        has_any_data = False
         
-        for metric_name in ['IsIdle', 'ContainerPending', 'AppsRunning']:
+        # Note: S3 storage metrics are only updated once per day
+        # Request metrics require CloudWatch request metrics to be enabled
+        
+        # Try to get storage metrics (available by default, updated daily)
+        storage_metrics = ['BucketSizeBytes', 'NumberOfObjects']
+        for metric_name in storage_metrics:
+            try:
+                response = cloudwatch.get_metric_statistics(
+                    Namespace='AWS/S3',
+                    MetricName=metric_name,
+                    Dimensions=[
+                        {'Name': 'BucketName', 'Value': bucket_name},
+                        {'Name': 'StorageType', 'Value': 'StandardStorage'}
+                    ],
+                    StartTime=start_time - timedelta(days=2),  # Look back 2 days for daily metrics
+                    EndTime=end_time,
+                    Period=86400,  # 1 day period
+                    Statistics=['Average']
+                )
+                
+                datapoints = sorted(response['Datapoints'], key=lambda x: x['Timestamp'])
+                if datapoints:
+                    has_any_data = True
+                    value = datapoints[-1]['Average']
+                    
+                    # Format based on metric type
+                    if metric_name == 'BucketSizeBytes':
+                        # Convert to GB for readability
+                        value_gb = value / (1024**3)
+                        metrics['bucket_size'] = {
+                            'current': value_gb,
+                            'unit': 'GB',
+                            'raw_bytes': value
+                        }
+                    else:
+                        metrics['object_count'] = {
+                            'current': int(value),
+                            'unit': 'objects'
+                        }
+            except Exception as e:
+                logger.warning(f"Could not get {metric_name} for S3 bucket {bucket_name}: {e}")
+        
+        # Try to get request metrics (require CloudWatch request metrics enabled)
+        try:
             response = cloudwatch.get_metric_statistics(
-                Namespace='AWS/ElasticMapReduce',
-                MetricName=metric_name,
-                Dimensions=[{'Name': 'JobFlowId', 'Value': cluster_id}],
+                Namespace='AWS/S3',
+                MetricName='AllRequests',
+                Dimensions=[
+                    {'Name': 'BucketName', 'Value': bucket_name}
+                ],
                 StartTime=start_time,
                 EndTime=end_time,
                 Period=period,
-                Statistics=['Average']
+                Statistics=['Sum']
             )
             
             datapoints = sorted(response['Datapoints'], key=lambda x: x['Timestamp'])
             if datapoints:
-                metrics[metric_name.lower()] = {
-                    'current': datapoints[-1]['Average']
+                has_any_data = True
+                total_requests = sum(d['Sum'] for d in datapoints)
+                metrics['requests'] = {
+                    'total': int(total_requests),
+                    'current': int(datapoints[-1]['Sum'])
                 }
+        except Exception:
+            # Request metrics not enabled - this is normal
+            pass
+        
+        # If no data at all, provide helpful message
+        if not has_any_data:
+            metrics['_note'] = 'S3 storage metrics update once per day'
+            metrics['_help'] = 'Storage metrics may take 24 hours to appear. Request metrics require enabling CloudWatch request metrics on the bucket.'
+        
+        return metrics
+    
+    def _get_ebs_metrics(self, cloudwatch, volume_id, start_time, end_time, period):
+        """Get EBS volume metrics from CloudWatch"""
+        metrics = {}
+        has_any_data = False
+        
+        metric_configs = {
+            'VolumeReadBytes': ('read_bytes', 'Bytes', 'Average'),
+            'VolumeWriteBytes': ('write_bytes', 'Bytes', 'Average'),
+            'VolumeReadOps': ('read_ops', 'Count', 'Average'),
+            'VolumeWriteOps': ('write_ops', 'Count', 'Average'),
+            'VolumeIdleTime': ('idle_time', 'Seconds', 'Average')
+        }
+        
+        for metric_name, (display_name, unit, stat) in metric_configs.items():
+            try:
+                response = cloudwatch.get_metric_statistics(
+                    Namespace='AWS/EBS',
+                    MetricName=metric_name,
+                    Dimensions=[{'Name': 'VolumeId', 'Value': volume_id}],
+                    StartTime=start_time,
+                    EndTime=end_time,
+                    Period=period,
+                    Statistics=[stat, 'Maximum']
+                )
+                
+                datapoints = sorted(response['Datapoints'], key=lambda x: x['Timestamp'])
+                if datapoints:
+                    has_any_data = True
+                    
+                    # Convert bytes to MB for readability
+                    if 'Bytes' in metric_name:
+                        current_mb = datapoints[-1][stat] / (1024**2)
+                        avg_mb = sum(d[stat] for d in datapoints) / len(datapoints) / (1024**2)
+                        max_mb = max(d['Maximum'] for d in datapoints) / (1024**2)
+                        
+                        metrics[display_name] = {
+                            'current': current_mb,
+                            'avg': avg_mb,
+                            'max': max_mb,
+                            'unit': 'MB'
+                        }
+                    else:
+                        metrics[display_name] = {
+                            'current': datapoints[-1][stat],
+                            'avg': sum(d[stat] for d in datapoints) / len(datapoints),
+                            'max': max(d['Maximum'] for d in datapoints),
+                            'unit': unit
+                        }
+            except Exception as e:
+                logger.warning(f"Could not get {metric_name} for EBS volume {volume_id}: {e}")
+        
+        # If no data at all, provide explanation
+        if not has_any_data:
+            metrics['_note'] = 'No EBS metrics available'
+            metrics['_help'] = 'EBS metrics require the volume to be attached and in use'
+        
+        return metrics
+    
+    def _get_emr_metrics(self, cloudwatch, cluster_id, start_time, end_time, period):
+        """Get EMR metrics from CloudWatch"""
+        metrics = {}
+        has_any_data = False
+        
+        for metric_name in ['IsIdle', 'ContainerPending', 'AppsRunning']:
+            try:
+                response = cloudwatch.get_metric_statistics(
+                    Namespace='AWS/ElasticMapReduce',
+                    MetricName=metric_name,
+                    Dimensions=[{'Name': 'JobFlowId', 'Value': cluster_id}],
+                    StartTime=start_time,
+                    EndTime=end_time,
+                    Period=period,
+                    Statistics=['Average']
+                )
+                
+                datapoints = sorted(response['Datapoints'], key=lambda x: x['Timestamp'])
+                if datapoints:
+                    has_any_data = True
+                    metrics[metric_name.lower()] = {
+                        'current': datapoints[-1]['Average'],
+                        'avg': sum(d['Average'] for d in datapoints) / len(datapoints)
+                    }
+            except Exception as e:
+                logger.warning(f"Could not get {metric_name} for EMR cluster {cluster_id}: {e}")
+        
+        # If no data, provide explanation
+        if not has_any_data:
+            metrics['_note'] = 'No EMR metrics available for this time period'
+            metrics['_help'] = 'EMR metrics may not be available if cluster is terminated or not running jobs'
         
         return metrics
     

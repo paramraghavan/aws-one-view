@@ -31,7 +31,27 @@
 
         <!-- Resource Filters -->
         <section class="card">
-            <h2>2. Filter Resources (Optional)</h2>
+            <h2>2. Select Resource Types to Discover</h2>
+            <div class="checkbox-group" id="resource-type-selection">
+                <label><input type="checkbox" class="resource-type-filter" value="ec2" checked> EC2 Instances</label>
+                <label><input type="checkbox" class="resource-type-filter" value="rds" checked> RDS Databases</label>
+                <label><input type="checkbox" class="resource-type-filter" value="s3" checked> S3 Buckets</label>
+                <label><input type="checkbox" class="resource-type-filter" value="lambda" checked> Lambda Functions</label>
+                <label><input type="checkbox" class="resource-type-filter" value="ebs" checked> EBS Volumes</label>
+                <label><input type="checkbox" class="resource-type-filter" value="eks" checked> EKS Clusters (Kubernetes)</label>
+                <label><input type="checkbox" class="resource-type-filter" value="emr" checked> EMR Clusters</label>
+            </div>
+            <div style="margin-top: 10px;">
+                <button id="select-all-types" class="secondary-btn">Select All</button>
+                <button id="deselect-all-types" class="secondary-btn">Deselect All</button>
+                <button id="select-common-types" class="secondary-btn">Common Only (EC2, RDS, S3)</button>
+            </div>
+            <p class="info">ℹ️ Select only the resource types you need for faster discovery.</p>
+        </section>
+
+        <!-- Resource Filters -->
+        <section class="card">
+            <h2>3. Filter Resources (Optional)</h2>
             <div class="filters">
                 <div class="filter-group">
                     <label>By Tag:</label>
@@ -51,7 +71,7 @@
 
         <!-- Discover Resources -->
         <section class="card">
-            <h2>3. Discover Resources</h2>
+            <h2>4. Discover Resources</h2>
             <button id="discover-btn" class="primary-btn">🔍 Discover Resources</button>
             <div id="discover-status" class="status"></div>
             <div id="resource-summary"></div>
@@ -60,7 +80,10 @@
 
         <!-- Performance Metrics -->
         <section class="card">
-            <h2>4. Performance Metrics</h2>
+            <h2>5. Performance Metrics</h2>
+            <p style="color: #666; margin-bottom: 15px;">
+                <strong>💡 Tip:</strong> Check the boxes ☑️ next to resources above, then click "Get Metrics"
+            </p>
             <button id="metrics-btn" class="primary-btn" disabled>📊 Get Metrics</button>
             <div class="options">
                 <label>Period:
@@ -76,7 +99,7 @@
 
         <!-- Cost Analysis -->
         <section class="card">
-            <h2>5. Cost Analysis</h2>
+            <h2>6. Cost Analysis</h2>
             <button id="cost-btn" class="primary-btn">💰 Analyze Costs</button>
             <div class="options">
                 <label>Days:
@@ -92,7 +115,10 @@
 
         <!-- Alerts & Health -->
         <section class="card">
-            <h2>6. Alerts & Health</h2>
+            <h2>7. Alerts & Health</h2>
+            <p style="color: #666; margin-bottom: 15px;">
+                <strong>💡 Tip:</strong> Check the boxes ☑️ next to resources above, then click "Check Alerts"
+            </p>
             <button id="alerts-btn" class="primary-btn" disabled>⚠️ Check Alerts</button>
             <div class="options">
                 <label>CPU Threshold: <input type="number" id="threshold-cpu" value="80" min="0" max="100">%</label>
@@ -103,7 +129,7 @@
 
         <!-- Generate Script -->
         <section class="card">
-            <h2>7. Generate Monitoring Script</h2>
+            <h2>8. Generate Monitoring Script</h2>
             <p>Select resources and generate a Python script you can schedule with cron or Python scheduler.</p>
             
             <div class="script-config">
