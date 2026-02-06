@@ -181,15 +181,18 @@ class SnowflakeMonitor:
         return self._serialize_results(results)
     
     def get_storage_usage(self) -> List[Dict]:
-        """Get storage usage by database."""
+        """Get storage usage by database with Active, Time Travel, and Failsafe breakdown."""
         query = """
         SELECT 
-            DATABASE_NAME,
-            AVERAGE_DATABASE_BYTES / POWER(1024, 3) as DATABASE_GB,
-            AVERAGE_FAILSAFE_BYTES / POWER(1024, 3) as FAILSAFE_GB,
-            (AVERAGE_DATABASE_BYTES + AVERAGE_FAILSAFE_BYTES) / POWER(1024, 3) as TOTAL_GB
-        FROM SNOWFLAKE.ACCOUNT_USAGE.DATABASE_STORAGE_USAGE_HISTORY
-        WHERE USAGE_DATE = (SELECT MAX(USAGE_DATE) FROM SNOWFLAKE.ACCOUNT_USAGE.DATABASE_STORAGE_USAGE_HISTORY)
+            TABLE_CATALOG as DATABASE_NAME,
+            SUM(ACTIVE_BYTES) / POWER(1024, 3) as ACTIVE_GB,
+            SUM(TIME_TRAVEL_BYTES) / POWER(1024, 3) as TIME_TRAVEL_GB,
+            SUM(FAILSAFE_BYTES) / POWER(1024, 3) as FAILSAFE_GB,
+            SUM(ACTIVE_BYTES + TIME_TRAVEL_BYTES + FAILSAFE_BYTES) / POWER(1024, 3) as TOTAL_GB
+        FROM SNOWFLAKE.ACCOUNT_USAGE.TABLE_STORAGE_METRICS
+        WHERE DELETED IS NULL
+        AND TABLE_CATALOG IS NOT NULL
+        GROUP BY TABLE_CATALOG
         ORDER BY TOTAL_GB DESC
         """
         results = self.execute_query(query)
@@ -832,7 +835,7 @@ class SnowflakeMonitor:
         """
         
         return {
-            'summary': self._serialize_results(self.execute_query(login_summary_query)),
+            'user_summary': self._serialize_results(self.execute_query(login_summary_query)),
             'failed_logins': self._serialize_results(self.execute_query(failed_logins_query)),
             'hourly_pattern': self._serialize_results(self.execute_query(login_pattern_query))
         }
@@ -1044,15 +1047,16 @@ class SnowflakeMonitor:
         AND START_TIME >= DATEADD(day, -{days}, CURRENT_TIMESTAMP())
         """
         
-        # Storage for this database
+        # Storage for this database (Active, Time Travel, Failsafe)
         storage_query = f"""
         SELECT 
-            COALESCE(SUM(AVERAGE_DATABASE_BYTES), 0) / POWER(1024, 3) as DATABASE_GB,
-            COALESCE(SUM(AVERAGE_FAILSAFE_BYTES), 0) / POWER(1024, 3) as FAILSAFE_GB,
-            COALESCE(SUM(AVERAGE_DATABASE_BYTES + AVERAGE_FAILSAFE_BYTES), 0) / POWER(1024, 3) as TOTAL_GB
-        FROM SNOWFLAKE.ACCOUNT_USAGE.DATABASE_STORAGE_USAGE_HISTORY
-        WHERE DATABASE_NAME = '{database_name}'
-        AND USAGE_DATE = (SELECT MAX(USAGE_DATE) FROM SNOWFLAKE.ACCOUNT_USAGE.DATABASE_STORAGE_USAGE_HISTORY)
+            COALESCE(SUM(ACTIVE_BYTES), 0) / POWER(1024, 3) as ACTIVE_GB,
+            COALESCE(SUM(TIME_TRAVEL_BYTES), 0) / POWER(1024, 3) as TIME_TRAVEL_GB,
+            COALESCE(SUM(FAILSAFE_BYTES), 0) / POWER(1024, 3) as FAILSAFE_GB,
+            COALESCE(SUM(ACTIVE_BYTES + TIME_TRAVEL_BYTES + FAILSAFE_BYTES), 0) / POWER(1024, 3) as TOTAL_GB
+        FROM SNOWFLAKE.ACCOUNT_USAGE.TABLE_STORAGE_METRICS
+        WHERE TABLE_CATALOG = '{database_name}'
+        AND DELETED IS NULL
         """
         
         # Table and schema counts

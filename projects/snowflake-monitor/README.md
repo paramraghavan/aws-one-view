@@ -8,6 +8,28 @@ A comprehensive Flask-based monitoring dashboard for Snowflake administrators to
 
 ## 🎯 Features
 
+### ⚙️ Configurable Thresholds (MVP Feature)
+All monitoring thresholds are configurable via the Settings panel:
+
+| Threshold | Default | Description |
+|-----------|---------|-------------|
+| Slow Query | 30s | Queries slower than this are flagged |
+| Full Scan | 90% | Partition scan threshold for full table scan detection |
+| Compilation Warning | 5s | High compilation time warning |
+| Queue Time Warning | 10s | Queue time warning threshold |
+| Queue Time Critical | 30s | Queue time critical threshold |
+| Local Spill Warning | 50 GB | Local disk spill warning |
+| Remote Spill Critical | 10 GB | Remote storage spill (expensive!) |
+| Failures Warning | 20 | Query failure count for warning |
+| Failures Critical | 100 | Query failure count for critical |
+
+### 💡 Interactive Tooltips
+Hover over any metric or column header to see detailed explanations:
+- What the metric means
+- Why it matters
+- Recommended actions
+- Cost implications
+
 ### Cost Analysis
 - **Credit usage tracking** - Monitor total credits consumed over customizable time periods
 - **Warehouse cost breakdown** - See which warehouses are consuming the most credits
@@ -23,9 +45,13 @@ A comprehensive Flask-based monitoring dashboard for Snowflake administrators to
 
 ### Warehouse Management
 - **Warehouse configurations** - View all warehouse settings at a glance
-- **Cluster concurrency** - Monitor multi-cluster warehouse load
+- **Cluster concurrency** - Monitor how many queries run simultaneously per warehouse
+  - High concurrency with queuing → Need more clusters or larger warehouse
+  - Consistently low concurrency → May be over-provisioned, consider downsizing
+  - Spiky patterns → Use STANDARD scaling policy for fast response
 - **Auto-suspend settings** - Ensure warehouses are configured efficiently
 - **State monitoring** - Track warehouse running/suspended states
+- **Size guide** - Credits/hour: X-Small=1, Small=2, Medium=4, Large=8, X-Large=16
 
 ### Bottleneck Detection
 - **Query queuing analysis** - Identify warehouses with queue backlogs
