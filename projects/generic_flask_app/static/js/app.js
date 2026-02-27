@@ -17,11 +17,13 @@ function initializeSocket() {
     });
 
     socket.on('output', (data) => {
+        console.log('[JS DEBUG] Received output:', data);
         addOutputLine(data.data);
     });
 
     socket.on('complete', (data) => {
-        onExecutionComplete();
+        console.log('[JS DEBUG] Received complete:', data);
+        onExecutionComplete(data.status);
     });
 
     socket.on('disconnect', () => {
@@ -143,10 +145,16 @@ async function startIngest() {
     const files = Array.from(fileInput.files).map(f => f.name);
 
     try {
+        console.log('[JS DEBUG] startIngest called');
+        console.log('[JS DEBUG] Environment:', env);
+        console.log('[JS DEBUG] Files:', files);
+
         document.getElementById('ingest-btn').disabled = true;
         document.getElementById('stop-btn').style.display = 'inline-block';
         updateStatus('running', 'Running...');
         clearOutput();
+
+        console.log('[JS DEBUG] Sending /api/ingest request');
 
         const response = await fetch('/api/ingest', {
             method: 'POST',
@@ -158,7 +166,11 @@ async function startIngest() {
             })
         });
 
+        console.log('[JS DEBUG] /api/ingest response status:', response.status);
+
         const result = await response.json();
+
+        console.log('[JS DEBUG] /api/ingest result:', result);
 
         if (!result.success) {
             alert('Error: ' + result.error);
@@ -170,14 +182,17 @@ async function startIngest() {
 
         currentExecutionId = result.execution_id;
 
+        console.log('[JS DEBUG] Got execution_id:', currentExecutionId);
+        console.log('[JS DEBUG] Joining SocketIO room...');
+
         // Join SocketIO room
         socket.emit('join_execution', { execution_id: currentExecutionId });
 
         addOutputLine('=== Ingest Started ===\n');
 
     } catch (error) {
-        console.error('Error starting ingest:', error);
-        alert('Error starting ingest');
+        console.error('[JS DEBUG] Error starting ingest:', error);
+        alert('Error starting ingest: ' + error.message);
         document.getElementById('ingest-btn').disabled = false;
         document.getElementById('stop-btn').style.display = 'none';
         updateStatus('idle', 'Ready');
@@ -195,11 +210,18 @@ async function stopExecution() {
     }
 }
 
-function onExecutionComplete() {
+function onExecutionComplete(status = 'completed') {
     document.getElementById('ingest-btn').disabled = false;
     document.getElementById('stop-btn').style.display = 'none';
-    updateStatus('completed', 'Completed');
-    addOutputLine('\n=== Ingest Complete ===');
+
+    if (status === 'error') {
+        updateStatus('error', '⚠️ Error - Check output');
+        addOutputLine('\n❌ === Ingest Failed ===');
+    } else {
+        updateStatus('completed', '✓ Completed');
+        addOutputLine('\n✓ === Ingest Complete ===');
+    }
+
     currentExecutionId = null;
 }
 

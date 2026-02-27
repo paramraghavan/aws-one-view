@@ -7,12 +7,15 @@ import os
 import re
 import threading
 import uuid
+import signal
+import traceback
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify, session
 from flask_socketio import SocketIO, emit, join_room
 from dotenv import load_dotenv
 import sys
 from io import StringIO
+from datetime import datetime
 
 load_dotenv()
 
@@ -43,12 +46,42 @@ def detect_environments():
 def callback_myjob(password: str, files: list, execution_id: str):
     """
     Your callback function - receives password and list of files
-    All print statements will be captured and sent to the UI
+    All print statements are captured and sent to the UI in real-time
 
     Args:
-        password: User-provided password
-        files: List of selected file paths
-        execution_id: Unique execution ID for SocketIO room
+        password: User-provided password (str)
+        files: List of selected file names (list)
+        execution_id: Unique execution ID (str)
+
+    IMPORTANT:
+    - All print() statements appear on the app screen in real-time
+    - If you raise an exception, it will be caught and displayed with traceback
+    - Do NOT use input() - it will raise an error (pass params instead)
+    - To stop early, check if execution_id still in active_executions
+    - All output is visible to the user, never log sensitive data
+
+    Example callback with error handling:
+    ```
+    def callback_myjob(password: str, files: list, execution_id: str):
+        print(f"Processing {len(files)} files")
+
+        for idx, filename in enumerate(files, 1):
+            # Check if user clicked Stop
+            if execution_id not in active_executions:
+                print("Execution stopped")
+                return
+
+            print(f"[{idx}/{len(files)}] {filename}")
+            try:
+                result = my_library.process(filename, password)
+                print(f"  ✓ Success: {result}")
+            except Exception as e:
+                print(f"  ✗ Failed: {e}")
+                # Continue with next file or raise to stop
+                raise  # This will show error on UI
+
+        print("✓ All files processed")
+    ```
     """
 
     print(f"=== Job Started ===")
@@ -73,26 +106,105 @@ def callback_myjob(password: str, files: list, execution_id: str):
     print("=== Job Completed ===")
 
 
-def capture_callback_output(password: str, files: list, execution_id: str):
-    """Capture stdout from callback_myjob and emit via SocketIO"""
+class RealtimeOutputCapture:
+    """Captures stdout and emits each line via SocketIO in real-time"""
 
-    # Redirect stdout to capture prints
+    def __init__(self, execution_id: str):
+        self.execution_id = execution_id
+        self.room = f"exec_{execution_id}"
+        self.original_stdout = sys.stdout
+
+    def write(self, text: str):
+        """Write text and emit to SocketIO immediately"""
+        # Also write to original stdout for logging
+        self.original_stdout.write(text)
+        self.original_stdout.flush()
+
+        # Emit each line to the browser
+        if text and text.strip():
+            try:
+                socketio.emit('output', {'data': text.rstrip()}, room=self.room)
+            except Exception as e:
+                # If emit fails, log to console for debugging
+                self.original_stdout.write(f"\n[DEBUG] SocketIO emit failed: {e}\n")
+                self.original_stdout.flush()
+
+    def flush(self):
+        """Flush the original stdout"""
+        self.original_stdout.flush()
+
+
+class NoInputStdin:
+    """Stub stdin that prevents input() calls"""
+    def read(self):
+        raise RuntimeError("input() is not supported in web callbacks. Use function parameters instead.")
+
+    def readline(self):
+        raise RuntimeError("input() is not supported in web callbacks. Use function parameters instead.")
+
+
+def capture_callback_output(password: str, files: list, execution_id: str):
+    """Capture stdout from callback_myjob and emit via SocketIO in real-time"""
+
     old_stdout = sys.stdout
-    sys.stdout = StringIO()
+    old_stdin = sys.stdin
+
+    # DEBUG: Log to console that we're starting
+    print(f"[BACKEND DEBUG] Starting capture_callback_output for execution_id={execution_id}")
+    print(f"[BACKEND DEBUG] Files: {files}")
+    print(f"[BACKEND DEBUG] Room: exec_{execution_id}")
+
+    capture = RealtimeOutputCapture(execution_id)
+    sys.stdout = capture
+    sys.stdin = NoInputStdin()  # Prevent input() calls
+
+    error_occurred = False
 
     try:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting execution...")
+        print(f"[DEBUG] Calling callback_myjob with {len(files)} file(s)")
+
         callback_myjob(password, files, execution_id)
-        output = sys.stdout.getvalue()
+
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ✓ Execution completed successfully")
+
+    except KeyboardInterrupt:
+        error_occurred = True
+        print("\n❌ ERROR: Execution was interrupted by user")
+
+    except RuntimeError as e:
+        # Likely an input() call attempt
+        error_occurred = True
+        print(f"\n❌ ERROR: {str(e)}")
+        print("\n💡 TIP: Pass parameters to the callback instead of using input()")
+        print("   Example: use 'password' and 'files' parameters directly")
+
+    except Exception as e:
+        error_occurred = True
+        print(f"\n❌ ERROR: {type(e).__name__}")
+        print(f"   Message: {str(e)}")
+        print(f"\n📋 Full traceback:")
+        print(traceback.format_exc())
+
     finally:
         sys.stdout = old_stdout
+        sys.stdin = old_stdin
 
-    # Emit output line by line
-    for line in output.split('\n'):
-        if line.strip():
-            socketio.emit('output', {'data': line}, room=f"exec_{execution_id}")
+    # DEBUG: Log to console that we're done
+    print(f"[BACKEND DEBUG] Execution finished. Error occurred: {error_occurred}")
 
-    # Mark execution as complete
-    socketio.emit('complete', {'status': 'completed'}, room=f"exec_{execution_id}")
+    # Mark execution as complete with status
+    room = f"exec_{execution_id}"
+    print(f"[BACKEND DEBUG] Emitting 'complete' event to room: {room}")
+
+    try:
+        socketio.emit('complete', {
+            'status': 'error' if error_occurred else 'completed',
+            'timestamp': datetime.now().isoformat()
+        }, room=room)
+        print(f"[BACKEND DEBUG] 'complete' event emitted successfully")
+    except Exception as e:
+        print(f"[BACKEND DEBUG] Failed to emit 'complete' event: {e}")
 
     if execution_id in active_executions:
         del active_executions[execution_id]
@@ -122,6 +234,11 @@ def ingest():
         files = data.get('files', [])
         environment = data.get('environment', '')
 
+        print(f"\n[BACKEND DEBUG] /api/ingest called")
+        print(f"[BACKEND DEBUG] Password length: {len(password)}")
+        print(f"[BACKEND DEBUG] Files: {files}")
+        print(f"[BACKEND DEBUG] Environment: {environment}")
+
         if not password:
             return jsonify({'success': False, 'error': 'Password required'}), 400
 
@@ -135,6 +252,9 @@ def ingest():
         execution_id = str(uuid.uuid4())
         room = f"exec_{execution_id}"
 
+        print(f"[BACKEND DEBUG] Generated execution_id: {execution_id}")
+        print(f"[BACKEND DEBUG] Room: {room}")
+
         # Store execution info
         active_executions[execution_id] = {
             'status': 'running',
@@ -146,6 +266,7 @@ def ingest():
         session.modified = True
 
         # Start execution in background thread
+        print(f"[BACKEND DEBUG] Starting background thread...")
         thread = threading.Thread(
             target=capture_callback_output,
             args=(password, files, execution_id),
@@ -153,12 +274,16 @@ def ingest():
         )
         thread.start()
 
+        print(f"[BACKEND DEBUG] Thread started successfully")
+
         return jsonify({
             'success': True,
             'execution_id': execution_id
         })
 
     except Exception as e:
+        print(f"[BACKEND DEBUG] Exception in /api/ingest: {e}")
+        print(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

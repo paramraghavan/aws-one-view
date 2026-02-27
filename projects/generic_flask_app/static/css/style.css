@@ -260,6 +260,15 @@ select:focus, input:focus {
     background-color: var(--success-color);
 }
 
+.status.error {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.status.error::before {
+    background-color: #721c24;
+}
+
 @keyframes pulse {
     0%, 100% {
         opacity: 1;
