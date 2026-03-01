@@ -65,15 +65,22 @@ def callback_myjob(password: str, files: list, execution_id: str):
     def callback_myjob(password: str, files: list, execution_id: str):
         print(f"Processing {len(files)} files")
 
-        for idx, filename in enumerate(files, 1):
+        for idx, file_path in enumerate(files, 1):
+            # file_path is now FULL ABSOLUTE PATH (e.g., /Users/data/ingest/file.csv)
             # Check if user clicked Stop
             if execution_id not in active_executions:
                 print("Execution stopped")
                 return
 
-            print(f"[{idx}/{len(files)}] {filename}")
+            print(f"[{idx}/{len(files)}] {file_path}")
+
+            # Verify file exists
+            if not os.path.exists(file_path):
+                print(f"  ✗ File not found: {file_path}")
+                continue
+
             try:
-                result = my_library.process(filename, password)
+                result = my_library.process(file_path, password)
                 print(f"  ✓ Success: {result}")
             except Exception as e:
                 print(f"  ✗ Failed: {e}")
@@ -94,12 +101,16 @@ def callback_myjob(password: str, files: list, execution_id: str):
             print("Execution stopped by user")
             break
 
-        print(f"Processing file {idx}/{len(files)}: {file_path}")
-        print(f"File exists: {os.path.exists(file_path)}")
+        # file_path is FULL ABSOLUTE PATH (e.g., /Users/data/ingest/file.csv)
+        print(f"[{idx}/{len(files)}] Processing: {file_path}")
 
         if os.path.exists(file_path):
             file_size = os.path.getsize(file_path)
-            print(f"File size: {file_size} bytes")
+            print(f"  File size: {file_size} bytes")
+            # TODO: Replace with your actual processing logic
+            # result = your_library.process(file_path, password)
+        else:
+            print(f"  ✗ File not found!")
 
         print()
 
@@ -116,17 +127,14 @@ class RealtimeOutputCapture:
 
     def write(self, text: str):
         """Write text and emit to SocketIO immediately"""
-        # Also write to original stdout for logging
         self.original_stdout.write(text)
         self.original_stdout.flush()
 
-        # Emit each line to the browser
         if text and text.strip():
             try:
                 socketio.emit('output', {'data': text.rstrip()}, room=self.room)
             except Exception as e:
-                # If emit fails, log to console for debugging
-                self.original_stdout.write(f"\n[DEBUG] SocketIO emit failed: {e}\n")
+                self.original_stdout.write(f"\nEmit error: {e}\n")
                 self.original_stdout.flush()
 
     def flush(self):
@@ -149,23 +157,15 @@ def capture_callback_output(password: str, files: list, execution_id: str):
     old_stdout = sys.stdout
     old_stdin = sys.stdin
 
-    # DEBUG: Log to console that we're starting
-    print(f"[BACKEND DEBUG] Starting capture_callback_output for execution_id={execution_id}")
-    print(f"[BACKEND DEBUG] Files: {files}")
-    print(f"[BACKEND DEBUG] Room: exec_{execution_id}")
-
     capture = RealtimeOutputCapture(execution_id)
     sys.stdout = capture
-    sys.stdin = NoInputStdin()  # Prevent input() calls
+    sys.stdin = NoInputStdin()
 
     error_occurred = False
 
     try:
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting execution...")
-        print(f"[DEBUG] Calling callback_myjob with {len(files)} file(s)")
-
         callback_myjob(password, files, execution_id)
-
         print(f"[{datetime.now().strftime('%H:%M:%S')}] ✓ Execution completed successfully")
 
     except KeyboardInterrupt:
@@ -173,7 +173,6 @@ def capture_callback_output(password: str, files: list, execution_id: str):
         print("\n❌ ERROR: Execution was interrupted by user")
 
     except RuntimeError as e:
-        # Likely an input() call attempt
         error_occurred = True
         print(f"\n❌ ERROR: {str(e)}")
         print("\n💡 TIP: Pass parameters to the callback instead of using input()")
@@ -190,21 +189,14 @@ def capture_callback_output(password: str, files: list, execution_id: str):
         sys.stdout = old_stdout
         sys.stdin = old_stdin
 
-    # DEBUG: Log to console that we're done
-    print(f"[BACKEND DEBUG] Execution finished. Error occurred: {error_occurred}")
-
-    # Mark execution as complete with status
     room = f"exec_{execution_id}"
-    print(f"[BACKEND DEBUG] Emitting 'complete' event to room: {room}")
-
     try:
         socketio.emit('complete', {
             'status': 'error' if error_occurred else 'completed',
             'timestamp': datetime.now().isoformat()
         }, room=room)
-        print(f"[BACKEND DEBUG] 'complete' event emitted successfully")
     except Exception as e:
-        print(f"[BACKEND DEBUG] Failed to emit 'complete' event: {e}")
+        print(f"Error emitting complete event: {e}")
 
     if execution_id in active_executions:
         del active_executions[execution_id]
@@ -234,11 +226,6 @@ def ingest():
         files = data.get('files', [])
         environment = data.get('environment', '')
 
-        print(f"\n[BACKEND DEBUG] /api/ingest called")
-        print(f"[BACKEND DEBUG] Password length: {len(password)}")
-        print(f"[BACKEND DEBUG] Files: {files}")
-        print(f"[BACKEND DEBUG] Environment: {environment}")
-
         if not password:
             return jsonify({'success': False, 'error': 'Password required'}), 400
 
@@ -248,25 +235,15 @@ def ingest():
         if not environment:
             return jsonify({'success': False, 'error': 'Environment required'}), 400
 
-        # Generate execution ID
         execution_id = str(uuid.uuid4())
-        room = f"exec_{execution_id}"
-
-        print(f"[BACKEND DEBUG] Generated execution_id: {execution_id}")
-        print(f"[BACKEND DEBUG] Room: {room}")
-
-        # Store execution info
         active_executions[execution_id] = {
             'status': 'running',
             'environment': environment
         }
 
-        # Store password in session for this environment
         session[f'password_{environment}'] = password
         session.modified = True
 
-        # Start execution in background thread
-        print(f"[BACKEND DEBUG] Starting background thread...")
         thread = threading.Thread(
             target=capture_callback_output,
             args=(password, files, execution_id),
@@ -274,16 +251,13 @@ def ingest():
         )
         thread.start()
 
-        print(f"[BACKEND DEBUG] Thread started successfully")
-
         return jsonify({
             'success': True,
             'execution_id': execution_id
         })
 
     except Exception as e:
-        print(f"[BACKEND DEBUG] Exception in /api/ingest: {e}")
-        print(traceback.format_exc())
+        print(f"Error in /api/ingest: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -311,6 +285,72 @@ def clear_password(environment):
     session.pop(f'password_{environment}', None)
     session.modified = True
     return jsonify({'success': True})
+
+
+@app.route('/api/quick-locations', methods=['GET'])
+def get_quick_locations():
+    """Get quick access locations (Desktop, Documents, Downloads, etc.)"""
+    locations = []
+    home = os.path.expanduser('~')
+
+    quick_dirs = {
+        'Desktop': os.path.join(home, 'Desktop'),
+        'Documents': os.path.join(home, 'Documents'),
+        'Downloads': os.path.join(home, 'Downloads'),
+    }
+
+    for name, path in quick_dirs.items():
+        if os.path.exists(path):
+            locations.append({'name': name, 'path': path})
+
+    return jsonify({'success': True, 'locations': locations})
+
+
+@app.route('/api/browse-directory', methods=['POST'])
+def browse_directory():
+    """Browse directory contents on the server"""
+    try:
+        data = request.get_json()
+        path = data.get('path', os.path.expanduser('~'))
+
+        path = os.path.abspath(os.path.expanduser(path))
+
+        if not os.path.exists(path):
+            return jsonify({'success': False, 'error': f'Path not found: {path}'}), 404
+
+        if not os.path.isdir(path):
+            return jsonify({'success': False, 'error': 'Path is not a directory'}), 400
+
+        items = []
+        try:
+            entries = os.listdir(path)
+            for entry in sorted(entries, key=str.lower):
+                full_path = os.path.join(path, entry)
+                try:
+                    is_dir = os.path.isdir(full_path)
+                    items.append({
+                        'name': entry,
+                        'path': full_path,
+                        'is_directory': is_dir,
+                        'size': os.path.getsize(full_path) if not is_dir else None
+                    })
+                except (PermissionError, OSError):
+                    continue
+
+        except PermissionError:
+            return jsonify({'success': False, 'error': 'Permission denied'}), 403
+
+        parent = os.path.dirname(path) if path != os.path.dirname(path) else None
+
+        return jsonify({
+            'success': True,
+            'current_path': path,
+            'parent_path': parent,
+            'items': items
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ============== SocketIO Events ==============

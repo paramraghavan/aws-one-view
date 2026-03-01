@@ -1,33 +1,23 @@
 let socket = null;
 let currentExecutionId = null;
 let selectedFiles = [];
+let currentBrowserPath = null;
+let selectedBrowserFiles = new Set();
 
-// Initialize
 document.addEventListener('DOMContentLoaded', () => {
     initializeSocket();
     loadEnvironments();
+    loadQuickLocations();
     setupEventListeners();
 });
 
 function initializeSocket() {
     socket = io();
-
-    socket.on('connect', () => {
-        console.log('Connected to server');
-    });
-
     socket.on('output', (data) => {
-        console.log('[JS DEBUG] Received output:', data);
         addOutputLine(data.data);
     });
-
     socket.on('complete', (data) => {
-        console.log('[JS DEBUG] Received complete:', data);
         onExecutionComplete(data.status);
-    });
-
-    socket.on('disconnect', () => {
-        console.log('Disconnected from server');
     });
 }
 
@@ -44,7 +34,6 @@ async function loadEnvironments() {
             select.appendChild(option);
         });
 
-        // Load saved default
         const saved = localStorage.getItem('default_env');
         if (saved && environments.includes(saved)) {
             select.value = saved;
@@ -52,38 +41,53 @@ async function loadEnvironments() {
         }
     } catch (error) {
         console.error('Error loading environments:', error);
-        addOutputLine('Error loading environments');
+    }
+}
+
+async function loadQuickLocations() {
+    try {
+        const response = await fetch('/api/quick-locations');
+        const result = await response.json();
+
+        if (result.success && result.locations.length > 0) {
+            const quickDiv = document.getElementById('quick-locations');
+            quickDiv.innerHTML = '<strong>Quick Access:</strong> ';
+
+            result.locations.forEach(loc => {
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-sm';
+                btn.textContent = loc.name;
+                btn.type = 'button';
+                btn.onclick = () => loadDirectory(loc.path);
+                quickDiv.appendChild(btn);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading quick locations:', error);
     }
 }
 
 function setupEventListeners() {
-    // Environment change
     document.getElementById('environment').addEventListener('change', () => {
-        // Clear password when environment changes
         document.getElementById('password').value = '';
         document.getElementById('cached-msg').style.display = 'none';
         checkCachedPassword();
     });
 
-    // Set default environment
     document.getElementById('set-default').addEventListener('change', (e) => {
-        if (e.target.checked) {
-            const env = document.getElementById('environment').value;
-            if (env) {
-                localStorage.setItem('default_env', env);
-            }
+        const env = document.getElementById('environment').value;
+        if (e.target.checked && env) {
+            localStorage.setItem('default_env', env);
         } else {
             localStorage.removeItem('default_env');
         }
     });
 
-    // File selection
-    document.getElementById('files').addEventListener('change', (e) => {
-        selectedFiles = Array.from(e.target.files).map(f => f.name);
-        updateFileList();
-    });
+    document.getElementById('browse-btn').addEventListener('click', openFileBrowser);
+    document.getElementById('browser-back').addEventListener('click', browserGoBack);
+    document.getElementById('browser-close').addEventListener('click', closeFileBrowser);
+    document.getElementById('browser-select').addEventListener('click', selectBrowserFiles);
 
-    // Buttons
     document.getElementById('ingest-btn').addEventListener('click', startIngest);
     document.getElementById('stop-btn').addEventListener('click', stopExecution);
     document.getElementById('clear-btn').addEventListener('click', clearOutput);
@@ -113,18 +117,21 @@ function updateFileList() {
         return;
     }
 
-    selectedFiles.forEach(file => {
+    selectedFiles.forEach(filePath => {
         const div = document.createElement('div');
         div.className = 'file-item';
-        div.textContent = '📄 ' + file;
+        div.innerHTML = `📄 <strong>${getFileName(filePath)}</strong><br><small style="color: #666;">${filePath}</small>`;
         container.appendChild(div);
     });
+}
+
+function getFileName(fullPath) {
+    return fullPath.split(/[\/\\]/).pop();
 }
 
 async function startIngest() {
     const env = document.getElementById('environment').value;
     let password = document.getElementById('password').value;
-    const fileInput = document.getElementById('files');
 
     if (!env) {
         alert('Please select an environment');
@@ -136,41 +143,28 @@ async function startIngest() {
         return;
     }
 
-    if (fileInput.files.length === 0) {
-        alert('Please select files');
+    if (selectedFiles.length === 0) {
+        alert('Please select files using the Browse button');
         return;
     }
 
-    // Prepare files with full path (browser limitation: we get file names from input)
-    const files = Array.from(fileInput.files).map(f => f.name);
-
     try {
-        console.log('[JS DEBUG] startIngest called');
-        console.log('[JS DEBUG] Environment:', env);
-        console.log('[JS DEBUG] Files:', files);
-
         document.getElementById('ingest-btn').disabled = true;
         document.getElementById('stop-btn').style.display = 'inline-block';
         updateStatus('running', 'Running...');
         clearOutput();
-
-        console.log('[JS DEBUG] Sending /api/ingest request');
 
         const response = await fetch('/api/ingest', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 password: password,
-                files: files,
+                files: selectedFiles,
                 environment: env
             })
         });
 
-        console.log('[JS DEBUG] /api/ingest response status:', response.status);
-
         const result = await response.json();
-
-        console.log('[JS DEBUG] /api/ingest result:', result);
 
         if (!result.success) {
             alert('Error: ' + result.error);
@@ -181,17 +175,11 @@ async function startIngest() {
         }
 
         currentExecutionId = result.execution_id;
-
-        console.log('[JS DEBUG] Got execution_id:', currentExecutionId);
-        console.log('[JS DEBUG] Joining SocketIO room...');
-
-        // Join SocketIO room
         socket.emit('join_execution', { execution_id: currentExecutionId });
-
         addOutputLine('=== Ingest Started ===\n');
 
     } catch (error) {
-        console.error('[JS DEBUG] Error starting ingest:', error);
+        console.error('Error starting ingest:', error);
         alert('Error starting ingest: ' + error.message);
         document.getElementById('ingest-btn').disabled = false;
         document.getElementById('stop-btn').style.display = 'none';
@@ -201,7 +189,6 @@ async function startIngest() {
 
 async function stopExecution() {
     if (!currentExecutionId) return;
-
     try {
         await fetch(`/api/stop/${currentExecutionId}`, { method: 'POST' });
         addOutputLine('>>> Execution stopped\n');
@@ -231,8 +218,6 @@ function addOutputLine(text) {
     line.className = 'output-line';
     line.textContent = text;
     outputDiv.appendChild(line);
-
-    // Auto-scroll to bottom
     outputDiv.scrollTop = outputDiv.scrollHeight;
 }
 
@@ -244,4 +229,145 @@ function updateStatus(status, text) {
     const indicator = document.getElementById('status');
     indicator.className = `status ${status}`;
     indicator.textContent = text;
+}
+
+// File Browser
+
+async function openFileBrowser() {
+    const directoryPath = document.getElementById('directory-path').value.trim();
+    selectedBrowserFiles.clear();
+    document.getElementById('file-browser').style.display = 'block';
+    await loadDirectory(directoryPath || null);
+}
+
+function closeFileBrowser() {
+    document.getElementById('file-browser').style.display = 'none';
+}
+
+async function loadDirectory(path = null) {
+    const browserItems = document.getElementById('browser-items');
+    browserItems.innerHTML = '<div class="browser-loading">Loading...</div>';
+
+    try {
+        const response = await fetch('/api/browse-directory', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: path })
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+            alert('Error: ' + result.error);
+            return;
+        }
+
+        currentBrowserPath = result.current_path;
+        document.getElementById('browser-current-path').textContent = currentBrowserPath;
+        document.getElementById('directory-path').value = currentBrowserPath;
+
+        renderBrowserItems(result.items);
+
+    } catch (error) {
+        console.error('Error loading directory:', error);
+        browserItems.innerHTML = '<div class="browser-loading">Error loading directory</div>';
+    }
+}
+
+function renderBrowserItems(items) {
+    const browserItems = document.getElementById('browser-items');
+    browserItems.innerHTML = '';
+
+    const directories = items.filter(item => item.is_directory);
+    const files = items.filter(item => !item.is_directory);
+
+    directories.sort((a, b) => a.name.localeCompare(b.name));
+    files.sort((a, b) => a.name.localeCompare(b.name));
+
+    directories.forEach(item => {
+        browserItems.appendChild(createBrowserItem(item, true));
+    });
+
+    files.forEach(item => {
+        browserItems.appendChild(createBrowserItem(item, false));
+    });
+
+    if (items.length === 0) {
+        browserItems.innerHTML = '<div class="browser-loading">Empty directory</div>';
+    }
+}
+
+function createBrowserItem(item, isDirectory) {
+    const div = document.createElement('div');
+    div.className = 'browser-item';
+    if (isDirectory) {
+        div.classList.add('directory');
+    }
+
+    const icon = document.createElement('span');
+    icon.className = 'icon';
+    icon.textContent = isDirectory ? '📁' : '📄';
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = item.name;
+
+    const size = document.createElement('span');
+    size.className = 'size';
+    if (!isDirectory && item.size !== null) {
+        size.textContent = formatFileSize(item.size);
+    }
+
+    div.appendChild(icon);
+    div.appendChild(name);
+    div.appendChild(size);
+
+    div.addEventListener('click', () => {
+        if (isDirectory) {
+            loadDirectory(item.path);
+        } else {
+            toggleFileSelection(item.path, div);
+        }
+    });
+
+    if (selectedBrowserFiles.has(item.path)) {
+        div.classList.add('selected');
+    }
+
+    return div;
+}
+
+function toggleFileSelection(filePath, element) {
+    if (selectedBrowserFiles.has(filePath)) {
+        selectedBrowserFiles.delete(filePath);
+        element.classList.remove('selected');
+    } else {
+        selectedBrowserFiles.add(filePath);
+        element.classList.add('selected');
+    }
+}
+
+function selectBrowserFiles() {
+    if (selectedBrowserFiles.size === 0) {
+        alert('Please select at least one file');
+        return;
+    }
+
+    selectedFiles = Array.from(selectedBrowserFiles);
+    updateFileList();
+    closeFileBrowser();
+}
+
+async function browserGoBack() {
+    if (!currentBrowserPath) return;
+    const parentPath = currentBrowserPath.split(/[\/\\]/).slice(0, -1).join('/') || '/';
+    await loadDirectory(parentPath);
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }

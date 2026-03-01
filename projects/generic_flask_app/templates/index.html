@@ -35,8 +35,30 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="files">Select Files:</label>
-                    <input type="file" id="files" multiple required>
+                    <label for="directory-path">Directory Path:</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="directory-path" placeholder="e.g., /Users/data/ingest" style="flex: 1;">
+                        <button id="browse-btn" class="btn btn-secondary" type="button">Browse...</button>
+                    </div>
+                    <small style="color: #999; display: block; margin-top: 4px;">Full path where files are located</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Select Files:</label>
+                    <div id="file-browser" class="file-browser" style="display: none;">
+                        <div class="browser-header">
+                            <div class="browser-nav">
+                                <button id="browser-back" class="btn btn-sm">← Back</button>
+                                <span id="browser-current-path" class="browser-path">/</span>
+                                <button id="browser-close" class="btn btn-sm">✕ Close</button>
+                            </div>
+                            <div id="quick-locations" class="quick-locations"></div>
+                        </div>
+                        <div id="browser-items" class="browser-items"></div>
+                        <div class="browser-footer">
+                            <button id="browser-select" class="btn btn-primary">Select Files</button>
+                        </div>
+                    </div>
                     <div id="file-list" class="file-list"></div>
                 </div>
 
