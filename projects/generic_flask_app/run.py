@@ -27,9 +27,7 @@ if __name__ == '__main__':
             host='0.0.0.0',
             port=5123,
             debug=True,
-            use_reloader=False,         # Disable auto-reload (interferes with debugging)
-            async_mode='threading',     # Use threading instead of eventlet for better debug support
-            allow_unsafe_werkzeug=True
+            use_reloader=False  # Disable auto-reload (interferes with debugging)
         )
     except Exception as e:
         print(f"\n[ERROR] Failed to start app: {e}")

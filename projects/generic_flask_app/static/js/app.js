@@ -34,11 +34,15 @@ async function loadEnvironments() {
             select.appendChild(option);
         });
 
+        // Auto-load default or first environment
         const saved = localStorage.getItem('default_env');
         if (saved && environments.includes(saved)) {
             select.value = saved;
-            checkCachedPassword();
+        } else if (environments.length > 0) {
+            select.value = environments[0];
         }
+
+        loadEnvironmentSettings();
     } catch (error) {
         console.error('Error loading environments:', error);
     }
@@ -68,10 +72,11 @@ async function loadQuickLocations() {
 }
 
 function setupEventListeners() {
+    const passwordInput = document.getElementById('password');
+    const directoryInput = document.getElementById('directory-path');
+
     document.getElementById('environment').addEventListener('change', () => {
-        document.getElementById('password').value = '';
-        document.getElementById('cached-msg').style.display = 'none';
-        checkCachedPassword();
+        loadEnvironmentSettings();
     });
 
     document.getElementById('set-default').addEventListener('change', (e) => {
@@ -80,6 +85,25 @@ function setupEventListeners() {
             localStorage.setItem('default_env', env);
         } else {
             localStorage.removeItem('default_env');
+        }
+    });
+
+    // Auto-save password to localStorage when user types
+    passwordInput.addEventListener('input', () => {
+        const env = document.getElementById('environment').value;
+        const password = passwordInput.value;
+        if (env && password) {
+            localStorage.setItem(`password_${env}`, password);
+            document.getElementById('cached-msg').style.display = 'block';
+        }
+    });
+
+    // Auto-save directory path to localStorage when user types or browses
+    directoryInput.addEventListener('change', () => {
+        const env = document.getElementById('environment').value;
+        const path = directoryInput.value;
+        if (env && path) {
+            localStorage.setItem(`directory_${env}`, path);
         }
     });
 
@@ -93,18 +117,32 @@ function setupEventListeners() {
     document.getElementById('clear-btn').addEventListener('click', clearOutput);
 }
 
-function checkCachedPassword() {
+function loadEnvironmentSettings() {
     const env = document.getElementById('environment').value;
-    if (env) {
-        fetch(`/api/get-password/${env}`)
-            .then(r => r.json())
-            .then(data => {
-                if (data.has_password) {
-                    document.getElementById('password').value = '(cached)';
-                    document.getElementById('cached-msg').style.display = 'block';
-                    document.getElementById('password').disabled = true;
-                }
-            });
+
+    if (!env) {
+        document.getElementById('password').value = '';
+        document.getElementById('directory-path').value = '';
+        document.getElementById('cached-msg').style.display = 'none';
+        return;
+    }
+
+    // Load password from localStorage
+    const savedPassword = localStorage.getItem(`password_${env}`);
+    if (savedPassword) {
+        document.getElementById('password').value = savedPassword;
+        document.getElementById('cached-msg').style.display = 'block';
+    } else {
+        document.getElementById('password').value = '';
+        document.getElementById('cached-msg').style.display = 'none';
+    }
+
+    // Load directory path from localStorage
+    const savedPath = localStorage.getItem(`directory_${env}`);
+    if (savedPath) {
+        document.getElementById('directory-path').value = savedPath;
+    } else {
+        document.getElementById('directory-path').value = '';
     }
 }
 

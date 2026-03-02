@@ -272,19 +272,6 @@ def stop_execution(execution_id):
     return jsonify({'success': False, 'error': 'Execution not found'}), 404
 
 
-@app.route('/api/get-password/<environment>')
-def get_password(environment):
-    """Get cached password for environment if available"""
-    cached_password = session.get(f'password_{environment}', '')
-    return jsonify({'has_password': bool(cached_password)})
-
-
-@app.route('/api/clear-password/<environment>', methods=['POST'])
-def clear_password(environment):
-    """Clear cached password for environment"""
-    session.pop(f'password_{environment}', None)
-    session.modified = True
-    return jsonify({'success': True})
 
 
 @app.route('/api/quick-locations', methods=['GET'])
