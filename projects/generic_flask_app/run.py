@@ -1,33 +1,33 @@
 #!/usr/bin/env python
 """
 Run the Data Ingest Flask Application
-Configured for PyCharm debugging with threading instead of eventlet
+Simple polling approach: Browser polls /api/stream_event every second
 """
 if __name__ == '__main__':
     import os
     import sys
 
-    # Set debug mode
     os.environ['FLASK_ENV'] = 'development'
     os.environ['FLASK_DEBUG'] = '1'
 
-    from app import app, socketio
+    from app import app
 
     print("\n" + "="*60)
-    print("Starting Flask App with Socket.IO")
+    print("Starting Flask App (Simple Polling)")
     print("="*60)
     print(f"FLASK_ENV: {os.getenv('FLASK_ENV')}")
     print(f"FLASK_DEBUG: {os.getenv('FLASK_DEBUG')}")
-    print(f"Running on: http://0.0.0.0:5123")
+    print(f"Running on: http://localhost:5123")
+    print("Output method: Browser polls /api/stream_event every 1 second")
     print("="*60 + "\n")
 
     try:
-        socketio.run(
-            app,
+        app.run(
             host='0.0.0.0',
             port=5123,
             debug=True,
-            use_reloader=False  # Disable auto-reload (interferes with debugging)
+            threaded=True,
+            use_reloader=False
         )
     except Exception as e:
         print(f"\n[ERROR] Failed to start app: {e}")

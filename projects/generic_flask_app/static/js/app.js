@@ -1,25 +1,15 @@
-let socket = null;
-let currentExecutionId = null;
 let selectedFiles = [];
 let currentBrowserPath = null;
 let selectedBrowserFiles = new Set();
+let isRunning = false;
+let lastOutputCount = 0;
+let pollInterval = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-    initializeSocket();
     loadEnvironments();
     loadQuickLocations();
     setupEventListeners();
 });
-
-function initializeSocket() {
-    socket = io();
-    socket.on('output', (data) => {
-        addOutputLine(data.data);
-    });
-    socket.on('complete', (data) => {
-        onExecutionComplete(data.status);
-    });
-}
 
 async function loadEnvironments() {
     try {
@@ -34,7 +24,6 @@ async function loadEnvironments() {
             select.appendChild(option);
         });
 
-        // Auto-load default or first environment
         const saved = localStorage.getItem('default_env');
         if (saved && environments.includes(saved)) {
             select.value = saved;
@@ -88,7 +77,6 @@ function setupEventListeners() {
         }
     });
 
-    // Auto-save password to localStorage when user types
     passwordInput.addEventListener('input', () => {
         const env = document.getElementById('environment').value;
         const password = passwordInput.value;
@@ -98,7 +86,6 @@ function setupEventListeners() {
         }
     });
 
-    // Auto-save directory path to localStorage when user types or browses
     directoryInput.addEventListener('change', () => {
         const env = document.getElementById('environment').value;
         const path = directoryInput.value;
@@ -127,7 +114,6 @@ function loadEnvironmentSettings() {
         return;
     }
 
-    // Load password from localStorage
     const savedPassword = localStorage.getItem(`password_${env}`);
     if (savedPassword) {
         document.getElementById('password').value = savedPassword;
@@ -137,7 +123,6 @@ function loadEnvironmentSettings() {
         document.getElementById('cached-msg').style.display = 'none';
     }
 
-    // Load directory path from localStorage
     const savedPath = localStorage.getItem(`directory_${env}`);
     if (savedPath) {
         document.getElementById('directory-path').value = savedPath;
@@ -176,7 +161,7 @@ async function startIngest() {
         return;
     }
 
-    if (!password || password === '(cached)') {
+    if (!password) {
         alert('Please enter a password');
         return;
     }
@@ -212,9 +197,10 @@ async function startIngest() {
             return;
         }
 
-        currentExecutionId = result.execution_id;
-        socket.emit('join_execution', { execution_id: currentExecutionId });
-        addOutputLine('=== Ingest Started ===\n');
+        // Start polling for output
+        isRunning = true;
+        lastOutputCount = 0;
+        startPolling();
 
     } catch (error) {
         console.error('Error starting ingest:', error);
@@ -225,29 +211,57 @@ async function startIngest() {
     }
 }
 
+function startPolling() {
+    // Poll /api/stream_event every second to get output
+    if (pollInterval) {
+        clearInterval(pollInterval);
+    }
+
+    pollInterval = setInterval(async () => {
+        try {
+            const response = await fetch('/api/stream_event');
+            const data = await response.json();
+
+            // Add new output lines
+            if (data.output && data.output.length > lastOutputCount) {
+                for (let i = lastOutputCount; i < data.output.length; i++) {
+                    addOutputLine(data.output[i]);
+                }
+                lastOutputCount = data.output.length;
+            }
+
+            // Check if still running
+            if (!data.is_running && isRunning) {
+                // Job finished
+                isRunning = false;
+                clearInterval(pollInterval);
+                onExecutionComplete();
+            }
+
+        } catch (error) {
+            console.error('Polling error:', error);
+        }
+    }, 1000);  // Poll every 1 second
+}
+
 async function stopExecution() {
-    if (!currentExecutionId) return;
     try {
-        await fetch(`/api/stop/${currentExecutionId}`, { method: 'POST' });
-        addOutputLine('>>> Execution stopped\n');
+        await fetch('/api/stop', { method: 'POST' });
+        isRunning = false;
+        if (pollInterval) {
+            clearInterval(pollInterval);
+        }
     } catch (error) {
         console.error('Error stopping execution:', error);
     }
 }
 
-function onExecutionComplete(status = 'completed') {
+function onExecutionComplete() {
     document.getElementById('ingest-btn').disabled = false;
     document.getElementById('stop-btn').style.display = 'none';
 
-    if (status === 'error') {
-        updateStatus('error', '⚠️ Error - Check output');
-        addOutputLine('\n❌ === Ingest Failed ===');
-    } else {
-        updateStatus('completed', '✓ Completed');
-        addOutputLine('\n✓ === Ingest Complete ===');
-    }
-
-    currentExecutionId = null;
+    updateStatus('completed', '✓ Completed');
+    addOutputLine('\n✓ === Ingest Complete ===');
 }
 
 function addOutputLine(text) {

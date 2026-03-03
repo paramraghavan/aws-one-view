@@ -1,34 +1,34 @@
 #!/usr/bin/env python
 """
 Minimal Flask Script Runner
-Runs a callback function with password and selected files
+Simple approach: Write to buffer, browser polls every second
 """
 import os
 import re
 import threading
-import uuid
-import signal
 import traceback
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, session
-from flask_socketio import SocketIO, emit, join_room
+from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
 import sys
-from io import StringIO
 from datetime import datetime
 
 load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key')
-socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Configuration
-CONFIG_DIR = Path('config')
+CONFIG_DIR = Path(__file__).parent / 'config'
 CONFIG_DIR.mkdir(exist_ok=True)
 
-# Active execution tracking
-active_executions = {}
+# Global output buffer - everything goes here
+output_buffer = []
+buffer_lock = threading.Lock()
+
+# Track if execution is running
+is_running = False
+running_lock = threading.Lock()
 
 
 def detect_environments():
@@ -36,56 +36,79 @@ def detect_environments():
     environments = set()
     if CONFIG_DIR.exists():
         for file in CONFIG_DIR.glob('*_*.properties'):
-            # Extract environment name from prefix (e.g., uat_app.properties -> uat)
             match = re.match(r'^([a-z]+)_', file.name)
             if match:
                 environments.add(match.group(1))
     return sorted(environments)
 
 
-def callback_myjob(password: str, files: list, execution_id: str):
+def add_output(text: str):
+    """Add text to output buffer (thread-safe)"""
+    global output_buffer
+    with buffer_lock:
+        output_buffer.append(text)
+
+
+def clear_output():
+    """Clear output buffer"""
+    global output_buffer
+    with buffer_lock:
+        output_buffer = []
+
+
+class BufferCapture:
+    """Captures stdout and stderr to the global buffer"""
+
+    def __init__(self):
+        self.original_stdout = sys.stdout
+        self.original_stderr = sys.stderr
+
+    def write(self, text: str):
+        """Write to both original stdout and buffer"""
+        self.original_stdout.write(text)
+        self.original_stdout.flush()
+
+        if text and text.strip():
+            add_output(text.rstrip())
+
+    def flush(self):
+        """Flush the original stdout"""
+        self.original_stdout.flush()
+
+
+class NoInputStdin:
+    """Stub stdin that prevents input() calls"""
+    def read(self):
+        raise RuntimeError("input() is not supported. Use function parameters instead.")
+
+    def readline(self):
+        raise RuntimeError("input() is not supported. Use function parameters instead.")
+
+
+def callback_myjob(password: str, files: list):
     """
     Your callback function - receives password and list of files
-    All print statements are captured and sent to the UI in real-time
+    All print statements and exceptions appear in browser automatically
 
     Args:
-        password: User-provided password (str)
-        files: List of selected file names (list)
-        execution_id: Unique execution ID (str)
+        password: User-provided password
+        files: List of selected file absolute paths
 
-    IMPORTANT:
-    - All print() statements appear on the app screen in real-time
-    - If you raise an exception, it will be caught and displayed with traceback
-    - Do NOT use input() - it will raise an error (pass params instead)
-    - To stop early, check if execution_id still in active_executions
-    - All output is visible to the user, never log sensitive data
-
-    Example callback with error handling:
+    Example:
     ```
-    def callback_myjob(password: str, files: list, execution_id: str):
+    def callback_myjob(password: str, files: list):
         print(f"Processing {len(files)} files")
+        print(f"Password: {'*' * len(password)}")
 
         for idx, file_path in enumerate(files, 1):
-            # file_path is now FULL ABSOLUTE PATH (e.g., /Users/data/ingest/file.csv)
-            # Check if user clicked Stop
-            if execution_id not in active_executions:
-                print("Execution stopped")
-                return
-
             print(f"[{idx}/{len(files)}] {file_path}")
 
-            # Verify file exists
-            if not os.path.exists(file_path):
-                print(f"  ✗ File not found: {file_path}")
-                continue
-
-            try:
-                result = my_library.process(file_path, password)
-                print(f"  ✓ Success: {result}")
-            except Exception as e:
-                print(f"  ✗ Failed: {e}")
-                # Continue with next file or raise to stop
-                raise  # This will show error on UI
+            if os.path.exists(file_path):
+                size = os.path.getsize(file_path)
+                print(f"  File size: {size} bytes")
+                # result = my_function(file_path, password)
+            else:
+                print(f"  ✗ File not found!")
 
         print("✓ All files processed")
     ```
@@ -97,11 +120,6 @@ def callback_myjob(password: str, files: list, execution_id: str):
     print()
 
     for idx, file_path in enumerate(files, 1):
-        if execution_id not in active_executions:
-            print("Execution stopped by user")
-            break
-
-        # file_path is FULL ABSOLUTE PATH (e.g., /Users/data/ingest/file.csv)
         print(f"[{idx}/{len(files)}] Processing: {file_path}")
 
         if os.path.exists(file_path):
@@ -117,69 +135,35 @@ def callback_myjob(password: str, files: list, execution_id: str):
     print("=== Job Completed ===")
 
 
-class RealtimeOutputCapture:
-    """Captures stdout and emits each line via SocketIO in real-time"""
-
-    def __init__(self, execution_id: str):
-        self.execution_id = execution_id
-        self.room = f"exec_{execution_id}"
-        self.original_stdout = sys.stdout
-
-    def write(self, text: str):
-        """Write text and emit to SocketIO immediately"""
-        self.original_stdout.write(text)
-        self.original_stdout.flush()
-
-        if text and text.strip():
-            try:
-                socketio.emit('output', {'data': text.rstrip()}, room=self.room)
-            except Exception as e:
-                self.original_stdout.write(f"\nEmit error: {e}\n")
-                self.original_stdout.flush()
-
-    def flush(self):
-        """Flush the original stdout"""
-        self.original_stdout.flush()
-
-
-class NoInputStdin:
-    """Stub stdin that prevents input() calls"""
-    def read(self):
-        raise RuntimeError("input() is not supported in web callbacks. Use function parameters instead.")
-
-    def readline(self):
-        raise RuntimeError("input() is not supported in web callbacks. Use function parameters instead.")
-
-
-def capture_callback_output(password: str, files: list, execution_id: str):
-    """Capture stdout from callback_myjob and emit via SocketIO in real-time"""
+def run_job(password: str, files: list):
+    """Run callback_myjob in background thread with output capture"""
+    global is_running
 
     old_stdout = sys.stdout
+    old_stderr = sys.stderr
     old_stdin = sys.stdin
 
-    capture = RealtimeOutputCapture(execution_id)
+    capture = BufferCapture()
     sys.stdout = capture
+    sys.stderr = capture
     sys.stdin = NoInputStdin()
 
-    error_occurred = False
-
     try:
+        with running_lock:
+            is_running = True
+
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting execution...")
-        callback_myjob(password, files, execution_id)
+        callback_myjob(password, files)
         print(f"[{datetime.now().strftime('%H:%M:%S')}] ✓ Execution completed successfully")
 
     except KeyboardInterrupt:
-        error_occurred = True
-        print("\n❌ ERROR: Execution was interrupted by user")
+        print("\n❌ ERROR: Execution was interrupted")
 
     except RuntimeError as e:
-        error_occurred = True
         print(f"\n❌ ERROR: {str(e)}")
-        print("\n💡 TIP: Pass parameters to the callback instead of using input()")
-        print("   Example: use 'password' and 'files' parameters directly")
+        print("💡 TIP: Pass parameters to the callback instead of using input()")
 
     except Exception as e:
-        error_occurred = True
         print(f"\n❌ ERROR: {type(e).__name__}")
         print(f"   Message: {str(e)}")
         print(f"\n📋 Full traceback:")
@@ -187,19 +171,11 @@ def capture_callback_output(password: str, files: list, execution_id: str):
 
     finally:
         sys.stdout = old_stdout
+        sys.stderr = old_stderr
         sys.stdin = old_stdin
 
-    room = f"exec_{execution_id}"
-    try:
-        socketio.emit('complete', {
-            'status': 'error' if error_occurred else 'completed',
-            'timestamp': datetime.now().isoformat()
-        }, room=room)
-    except Exception as e:
-        print(f"Error emitting complete event: {e}")
-
-    if execution_id in active_executions:
-        del active_executions[execution_id]
+        with running_lock:
+            is_running = False
 
 
 # ============== Routes ==============
@@ -221,6 +197,12 @@ def get_environments():
 def ingest():
     """Start job execution"""
     try:
+        global is_running
+
+        with running_lock:
+            if is_running:
+                return jsonify({'success': False, 'error': 'Job already running'}), 400
+
         data = request.get_json()
         password = data.get('password', '')
         files = data.get('files', [])
@@ -235,48 +217,44 @@ def ingest():
         if not environment:
             return jsonify({'success': False, 'error': 'Environment required'}), 400
 
-        execution_id = str(uuid.uuid4())
-        active_executions[execution_id] = {
-            'status': 'running',
-            'environment': environment
-        }
-
-        session[f'password_{environment}'] = password
-        session.modified = True
-
-        thread = threading.Thread(
-            target=capture_callback_output,
-            args=(password, files, execution_id),
-            daemon=True
-        )
+        # Clear buffer and start job
+        clear_output()
+        thread = threading.Thread(target=run_job, args=(password, files), daemon=True)
         thread.start()
 
-        return jsonify({
-            'success': True,
-            'execution_id': execution_id
-        })
+        return jsonify({'success': True})
 
     except Exception as e:
         print(f"Error in /api/ingest: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/stop/<execution_id>', methods=['POST'])
-def stop_execution(execution_id):
-    """Stop current execution"""
-    if execution_id in active_executions:
-        del active_executions[execution_id]
-        room = f"exec_{execution_id}"
-        socketio.emit('output', {'data': '>>> Execution stopped by user'}, room=room)
-        return jsonify({'success': True})
-    return jsonify({'success': False, 'error': 'Execution not found'}), 404
+@app.route('/api/stream_event')
+def stream_event():
+    """Return current output buffer (browser polls this every second)"""
+    with buffer_lock:
+        return jsonify({
+            'output': output_buffer,
+            'is_running': is_running
+        })
 
 
+@app.route('/api/stop', methods=['POST'])
+def stop_execution():
+    """Signal to stop execution"""
+    # Note: Actual stopping depends on callback_myjob implementation
+    # For simple jobs, they'll finish naturally
+    # For long-running, add checks in callback_myjob
+    global is_running
+    with running_lock:
+        is_running = False
+    add_output(">>> Execution stopped by user")
+    return jsonify({'success': True})
 
 
 @app.route('/api/quick-locations', methods=['GET'])
 def get_quick_locations():
-    """Get quick access locations (Desktop, Documents, Downloads, etc.)"""
+    """Get quick access locations"""
     locations = []
     home = os.path.expanduser('~')
 
@@ -298,7 +276,11 @@ def browse_directory():
     """Browse directory contents on the server"""
     try:
         data = request.get_json()
-        path = data.get('path', os.path.expanduser('~'))
+        path = data.get('path', None)
+
+        # If no path provided, use home directory
+        if not path or path == 'null':
+            path = os.path.expanduser('~')
 
         path = os.path.abspath(os.path.expanduser(path))
 
@@ -312,14 +294,25 @@ def browse_directory():
         try:
             entries = os.listdir(path)
             for entry in sorted(entries, key=str.lower):
+                # Skip system files that might cause issues
+                if entry.startswith('.'):
+                    continue
+
                 full_path = os.path.join(path, entry)
                 try:
                     is_dir = os.path.isdir(full_path)
+                    size = None
+                    if not is_dir:
+                        try:
+                            size = os.path.getsize(full_path)
+                        except (OSError, PermissionError):
+                            size = None
+
                     items.append({
                         'name': entry,
                         'path': full_path,
                         'is_directory': is_dir,
-                        'size': os.path.getsize(full_path) if not is_dir else None
+                        'size': size
                     })
                 except (PermissionError, OSError):
                     continue
@@ -340,21 +333,12 @@ def browse_directory():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# ============== SocketIO Events ==============
-
-@socketio.on('connect')
-def handle_connect():
-    """Handle client connection"""
-    print(f"Client connected: {request.sid}")
-
-
-@socketio.on('join_execution')
-def on_join_execution(data):
-    """Join execution room for real-time updates"""
-    execution_id = data.get('execution_id')
-    room = f"exec_{execution_id}"
-    join_room(room)
-
-
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5123, debug=True)
+    print("\n" + "="*60)
+    print("Starting Flask App (Simple Polling)")
+    print("="*60)
+    print(f"Running on: http://0.0.0.0:5123")
+    print("Output method: Browser polls /api/stream_event every second")
+    print("="*60 + "\n")
+
+    app.run(host='0.0.0.0', port=5123, debug=True, threaded=True)
