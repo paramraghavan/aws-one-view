@@ -7,6 +7,7 @@ import os
 import re
 import threading
 import traceback
+import logging
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
@@ -21,6 +22,21 @@ app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key')
 # Configuration
 CONFIG_DIR = Path(__file__).parent / 'config'
 CONFIG_DIR.mkdir(exist_ok=True)
+
+LOGS_DIR = Path(__file__).parent / 'logs'
+LOGS_DIR.mkdir(exist_ok=True)
+
+# Setup logger
+logger = logging.getLogger('ScriptRunner')
+logger.setLevel(logging.DEBUG)
+
+# File handler - logs to file
+log_file = LOGS_DIR / f"execution_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+file_handler = logging.FileHandler(log_file)
+file_handler.setLevel(logging.DEBUG)
+file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(file_formatter)
+logger.addHandler(file_handler)
 
 # Global output buffer - everything goes here
 output_buffer = []
@@ -57,19 +73,21 @@ def clear_output():
 
 
 class BufferCapture:
-    """Captures stdout and stderr to the global buffer"""
+    """Captures stdout and stderr to the global buffer and logs to file"""
 
     def __init__(self):
         self.original_stdout = sys.stdout
         self.original_stderr = sys.stderr
 
     def write(self, text: str):
-        """Write to both original stdout and buffer"""
+        """Write to original stdout, buffer, and log file"""
         self.original_stdout.write(text)
         self.original_stdout.flush()
 
         if text and text.strip():
-            add_output(text.rstrip())
+            line = text.rstrip()
+            add_output(line)
+            logger.info(line)  # Also log to file
 
     def flush(self):
         """Flush the original stdout"""
