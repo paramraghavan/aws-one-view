@@ -1,0 +1,26 @@
+# Users per Funding Block
+# Standard SQL Query
+
+sql: |
+  SELECT
+    block_funding,
+    COUNT(DISTINCT user_id) as user_count,
+    AVG(total_cost) as avg_cost,
+    SUM(total_cost) as total_cost
+  FROM cost_report
+  GROUP BY block_funding
+  ORDER BY user_count DESC
+
+# Chart configuration
+chart:
+  title: "User Count by Funding Block"
+  x_axis: "user_count"
+  y_axis: "block_funding"
+  x_label: "Number of Users"
+  y_label: "Funding Block"
+  show_values: true
+
+# Format options
+format:
+  currency: true
+  decimal_places: 0

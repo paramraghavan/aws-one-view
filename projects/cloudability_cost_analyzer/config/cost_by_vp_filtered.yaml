@@ -1,0 +1,49 @@
+# Cost by VP with State Filter
+# Example of dynamic column filtering
+
+sql: |
+  SELECT
+    vp,
+    COUNT(DISTINCT user_id) as user_count,
+    SUM(total_cost) as total_cost,
+    AVG(total_cost) as avg_cost,
+    AVG(efficient_score) as avg_efficiency
+  FROM cost_report
+  GROUP BY vp
+  ORDER BY total_cost DESC
+
+# Filter configuration - shows dropdowns for each column
+filters:
+  - column: "vp"
+    table: "cost_report"
+    label: "VP"
+    type: "dropdown"
+  - column: "state"
+    table: "regions"
+    label: "State"
+    type: "dropdown"
+  - column: "block_funding"
+    table: "cost_report"
+    label: "Funding Block"
+    type: "dropdown"
+
+# Chart configuration
+chart:
+  title: "Cost by VP (Filtered)"
+  type: "bar"
+  x_axis: "vp"
+  y_axis: "total_cost"
+  x_label: "VP"
+  y_label: "Total Cost ($)"
+  show_values: true
+
+# Display as table
+display:
+  type: "both"
+  rows_per_page: 20
+  sortable: true
+
+# Format options
+format:
+  currency: true
+  decimal_places: 0

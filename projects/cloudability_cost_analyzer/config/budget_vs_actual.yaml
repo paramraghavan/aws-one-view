@@ -1,0 +1,36 @@
+# Budget vs Actual Spend
+# Multiple JOINs example
+
+sql: |
+  SELECT
+    b.block_funding,
+    b.budget_allocated,
+    CAST(SUM(c.total_cost) AS INTEGER) as actual_spend,
+    (b.budget_allocated - CAST(SUM(c.total_cost) AS INTEGER)) as remaining_budget,
+    ROUND((SUM(c.total_cost) / b.budget_allocated * 100), 1) as percent_spent
+  FROM cost_report c
+  JOIN budgets b ON c.block_funding = b.block_funding
+  WHERE b.fiscal_year = 2026
+  GROUP BY b.block_funding, b.budget_allocated
+  ORDER BY percent_spent DESC
+
+# Chart configuration
+chart:
+  title: "Budget vs Actual Spend by Funding Block"
+  type: "bar"
+  x_axis: "block_funding"
+  y_axis: "actual_spend"
+  x_label: "Funding Block"
+  y_label: "Actual Spend ($)"
+  show_values: true
+
+# Display as table
+display:
+  type: "both"
+  rows_per_page: 10
+  sortable: true
+
+# Format options
+format:
+  currency: true
+  decimal_places: 0

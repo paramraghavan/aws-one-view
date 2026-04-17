@@ -1,0 +1,26 @@
+# Cost by Funding Block
+# Standard SQL Query
+
+sql: |
+  SELECT
+    block_funding,
+    SUM(total_cost) as total_cost,
+    COUNT(DISTINCT user_id) as user_count
+  FROM cost_report
+  WHERE total_cost > 0
+  GROUP BY block_funding
+  ORDER BY total_cost DESC
+
+# Chart configuration
+chart:
+  title: "Total Cost by Funding Block"
+  x_axis: "block_funding"
+  y_axis: "total_cost"
+  x_label: "Funding Block"
+  y_label: "Total Cost ($)"
+  show_values: true
+
+# Format options
+format:
+  currency: true
+  decimal_places: 0

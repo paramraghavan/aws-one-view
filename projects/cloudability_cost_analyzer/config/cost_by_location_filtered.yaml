@@ -1,0 +1,50 @@
+# Cost by Location with Multiple Filters
+# Example with filters on region, state, and funding block
+
+sql: |
+  SELECT
+    r.region,
+    r.state,
+    COUNT(DISTINCT c.user_id) as user_count,
+    SUM(c.total_cost) as total_cost,
+    AVG(c.total_cost) as avg_cost_per_user
+  FROM cost_report c
+  JOIN regions r ON c.user_id = r.user_id
+  GROUP BY r.region, r.state
+  ORDER BY total_cost DESC
+
+# Filter configuration - dynamic dropdowns
+filters:
+  - column: "region"
+    table: "regions"
+    label: "Region"
+    type: "dropdown"
+  - column: "state"
+    table: "regions"
+    label: "State"
+    type: "dropdown"
+  - column: "block_funding"
+    table: "cost_report"
+    label: "Funding Block"
+    type: "dropdown"
+
+# Chart configuration
+chart:
+  title: "Cost by Location (Filtered)"
+  type: "bar"
+  x_axis: "region"
+  y_axis: "total_cost"
+  x_label: "Region"
+  y_label: "Total Cost ($)"
+  show_values: true
+
+# Display as table
+display:
+  type: "both"
+  rows_per_page: 20
+  sortable: true
+
+# Format options
+format:
+  currency: true
+  decimal_places: 0

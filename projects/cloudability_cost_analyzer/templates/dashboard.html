@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cost Reports - Reporting Engine</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>📊 Cost Reporting Dashboard</h1>
+            <p class="subtitle">Configuration-driven cost analysis and visualization</p>
+        </header>
+
+        <!-- Tab Navigation -->
+        <nav class="tabs-nav">
+            <div class="tabs-container">
+                {% for tab in tabs %}
+                <button class="tab-button {% if loop.first %}active{% endif %}"
+                        data-tab-id="{{ tab.id }}"
+                        title="{{ tab.description }}">
+                    {{ tab.name }}
+                </button>
+                {% endfor %}
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            {% for tab in tabs %}
+            <div class="tab-content {% if loop.first %}active{% endif %}"
+                 id="tab-{{ tab.id }}"
+                 data-tab-id="{{ tab.id }}">
+
+                <!-- Loading indicator -->
+                <div class="loading" id="loading-{{ tab.id }}">
+                    <div class="spinner"></div>
+                    <p>Loading data...</p>
+                </div>
+
+                <!-- Tab content (populated by JavaScript) -->
+                <div class="content" id="content-{{ tab.id }}" style="display: none;">
+                    <h2 id="title-{{ tab.id }}"></h2>
+                    <p id="description-{{ tab.id }}" class="description"></p>
+
+                    <!-- Filters -->
+                    <div class="filters-container" id="filters-{{ tab.id }}" style="display: none;">
+                    </div>
+
+                    <!-- Chart -->
+                    <div class="chart-container" id="chart-{{ tab.id }}"></div>
+
+                    <!-- Table -->
+                    <div class="table-container" id="table-{{ tab.id }}"></div>
+                </div>
+
+                <!-- Error message -->
+                <div class="error" id="error-{{ tab.id }}" style="display: none;">
+                    <p id="error-msg-{{ tab.id }}"></p>
+                </div>
+            </div>
+            {% endfor %}
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Reporting Engine • Config-driven • Dynamic queries • Real-time visualization</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+# Reporting Engine Configuration
+# Each tab is defined by a config file with SQL-like queries
+# Queries are executed on the weekly/monthly cost reports
+
+tabs:
+  - name: "Cost by Funding Block"
+    id: "funding_block_costs"
+    description: "Total costs grouped by funding block"
+    config_file: "funding_block.yaml"
+    chart_type: "bar"
+    color_scheme: "blue"
+
+  - name: "Users per Funding Block"
+    id: "funding_block_users"
+    description: "Number of users in each funding block"
+    config_file: "funding_users.yaml"
+    chart_type: "bar"
+    color_scheme: "green"
+
+  - name: "Cost Distribution"
+    id: "cost_distribution"
+    description: "Cost breakdown by funding block (pie chart)"
+    config_file: "cost_distribution.yaml"
+    chart_type: "pie"
+    color_scheme: "multi"
+
+  - name: "Top Users by Cost"
+    id: "top_users"
+    description: "Top 10 users by total cost"
+    config_file: "top_users.yaml"
+    chart_type: "bar"
+    color_scheme: "red"
+
+  - name: "Cost by VP"
+    id: "cost_by_vp"
+    description: "Total costs grouped by VP"
+    config_file: "cost_by_vp.yaml"
+    chart_type: "bar"
+    color_scheme: "purple"
+
+  - name: "Efficiency by Funding Block"
+    id: "efficiency"
+    description: "Average efficiency score by funding block"
+    config_file: "efficiency.yaml"
+    chart_type: "bar"
+    color_scheme: "orange"
+
+# Data source configuration
+data_source:
+  type: "csv"  # Options: csv, database
+  path: "reports/"
+  pattern: "cost_report_*.csv"  # Which reports to load
+
+# Chart rendering options
+chart_options:
+  height: 400
+  width: 800
+  margin:
+    top: 20
+    right: 30
+    bottom: 30
+    left: 60

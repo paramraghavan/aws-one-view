@@ -1,0 +1,5 @@
+block_funding,budget_allocated,budget_spent,budget_owner,fiscal_year
+Engineering,500000,450000,Alice Smith,2026
+Product,300000,280000,Bob Jones,2026
+Research,200000,180000,Carol White,2026
+Operations,150000,140000,David Brown,2026
