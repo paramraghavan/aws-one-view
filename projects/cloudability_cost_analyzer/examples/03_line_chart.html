@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D3.js Line Chart</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .description {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        #chart {
+            margin: 20px 0;
+        }
+        .line {
+            fill: none;
+            stroke: #87CEEB;
+            stroke-width: 2.5;
+        }
+        .dot {
+            fill: #1E90FF;
+            r: 5;
+        }
+        .dot:hover {
+            r: 7;
+            cursor: pointer;
+        }
+        .axis {
+            font-size: 12px;
+        }
+        .axis line, .axis path {
+            stroke: #ddd;
+        }
+        .grid line {
+            stroke: #e0e0e0;
+            stroke-dasharray: 4;
+        }
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="tooltip" id="tooltip"></div>
+    <div class="container">
+        <h1>📈 Line Chart Example</h1>
+        <p class="description">Hover over dots to see values. Shows cost trend over 12 weeks.</p>
+        <div id="chart"></div>
+    </div>
+
+    <script>
+        // Sample data - weekly costs
+        const data = [
+            { week: 1, cost: 45000 },
+            { week: 2, cost: 48000 },
+            { week: 3, cost: 46000 },
+            { week: 4, cost: 52000 },
+            { week: 5, cost: 50000 },
+            { week: 6, cost: 55000 },
+            { week: 7, cost: 58000 },
+            { week: 8, cost: 62000 },
+            { week: 9, cost: 60000 },
+            { week: 10, cost: 65000 },
+            { week: 11, cost: 68000 },
+            { week: 12, cost: 72000 }
+        ];
+
+        // Dimensions
+        const margin = { top: 20, right: 30, bottom: 60, left: 80 };
+        const width = 800 - margin.left - margin.right;
+        const height = 400 - margin.top - margin.bottom;
+
+        // Create SVG
+        const svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        // Create scales
+        const xScale = d3.scaleLinear()
+            .domain([1, 12])
+            .range([0, width]);
+
+        const yScale = d3.scaleLinear()
+            .domain([0, d3.max(data, d => d.cost)])
+            .range([height, 0]);
+
+        // Create line generator
+        const line = d3.line()
+            .x(d => xScale(d.week))
+            .y(d => yScale(d.cost));
+
+        // Add grid
+        svg.append("g")
+            .attr("class", "grid")
+            .call(d3.axisLeft(yScale)
+                .tickSize(-width)
+                .tickFormat("")
+            );
+
+        // Add line path
+        svg.append("path")
+            .datum(data)
+            .attr("class", "line")
+            .attr("d", line);
+
+        // Add dots
+        svg.selectAll(".dot")
+            .data(data)
+            .enter()
+            .append("circle")
+            .attr("class", "dot")
+            .attr("cx", d => xScale(d.week))
+            .attr("cy", d => yScale(d.cost))
+            .on("mouseover", function(event, d) {
+                const tooltip = document.getElementById("tooltip");
+                tooltip.textContent = `Week ${d.week}: $${d.cost.toLocaleString()}`;
+                tooltip.style.left = (event.pageX + 10) + "px";
+                tooltip.style.top = (event.pageY - 30) + "px";
+                tooltip.style.display = "block";
+            })
+            .on("mouseout", function() {
+                document.getElementById("tooltip").style.display = "none";
+            });
+
+        // X Axis
+        svg.append("g")
+            .attr("class", "axis")
+            .attr("transform", `translate(0,${height})`)
+            .call(d3.axisBottom(xScale)
+                .tickFormat(d => `W${d}`)
+            )
+            .append("text")
+            .attr("x", width / 2)
+            .attr("y", 40)
+            .attr("text-anchor", "middle")
+            .attr("fill", "#333")
+            .attr("font-size", "14px")
+            .text("Week");
+
+        // Y Axis
+        svg.append("g")
+            .attr("class", "axis")
+            .call(d3.axisLeft(yScale)
+                .tickFormat(d => `$${(d/1000).toFixed(0)}K`)
+            )
+            .append("text")
+            .attr("transform", "rotate(-90)")
+            .attr("x", -height / 2)
+            .attr("y", -60)
+            .attr("text-anchor", "middle")
+            .attr("fill", "#333")
+            .attr("font-size", "14px")
+            .text("Weekly Cost");
+
+        // Title
+        svg.append("text")
+            .attr("x", width / 2)
+            .attr("y", -5)
+            .attr("text-anchor", "middle")
+            .attr("font-size", "16px")
+            .attr("font-weight", "bold")
+            .attr("fill", "#2c3e50")
+            .text("12-Week Cost Trend");
+
+        // Add trend annotation
+        const trend = "↗ Upward trend";
+        svg.append("text")
+            .attr("x", width)
+            .attr("y", 0)
+            .attr("text-anchor", "end")
+            .attr("font-size", "12px")
+            .attr("fill", "#1E90FF")
+            .text(trend);
+    </script>
+</body>
+</html>

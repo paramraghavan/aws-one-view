@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D3.js Interactive Chart</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .description {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .controls {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        label {
+            font-weight: 500;
+            color: #333;
+        }
+        input[type="range"] {
+            width: 150px;
+        }
+        button {
+            padding: 8px 16px;
+            background: #1E90FF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        button:hover {
+            background: #1873CC;
+        }
+        #chart {
+            margin: 20px 0;
+        }
+        .bar {
+            fill: #87CEEB;
+            opacity: 0.8;
+        }
+        .bar:hover {
+            fill: #1E90FF;
+            opacity: 1;
+        }
+        .axis {
+            font-size: 12px;
+        }
+        .axis line, .axis path {
+            stroke: #ddd;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        .stat-box {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 6px;
+            border-left: 4px solid #1E90FF;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+        }
+        .stat-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #1E90FF;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎛️ Interactive Chart Example</h1>
+        <p class="description">Adjust sliders to update the chart in real-time. Great for exploring "what-if" scenarios.</p>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="eng-slider">Engineering:</label>
+                <input type="range" id="eng-slider" min="20000" max="60000" value="45000" step="1000">
+                <span id="eng-value">$45,000</span>
+            </div>
+
+            <div class="control-group">
+                <label for="prod-slider">Product:</label>
+                <input type="range" id="prod-slider" min="15000" max="50000" value="32000" step="1000">
+                <span id="prod-value">$32,000</span>
+            </div>
+
+            <div class="control-group">
+                <label for="res-slider">Research:</label>
+                <input type="range" id="res-slider" min="10000" max="40000" value="28000" step="1000">
+                <span id="res-value">$28,000</span>
+            </div>
+
+            <button onclick="resetChart()">Reset</button>
+        </div>
+
+        <div id="chart"></div>
+
+        <div class="stats">
+            <div class="stat-box">
+                <div class="stat-label">Total Cost</div>
+                <div class="stat-value" id="total-cost">$105,000</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Average</div>
+                <div class="stat-value" id="avg-cost">$35,000</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Highest</div>
+                <div class="stat-value" id="max-cost">Engineering</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initial data
+        let data = [
+            { department: "Engineering", cost: 45000 },
+            { department: "Product", cost: 32000 },
+            { department: "Research", cost: 28000 }
+        ];
+
+        // Dimensions
+        const margin = { top: 20, right: 30, bottom: 60, left: 70 };
+        const width = 800 - margin.left - margin.right;
+        const height = 400 - margin.top - margin.bottom;
+
+        // Initialize chart
+        function initChart() {
+            // Clear previous chart
+            d3.select("#chart").selectAll("*").remove();
+
+            // Create SVG
+            const svg = d3.select("#chart")
+                .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            // Create scales
+            const xScale = d3.scaleBand()
+                .domain(data.map(d => d.department))
+                .range([0, width])
+                .padding(0.2);
+
+            const yScale = d3.scaleLinear()
+                .domain([0, d3.max(data, d => d.cost)])
+                .range([height, 0]);
+
+            // Create bars with transition
+            svg.selectAll(".bar")
+                .data(data)
+                .enter()
+                .append("rect")
+                .attr("class", "bar")
+                .attr("x", d => xScale(d.department))
+                .attr("y", d => yScale(d.cost))
+                .attr("width", xScale.bandwidth())
+                .attr("height", d => height - yScale(d.cost))
+                .on("click", function(event, d) {
+                    alert(`${d.department}: $${d.cost.toLocaleString()}`);
+                });
+
+            // Add value labels
+            svg.selectAll(".bar-label")
+                .data(data)
+                .enter()
+                .append("text")
+                .attr("class", "bar-label")
+                .attr("x", d => xScale(d.department) + xScale.bandwidth() / 2)
+                .attr("y", d => yScale(d.cost) - 5)
+                .attr("text-anchor", "middle")
+                .attr("font-size", "12px")
+                .attr("fill", "#333")
+                .text(d => `$${(d.cost/1000).toFixed(0)}K`);
+
+            // X Axis
+            svg.append("g")
+                .attr("class", "axis")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(xScale))
+                .append("text")
+                .attr("x", width / 2)
+                .attr("y", 40)
+                .attr("text-anchor", "middle")
+                .attr("fill", "#333")
+                .attr("font-size", "14px")
+                .text("Department");
+
+            // Y Axis
+            svg.append("g")
+                .attr("class", "axis")
+                .call(d3.axisLeft(yScale)
+                    .tickFormat(d => `$${(d/1000).toFixed(0)}K`)
+                )
+                .append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("x", -height / 2)
+                .attr("y", -50)
+                .attr("text-anchor", "middle")
+                .attr("fill", "#333")
+                .attr("font-size", "14px")
+                .text("Cost");
+
+            // Title
+            svg.append("text")
+                .attr("x", width / 2)
+                .attr("y", -5)
+                .attr("text-anchor", "middle")
+                .attr("font-size", "16px")
+                .attr("font-weight", "bold")
+                .attr("fill", "#2c3e50")
+                .text("Department Costs (Interactive)");
+
+            // Update stats
+            updateStats();
+        }
+
+        // Update stats
+        function updateStats() {
+            const total = d3.sum(data, d => d.cost);
+            const avg = total / data.length;
+            const max = d3.max(data, d => d.cost);
+            const maxDept = data.find(d => d.cost === max).department;
+
+            document.getElementById("total-cost").textContent = `$${(total/1000).toFixed(0)}K`;
+            document.getElementById("avg-cost").textContent = `$${(avg/1000).toFixed(0)}K`;
+            document.getElementById("max-cost").textContent = maxDept;
+        }
+
+        // Reset chart
+        function resetChart() {
+            data = [
+                { department: "Engineering", cost: 45000 },
+                { department: "Product", cost: 32000 },
+                { department: "Research", cost: 28000 }
+            ];
+            document.getElementById("eng-slider").value = 45000;
+            document.getElementById("prod-slider").value = 32000;
+            document.getElementById("res-slider").value = 28000;
+            updateSliderValues();
+            initChart();
+        }
+
+        // Update slider values and chart
+        function updateSliderValues() {
+            const eng = parseInt(document.getElementById("eng-slider").value);
+            const prod = parseInt(document.getElementById("prod-slider").value);
+            const res = parseInt(document.getElementById("res-slider").value);
+
+            document.getElementById("eng-value").textContent = `$${eng.toLocaleString()}`;
+            document.getElementById("prod-value").textContent = `$${prod.toLocaleString()}`;
+            document.getElementById("res-value").textContent = `$${res.toLocaleString()}`;
+
+            data = [
+                { department: "Engineering", cost: eng },
+                { department: "Product", cost: prod },
+                { department: "Research", cost: res }
+            ];
+
+            initChart();
+        }
+
+        // Add event listeners
+        document.getElementById("eng-slider").addEventListener("input", updateSliderValues);
+        document.getElementById("prod-slider").addEventListener("input", updateSliderValues);
+        document.getElementById("res-slider").addEventListener("input", updateSliderValues);
+
+        // Initialize on page load
+        initChart();
+    </script>
+</body>
+</html>

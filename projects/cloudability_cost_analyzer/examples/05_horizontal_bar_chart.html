@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D3.js Horizontal Bar Chart</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .description {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 8px 16px;
+            background: #1E90FF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #1873CC;
+        }
+        button.active {
+            background: #1E90FF;
+        }
+        #chart {
+            margin: 20px 0;
+        }
+        .bar {
+            fill: #87CEEB;
+            opacity: 0.8;
+        }
+        .bar:hover {
+            fill: #1E90FF;
+            opacity: 1;
+        }
+        .axis {
+            font-size: 12px;
+        }
+        .axis line, .axis path {
+            stroke: #ddd;
+        }
+        .bar-label {
+            font-size: 11px;
+            fill: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Horizontal Bar Chart (Top Users)</h1>
+        <p class="description">Click buttons to sort by cost or name. Shows top users by spending.</p>
+
+        <div class="controls">
+            <button onclick="sortBy('cost')" class="active">Sort by Cost</button>
+            <button onclick="sortBy('name')">Sort by Name</button>
+        </div>
+
+        <div id="chart"></div>
+    </div>
+
+    <script>
+        // Sample data
+        let data = [
+            { name: "Alice Johnson", cost: 5400 },
+            { name: "Bob Smith", cost: 4800 },
+            { name: "Carol White", cost: 6200 },
+            { name: "David Brown", cost: 3900 },
+            { name: "Eve Davis", cost: 5100 },
+            { name: "Frank Wilson", cost: 4200 },
+            { name: "Grace Lee", cost: 5800 },
+            { name: "Henry Taylor", cost: 4600 }
+        ];
+
+        let sortType = 'cost';
+
+        // Dimensions
+        const margin = { top: 20, right: 30, bottom: 30, left: 150 };
+        const width = 800 - margin.left - margin.right;
+        const height = 400 - margin.top - margin.bottom;
+
+        function sortData(type) {
+            if (type === 'cost') {
+                return [...data].sort((a, b) => b.cost - a.cost);
+            } else {
+                return [...data].sort((a, b) => a.name.localeCompare(b.name));
+            }
+        }
+
+        function drawChart() {
+            // Clear previous chart
+            d3.select("#chart").selectAll("*").remove();
+
+            // Get sorted data
+            const sortedData = sortData(sortType);
+
+            // Create SVG
+            const svg = d3.select("#chart")
+                .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            // Create scales
+            const xScale = d3.scaleLinear()
+                .domain([0, d3.max(sortedData, d => d.cost)])
+                .range([0, width]);
+
+            const yScale = d3.scaleBand()
+                .domain(sortedData.map(d => d.name))
+                .range([0, height])
+                .padding(0.2);
+
+            // Create bars with animation
+            svg.selectAll(".bar")
+                .data(sortedData)
+                .enter()
+                .append("rect")
+                .attr("class", "bar")
+                .attr("x", 0)
+                .attr("y", d => yScale(d.name))
+                .attr("width", 0)
+                .attr("height", yScale.bandwidth())
+                .transition()
+                .duration(500)
+                .attr("width", d => xScale(d.cost))
+                .on("end", function() {
+                    // Add value labels after animation
+                    svg.selectAll(".bar-label")
+                        .data(sortedData)
+                        .enter()
+                        .append("text")
+                        .attr("class", "bar-label")
+                        .attr("x", d => xScale(d.cost) + 5)
+                        .attr("y", d => yScale(d.name) + yScale.bandwidth() / 2 + 4)
+                        .text(d => `$${d.cost.toLocaleString()}`);
+                });
+
+            // X Axis
+            svg.append("g")
+                .attr("class", "axis")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(xScale)
+                    .tickFormat(d => `$${d/1000}K`)
+                )
+                .append("text")
+                .attr("x", width / 2)
+                .attr("y", 25)
+                .attr("text-anchor", "middle")
+                .attr("fill", "#333")
+                .attr("font-size", "14px")
+                .text("Cost");
+
+            // Y Axis
+            svg.append("g")
+                .attr("class", "axis")
+                .call(d3.axisLeft(yScale));
+
+            // Title
+            svg.append("text")
+                .attr("x", width / 2)
+                .attr("y", -5)
+                .attr("text-anchor", "middle")
+                .attr("font-size", "16px")
+                .attr("font-weight", "bold")
+                .attr("fill", "#2c3e50")
+                .text(`Top Users (Sorted by ${sortType === 'cost' ? 'Cost' : 'Name'})`);
+        }
+
+        function sortBy(type) {
+            sortType = type;
+
+            // Update button states
+            document.querySelectorAll(".controls button").forEach(btn => {
+                btn.classList.remove("active");
+            });
+            event.target.classList.add("active");
+
+            // Redraw chart
+            drawChart();
+        }
+
+        // Initialize
+        drawChart();
+    </script>
+</body>
+</html>

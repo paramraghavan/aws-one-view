@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D3.js Pie Chart</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .description {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        #chart {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        .arc path {
+            cursor: pointer;
+        }
+        .arc:hover path {
+            opacity: 1 !important;
+            filter: brightness(1.1);
+        }
+        .arc text {
+            font-size: 12px;
+            font-weight: bold;
+            fill: white;
+            text-anchor: middle;
+        }
+        .legend {
+            margin-top: 30px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🥧 Pie Chart Example</h1>
+        <p class="description">Hover over slices to highlight them. Shows funding block distribution.</p>
+        <div id="chart"></div>
+        <div id="legend" class="legend"></div>
+    </div>
+
+    <script>
+        // Sample data
+        const data = [
+            { label: "Engineering", value: 45 },
+            { label: "Product", value: 32 },
+            { label: "Research", value: 28 },
+            { label: "Operations", value: 18 },
+            { label: "Sales", value: 15 }
+        ];
+
+        // Colors
+        const colors = [
+            "#87CEEB", "#1E90FF", "#00BFFF", "#6BB6D6", "#5F9EA0"
+        ];
+
+        // Dimensions
+        const width = 600;
+        const height = 400;
+        const radius = Math.min(width, height) / 2 - 50;
+
+        // Create SVG
+        const svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height)
+            .append("g")
+            .attr("transform", `translate(${width/2},${height/2})`);
+
+        // Create pie generator
+        const pie = d3.pie().value(d => d.value);
+
+        // Create arc generator
+        const arc = d3.arc()
+            .innerRadius(0)
+            .outerRadius(radius);
+
+        // Create color scale
+        const colorScale = d3.scaleOrdinal()
+            .domain(data.map(d => d.label))
+            .range(colors);
+
+        // Create slices
+        const slices = svg.selectAll(".arc")
+            .data(pie(data))
+            .enter()
+            .append("g")
+            .attr("class", "arc");
+
+        // Add paths
+        slices.append("path")
+            .attr("d", arc)
+            .attr("fill", (d, i) => colorScale(d.data.label))
+            .attr("opacity", 0.8)
+            .on("mouseenter", function() {
+                d3.select(this).attr("opacity", 1);
+            })
+            .on("mouseleave", function() {
+                d3.select(this).attr("opacity", 0.8);
+            })
+            .on("click", function(event, d) {
+                const percentage = (d.data.value / d3.sum(data, x => x.value) * 100).toFixed(1);
+                alert(`${d.data.label}: ${d.data.value} (${percentage}%)`);
+            });
+
+        // Add percentage labels
+        slices.append("text")
+            .attr("transform", d => `translate(${arc.centroid(d)})`)
+            .attr("text-anchor", "middle")
+            .text(d => {
+                const percentage = (d.data.value / d3.sum(data, x => x.value) * 100).toFixed(0);
+                return `${percentage}%`;
+            });
+
+        // Add title
+        svg.append("text")
+            .attr("x", 0)
+            .attr("y", -radius - 30)
+            .attr("text-anchor", "middle")
+            .attr("font-size", "16px")
+            .attr("font-weight", "bold")
+            .attr("fill", "#2c3e50")
+            .text("Funding Block Distribution");
+
+        // Create legend
+        const legend = d3.select("#legend");
+
+        data.forEach((d, i) => {
+            const item = legend.append("div")
+                .attr("class", "legend-item");
+
+            item.append("div")
+                .attr("class", "legend-color")
+                .style("background-color", colorScale(d.label));
+
+            item.append("span")
+                .text(`${d.label} (${d.value})`);
+        });
+    </script>
+</body>
+</html>

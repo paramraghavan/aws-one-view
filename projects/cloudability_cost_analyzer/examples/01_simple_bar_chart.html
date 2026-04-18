@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D3.js Simple Bar Chart</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .description {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        #chart {
+            margin: 20px 0;
+        }
+        .bar {
+            fill: #87CEEB;
+            opacity: 0.8;
+        }
+        .bar:hover {
+            fill: #1E90FF;
+            opacity: 1;
+            cursor: pointer;
+        }
+        .axis {
+            font-size: 12px;
+        }
+        .axis line, .axis path {
+            stroke: #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Simple Bar Chart Example</h1>
+        <p class="description">Click on bars to see their values. This shows cost per department.</p>
+        <div id="chart"></div>
+    </div>
+
+    <script>
+        // Sample data
+        const data = [
+            { department: "Engineering", cost: 45000 },
+            { department: "Product", cost: 32000 },
+            { department: "Research", cost: 28000 },
+            { department: "Operations", cost: 18000 },
+            { department: "Sales", cost: 15000 }
+        ];
+
+        // Dimensions
+        const margin = { top: 20, right: 30, bottom: 60, left: 70 };
+        const width = 800 - margin.left - margin.right;
+        const height = 400 - margin.top - margin.bottom;
+
+        // Create SVG
+        const svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        // Create scales
+        const xScale = d3.scaleBand()
+            .domain(data.map(d => d.department))
+            .range([0, width])
+            .padding(0.2);
+
+        const yScale = d3.scaleLinear()
+            .domain([0, d3.max(data, d => d.cost)])
+            .range([height, 0]);
+
+        // Create bars
+        svg.selectAll(".bar")
+            .data(data)
+            .enter()
+            .append("rect")
+            .attr("class", "bar")
+            .attr("x", d => xScale(d.department))
+            .attr("y", d => yScale(d.cost))
+            .attr("width", xScale.bandwidth())
+            .attr("height", d => height - yScale(d.cost))
+            .on("click", function(event, d) {
+                alert(`${d.department}: $${d.cost.toLocaleString()}`);
+            });
+
+        // Add value labels on bars
+        svg.selectAll(".bar-label")
+            .data(data)
+            .enter()
+            .append("text")
+            .attr("class", "bar-label")
+            .attr("x", d => xScale(d.department) + xScale.bandwidth() / 2)
+            .attr("y", d => yScale(d.cost) - 5)
+            .attr("text-anchor", "middle")
+            .attr("font-size", "12px")
+            .attr("fill", "#333")
+            .text(d => `$${(d.cost/1000).toFixed(0)}K`);
+
+        // X Axis
+        svg.append("g")
+            .attr("class", "axis")
+            .attr("transform", `translate(0,${height})`)
+            .call(d3.axisBottom(xScale))
+            .append("text")
+            .attr("x", width / 2)
+            .attr("y", 40)
+            .attr("text-anchor", "middle")
+            .attr("fill", "#333")
+            .attr("font-size", "14px")
+            .text("Department");
+
+        // Y Axis
+        svg.append("g")
+            .attr("class", "axis")
+            .call(d3.axisLeft(yScale))
+            .append("text")
+            .attr("transform", "rotate(-90)")
+            .attr("x", -height / 2)
+            .attr("y", -50)
+            .attr("text-anchor", "middle")
+            .attr("fill", "#333")
+            .attr("font-size", "14px")
+            .text("Cost ($)");
+
+        // Title
+        svg.append("text")
+            .attr("x", width / 2)
+            .attr("y", -5)
+            .attr("text-anchor", "middle")
+            .attr("font-size", "16px")
+            .attr("font-weight", "bold")
+            .attr("fill", "#2c3e50")
+            .text("Cost by Department");
+    </script>
+</body>
+</html>
