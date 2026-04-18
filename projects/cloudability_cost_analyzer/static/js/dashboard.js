@@ -333,8 +333,8 @@ function renderBarChart(container, data) {
     const isHorizontal = !yIsNumeric && xIsNumeric;
 
     const margin = isHorizontal
-        ? { top: 20, right: 30, bottom: 30, left: 150 }
-        : { top: 20, right: 30, bottom: 60, left: 70 };
+        ? { top: 20, right: 200, bottom: 30, left: 150 }
+        : { top: 20, right: 200, bottom: 60, left: 70 };
 
     const width = 800 - margin.left - margin.right;
     const height = isHorizontal
@@ -430,6 +430,47 @@ function renderBarChart(container, data) {
         .attr('font-weight', 'bold')
         .attr('fill', '#2c3e50')
         .text(config.title);
+
+    // Legend
+    const legend = svg.append('g')
+        .attr('class', 'legend')
+        .attr('transform', `translate(${width + 20}, 0)`);
+
+    legend.append('rect')
+        .attr('x', 0)
+        .attr('y', 0)
+        .attr('width', 150)
+        .attr('height', 70)
+        .attr('fill', 'white')
+        .attr('stroke', '#ddd')
+        .attr('stroke-width', 1)
+        .attr('rx', 4);
+
+    legend.append('text')
+        .attr('x', 8)
+        .attr('y', 20)
+        .attr('font-weight', 'bold')
+        .attr('font-size', '12px')
+        .attr('fill', '#2c3e50')
+        .text('Legend');
+
+    const legendItem = legend.append('g')
+        .attr('transform', 'translate(8, 30)');
+
+    legendItem.append('rect')
+        .attr('x', 0)
+        .attr('y', 0)
+        .attr('width', 12)
+        .attr('height', 12)
+        .attr('fill', '#87CEEB')
+        .attr('opacity', 0.8);
+
+    legendItem.append('text')
+        .attr('x', 18)
+        .attr('y', 10)
+        .attr('font-size', '12px')
+        .attr('fill', '#555')
+        .text(yAxis);
 }
 
 function renderPieChart(container, data) {
@@ -437,16 +478,16 @@ function renderPieChart(container, data) {
     const xAxis = config.x_axis;
     const yAxis = config.y_axis;
 
-    const width = 400;
+    const width = 600;
     const height = 400;
-    const radius = Math.min(width, height) / 2 - 40;
+    const radius = Math.min(width, height) / 2 - 60;
 
     const svg = d3.select(container)
         .append('svg')
         .attr('width', width)
         .attr('height', height)
         .append('g')
-        .attr('transform', `translate(${width / 2},${height / 2})`);
+        .attr('transform', `translate(${width / 2 - 50},${height / 2})`);
 
     const pie = d3.pie().value(d => d[yAxis]);
     const arc = d3.arc().innerRadius(0).outerRadius(radius);
@@ -472,6 +513,33 @@ function renderPieChart(container, data) {
         .attr('font-weight', 'bold')
         .attr('fill', '#2c3e50')
         .text(config.title);
+
+    // Legend
+    const legend = svg.append('g')
+        .attr('class', 'legend')
+        .attr('transform', `translate(${radius + 30}, ${-radius + 20})`);
+
+    const legendData = data.data.slice(0, 8); // Limit to 8 items for readability
+
+    legendData.forEach((d, i) => {
+        const legendRow = legend.append('g')
+            .attr('transform', `translate(0, ${i * 20})`);
+
+        legendRow.append('rect')
+            .attr('x', 0)
+            .attr('y', 0)
+            .attr('width', 12)
+            .attr('height', 12)
+            .attr('fill', colors(i))
+            .attr('opacity', 0.8);
+
+        legendRow.append('text')
+            .attr('x', 18)
+            .attr('y', 10)
+            .attr('font-size', '12px')
+            .attr('fill', '#555')
+            .text(String(d[xAxis]).substring(0, 20));
+    });
 }
 
 function renderLineChart(container, data) {
@@ -479,7 +547,7 @@ function renderLineChart(container, data) {
     const xAxis = config.x_axis;
     const yAxis = config.y_axis;
 
-    const margin = { top: 20, right: 30, bottom: 60, left: 70 };
+    const margin = { top: 20, right: 200, bottom: 60, left: 70 };
     const width = 800 - margin.left - margin.right;
     const height = 400;
 
@@ -536,6 +604,63 @@ function renderLineChart(container, data) {
         .attr('font-weight', 'bold')
         .attr('fill', '#2c3e50')
         .text(config.title);
+
+    // Legend
+    const legend = svg.append('g')
+        .attr('class', 'legend')
+        .attr('transform', `translate(${width + 20}, 0)`);
+
+    legend.append('rect')
+        .attr('x', 0)
+        .attr('y', 0)
+        .attr('width', 150)
+        .attr('height', 90)
+        .attr('fill', 'white')
+        .attr('stroke', '#ddd')
+        .attr('stroke-width', 1)
+        .attr('rx', 4);
+
+    legend.append('text')
+        .attr('x', 8)
+        .attr('y', 20)
+        .attr('font-weight', 'bold')
+        .attr('font-size', '12px')
+        .attr('fill', '#2c3e50')
+        .text('Legend');
+
+    const lineLegend = legend.append('g')
+        .attr('transform', 'translate(8, 30)');
+
+    lineLegend.append('line')
+        .attr('x1', 0)
+        .attr('y1', 0)
+        .attr('x2', 12)
+        .attr('y2', 0)
+        .attr('stroke', '#87CEEB')
+        .attr('stroke-width', 2);
+
+    lineLegend.append('text')
+        .attr('x', 18)
+        .attr('y', 4)
+        .attr('font-size', '12px')
+        .attr('fill', '#555')
+        .text(yAxis);
+
+    const dotLegend = legend.append('g')
+        .attr('transform', 'translate(8, 55)');
+
+    dotLegend.append('circle')
+        .attr('cx', 6)
+        .attr('cy', 0)
+        .attr('r', 4)
+        .attr('fill', '#87CEEB');
+
+    dotLegend.append('text')
+        .attr('x', 18)
+        .attr('y', 4)
+        .attr('font-size', '12px')
+        .attr('fill', '#555')
+        .text('Data Points');
 }
 
 // ============================================================================

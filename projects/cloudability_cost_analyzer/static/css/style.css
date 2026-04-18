@@ -434,6 +434,34 @@ tr:nth-child(even) {
 .dot {
     fill: #87CEEB;
     r: 4;
+    transition: r 0.3s ease;
+}
+
+.dot:hover {
+    r: 6;
+    fill: #1E90FF;
+}
+
+/* Legends */
+.legend {
+    font-family: inherit;
+}
+
+.legend rect {
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.legend text {
+    font-family: inherit;
+}
+
+.arc {
+    transition: opacity 0.3s ease;
+}
+
+.arc:hover {
+    opacity: 1;
 }
 
 .tooltip {
