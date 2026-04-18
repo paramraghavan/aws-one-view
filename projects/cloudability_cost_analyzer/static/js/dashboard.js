@@ -1,49 +1,154 @@
-// Reporting Engine Dashboard - JavaScript
+// Dashboard Tab Management
 
-// ============================================================================
-// TAB MANAGEMENT
-// ============================================================================
+const openTabs = new Map(); // tab_id → {button, content}
+let activeTabId = null;
+const allReports = [];
 
-document.addEventListener('DOMContentLoaded', function () {
-    initializeTabs();
+document.addEventListener('DOMContentLoaded', function() {
+    initDashboard();
 });
 
-function initializeTabs() {
-    const tabButtons = document.querySelectorAll('.tab-button');
-    const tabContents = document.querySelectorAll('.tab-content');
+function initDashboard() {
+    // Collect all reports from sidebar
+    document.querySelectorAll('.sidebar-item').forEach(item => {
+        const tabId = item.getAttribute('data-tab-id');
+        const tabName = item.querySelector('.tab-label').textContent;
+        allReports.push({id: tabId, name: tabName});
+    });
 
-    tabButtons.forEach(button => {
-        button.addEventListener('click', function () {
-            const tabId = this.getAttribute('data-tab-id');
-            switchTab(tabId, tabButtons, tabContents);
+    // Setup sidebar click handlers
+    document.querySelectorAll('.sidebar-item').forEach(item => {
+        item.addEventListener('click', function() {
+            openTab(this.getAttribute('data-tab-id'));
         });
     });
 
-    // Load first tab
-    if (tabButtons.length > 0) {
-        const firstTabId = tabButtons[0].getAttribute('data-tab-id');
-        switchTab(firstTabId, tabButtons, tabContents);
+    // Open first report by default
+    if (allReports.length > 0) {
+        openTab(allReports[0].id);
     }
 }
 
-function switchTab(tabId, tabButtons, tabContents) {
-    // Update button states
-    tabButtons.forEach(btn => {
-        if (btn.getAttribute('data-tab-id') === tabId) {
-            btn.classList.add('active');
+function openTab(tabId) {
+    // If already open, just switch to it
+    if (openTabs.has(tabId)) {
+        switchTab(tabId);
+        return;
+    }
+
+    // Create new tab
+    createTab(tabId);
+    switchTab(tabId);
+    loadTabData(tabId);
+}
+
+function createTab(tabId) {
+    const report = allReports.find(r => r.id === tabId);
+    const reportName = report ? report.name : tabId;
+
+    // Create tab button
+    const tabButton = document.createElement('button');
+    tabButton.className = 'tab-button';
+    tabButton.setAttribute('data-tab-id', tabId);
+    tabButton.innerHTML = `
+        <span class="tab-name">${reportName}</span>
+        <span class="tab-close">×</span>
+    `;
+
+    // Close button click handler
+    tabButton.querySelector('.tab-close').addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeTab(tabId);
+    });
+
+    // Tab button click handler
+    tabButton.addEventListener('click', () => switchTab(tabId));
+
+    document.getElementById('tabs-container').appendChild(tabButton);
+
+    // Create tab content
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'tab-content';
+    contentDiv.id = `tab-${tabId}`;
+    contentDiv.setAttribute('data-tab-id', tabId);
+    contentDiv.innerHTML = `
+        <div class="loading" id="loading-${tabId}">
+            <div class="spinner"></div>
+            <p>Loading data...</p>
+        </div>
+        <div class="content" id="content-${tabId}" style="display: none;">
+            <h2 id="title-${tabId}"></h2>
+            <p id="description-${tabId}" class="description"></p>
+            <div class="filters-container" id="filters-${tabId}" style="display: none;"></div>
+            <div class="chart-container" id="chart-${tabId}"></div>
+            <div class="table-container" id="table-${tabId}"></div>
+        </div>
+        <div class="error" id="error-${tabId}" style="display: none;">
+            <p id="error-msg-${tabId}"></p>
+        </div>
+    `;
+
+    document.getElementById('tab-contents').appendChild(contentDiv);
+
+    // Store in map
+    openTabs.set(tabId, {
+        button: tabButton,
+        content: contentDiv
+    });
+}
+
+function closeTab(tabId) {
+    // Prevent closing last tab
+    if (openTabs.size === 1) {
+        alert('Cannot close the last tab');
+        return;
+    }
+
+    const tab = openTabs.get(tabId);
+    if (!tab) return;
+
+    // Remove elements
+    tab.button.remove();
+    tab.content.remove();
+    openTabs.delete(tabId);
+
+    // Update sidebar
+    updateSidebarHighlight(null);
+
+    // If closing active tab, switch to another
+    if (activeTabId === tabId) {
+        const nextTabId = openTabs.keys().next().value;
+        if (nextTabId) {
+            switchTab(nextTabId);
+        }
+    }
+}
+
+function switchTab(tabId) {
+    // Update active state
+    openTabs.forEach((tab, id) => {
+        if (id === tabId) {
+            tab.button.classList.add('active');
+            tab.content.classList.add('active');
+            tab.content.style.display = 'block';
         } else {
-            btn.classList.remove('active');
+            tab.button.classList.remove('active');
+            tab.content.classList.remove('active');
+            tab.content.style.display = 'none';
         }
     });
 
-    // Update content visibility
-    tabContents.forEach(content => {
-        if (content.getAttribute('id') === `tab-${tabId}`) {
-            content.classList.add('active');
-            // Load data for this tab
-            loadTabData(tabId);
+    activeTabId = tabId;
+    updateSidebarHighlight(tabId);
+    loadTabData(tabId);
+}
+
+function updateSidebarHighlight(tabId) {
+    document.querySelectorAll('.sidebar-item').forEach(item => {
+        if (tabId && item.getAttribute('data-tab-id') === tabId) {
+            item.classList.add('active');
         } else {
-            content.classList.remove('active');
+            item.classList.remove('active');
         }
     });
 }
@@ -62,7 +167,7 @@ function loadTabData(tabId) {
     content.style.display = 'none';
     error.style.display = 'none';
 
-    // Build query parameters from filter values
+    // Build query parameters
     const filters = getActiveFilters(tabId);
     const queryParams = new URLSearchParams(filters).toString();
     const apiUrl = `/api/data/${tabId}${queryParams ? '?' + queryParams : ''}`;
@@ -98,139 +203,144 @@ function getActiveFilters(tabId) {
 }
 
 // ============================================================================
-// FILTER RENDERING
+// RENDERING
 // ============================================================================
 
-function renderFilters(tabId, filtersConfig) {
-    const filtersContainer = document.getElementById(`filters-${tabId}`);
-    if (!filtersContainer) return;
+function renderTabContent(tabId, data) {
+    console.log(`Rendering tab content for ${tabId}`, data);
 
-    filtersContainer.innerHTML = '';
-    filtersContainer.style.display = 'flex';
+    document.getElementById(`title-${tabId}`).textContent = data.title;
+    document.getElementById(`description-${tabId}`).textContent = data.description;
+
+    if (data.filters_config && data.filters_config.length > 0) {
+        renderFilters(tabId, data.filters_config);
+    }
+
+    // Always render chart if we have data
+    if (data.chart_type) {
+        console.log(`Chart type: ${data.chart_type}, config:`, data.chart_config);
+        renderChart(tabId, data);
+    } else {
+        console.warn(`No chart type for tab ${tabId}`);
+    }
+
+    // Always render table - it's defined in the HTML
+    renderTable(tabId, data);
+}
+
+function renderFilters(tabId, filtersConfig) {
+    const container = document.getElementById(`filters-${tabId}`);
+    if (!container) return;
+
+    container.innerHTML = '';
+    container.style.display = 'flex';
 
     filtersConfig.forEach(filter => {
-        const filterGroup = document.createElement('div');
-        filterGroup.className = 'filter-group';
+        const group = document.createElement('div');
+        group.className = 'filter-group';
 
         const label = document.createElement('label');
         label.textContent = filter.label || filter.column;
 
         const select = document.createElement('select');
         select.name = filter.column;
-        select.className = 'filter-select';
 
-        // Add empty option
         const emptyOption = document.createElement('option');
         emptyOption.value = '';
-        emptyOption.textContent = `All ${label.textContent}`;
+        emptyOption.textContent = 'All';
         select.appendChild(emptyOption);
 
         // Load options from API
-        loadFilterOptions(filter.table, filter.column, select, tabId);
+        fetch(`/api/filter-options/${tabId}/${filter.column}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.options) {
+                    data.options.forEach(opt => {
+                        const option = document.createElement('option');
+                        option.value = opt;
+                        option.textContent = opt;
+                        select.appendChild(option);
+                    });
+                }
+            });
 
-        // Add event listener to reload on change
-        select.addEventListener('change', () => {
-            loadTabData(tabId);
-        });
+        select.addEventListener('change', () => loadTabData(tabId));
 
-        filterGroup.appendChild(label);
-        filterGroup.appendChild(select);
-        filtersContainer.appendChild(filterGroup);
+        group.appendChild(label);
+        group.appendChild(select);
+        container.appendChild(group);
     });
 
-    // Add reset button
+    // Reset button
     const resetBtn = document.createElement('button');
     resetBtn.className = 'filter-reset';
     resetBtn.textContent = 'Reset Filters';
     resetBtn.addEventListener('click', () => {
-        const selects = filtersContainer.querySelectorAll('select');
-        selects.forEach(s => s.value = '');
+        container.querySelectorAll('select').forEach(s => s.value = '');
         loadTabData(tabId);
     });
-    filtersContainer.appendChild(resetBtn);
-}
-
-function loadFilterOptions(tableName, columnName, selectElement, tabId) {
-    fetch(`/api/filter-options/${tableName}/${columnName}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.options) {
-                data.options.forEach(option => {
-                    const opt = document.createElement('option');
-                    opt.value = option;
-                    opt.textContent = option;
-                    selectElement.appendChild(opt);
-                });
-            }
-        })
-        .catch(err => console.error('Error loading filter options:', err));
+    container.appendChild(resetBtn);
 }
 
 // ============================================================================
-// RENDERING
-// ============================================================================
-
-function renderTabContent(tabId, data) {
-    // Set title and description
-    document.getElementById(`title-${tabId}`).textContent = data.title;
-    document.getElementById(`description-${tabId}`).textContent = data.description;
-
-    // Render filters if configured
-    if (data.filters_config && data.filters_config.length > 0) {
-        renderFilters(tabId, data.filters_config);
-    }
-
-    // Render chart if needed
-    if (data.chart_type && data.chart_config) {
-        renderChart(tabId, data);
-    }
-
-    // Render table if needed
-    if (data.display_config && (data.display_config.type === 'table' || data.display_config.type === 'both')) {
-        renderTable(tabId, data);
-    }
-}
-
-// ============================================================================
-// CHART RENDERING (D3.js)
+// CHART RENDERING
 // ============================================================================
 
 function renderChart(tabId, data) {
-    const chartContainer = document.getElementById(`chart-${tabId}`);
-    chartContainer.innerHTML = ''; // Clear
+    const container = document.getElementById(`chart-${tabId}`);
+    if (!container) {
+        return;
+    }
 
-    if (data.chart_type === 'bar') {
-        renderBarChart(chartContainer, data);
-    } else if (data.chart_type === 'pie') {
-        renderPieChart(chartContainer, data);
-    } else if (data.chart_type === 'line') {
-        renderLineChart(chartContainer, data);
+    container.innerHTML = '';
+
+    try {
+        if (!window.d3) {
+            container.innerHTML = '<p style="color: #666; padding: 20px;">D3.js library not loaded</p>';
+            return;
+        }
+
+        if (data.chart_type === 'bar') {
+            renderBarChart(container, data);
+        } else if (data.chart_type === 'pie') {
+            renderPieChart(container, data);
+        } else if (data.chart_type === 'line') {
+            renderLineChart(container, data);
+        }
+    } catch (err) {
+        console.error('Chart error:', err);
+        container.innerHTML = `<div style="padding: 20px; color: #c33; background: #fee; border-radius: 4px;">Error rendering chart: ${err.message}</div>`;
     }
 }
 
 function renderBarChart(container, data) {
+    if (!data || !data.data || data.data.length === 0) {
+        container.innerHTML = '<p>No data available</p>';
+        return;
+    }
+
     const config = data.chart_config;
     const xAxis = config.x_axis;
     const yAxis = config.y_axis;
 
-    // Detect data types
+    if (!xAxis || !yAxis) {
+        console.error('Missing x_axis or y_axis in chart config');
+        return;
+    }
+
     const xIsNumeric = typeof data.data[0][xAxis] === 'number';
     const yIsNumeric = typeof data.data[0][yAxis] === 'number';
-
-    // Determine orientation: if y is categorical, render horizontal bars
     const isHorizontal = !yIsNumeric && xIsNumeric;
 
-    // Dimensions
     const margin = isHorizontal
-        ? { top: 20, right: 30, bottom: 30, left: 150 }  // More left margin for labels
-        : { top: 20, right: 30, bottom: 60, left: 70 };   // More bottom margin for labels
+        ? { top: 20, right: 30, bottom: 30, left: 150 }
+        : { top: 20, right: 30, bottom: 60, left: 70 };
 
     const width = 800 - margin.left - margin.right;
     const height = isHorizontal
-        ? Math.max(400, data.data.length * 25)  // Scale height with data
+        ? Math.max(400, data.data.length * 25)
         : 400;
 
-    // SVG
     const svg = d3.select(container)
         .append('svg')
         .attr('width', width + margin.left + margin.right)
@@ -238,33 +348,30 @@ function renderBarChart(container, data) {
         .append('g')
         .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    // Create scales based on orientation
     let scale1, scale2, valueField;
 
     if (isHorizontal) {
-        // Horizontal bars: X = numeric (values), Y = categorical (categories)
-        scale1 = d3.scaleBand()  // Y scale for categories
+        scale1 = d3.scaleBand()
             .domain(data.data.map(d => d[yAxis]))
             .range([0, height])
             .padding(0.2);
 
-        scale2 = d3.scaleLinear()  // X scale for values
+        scale2 = d3.scaleLinear()
             .domain([0, d3.max(data.data, d => d[xAxis])])
             .range([0, width]);
 
-        valueField = xAxis;  // Value to display in tooltip
+        valueField = xAxis;
     } else {
-        // Vertical bars: X = categorical (categories), Y = numeric (values)
-        scale1 = d3.scaleBand()  // X scale for categories
+        scale1 = d3.scaleBand()
             .domain(data.data.map(d => d[xAxis]))
             .range([0, width])
             .padding(0.2);
 
-        scale2 = d3.scaleLinear()  // Y scale for values
+        scale2 = d3.scaleLinear()
             .domain([0, d3.max(data.data, d => d[yAxis])])
             .range([height, 0]);
 
-        valueField = yAxis;  // Value to display in tooltip
+        valueField = yAxis;
     }
 
     // Bars
@@ -276,15 +383,7 @@ function renderBarChart(container, data) {
         .attr('x', d => isHorizontal ? 0 : scale1(d[xAxis]))
         .attr('y', d => isHorizontal ? scale1(d[yAxis]) : scale2(d[yAxis]))
         .attr('width', d => isHorizontal ? scale2(d[xAxis]) : scale1.bandwidth())
-        .attr('height', d => isHorizontal ? scale1.bandwidth() : height - scale2(d[yAxis]))
-        .on('mouseover', function (event, d) {
-            d3.select(this).style('opacity', 1);
-            showTooltip(event, formatValue(d[valueField], data.format_config));
-        })
-        .on('mouseout', function () {
-            d3.select(this).style('opacity', 0.8);
-            hideTooltip();
-        });
+        .attr('height', d => isHorizontal ? scale1.bandwidth() : height - scale2(d[yAxis]));
 
     // Values on bars
     if (config.show_values) {
@@ -302,60 +401,24 @@ function renderBarChart(container, data) {
             .attr('text-anchor', isHorizontal ? 'start' : 'middle')
             .attr('font-size', '11px')
             .attr('fill', '#555')
-            .text(d => formatValue(d[valueField], data.format_config));
+            .text(d => d[valueField]);
     }
 
-    // Bottom/Left Axis
+    // Axes
     if (isHorizontal) {
-        // Horizontal: X axis at bottom, Y axis on left
         svg.append('g')
             .attr('transform', `translate(0,${height})`)
-            .call(d3.axisBottom(scale2))
-            .append('text')
-            .attr('class', 'axis-label')
-            .attr('x', width / 2)
-            .attr('y', 25)
-            .attr('text-anchor', 'middle')
-            .attr('fill', '#555')
-            .attr('font-size', '12px')
-            .text(config.x_label || xAxis);
+            .call(d3.axisBottom(scale2));
 
         svg.append('g')
-            .call(d3.axisLeft(scale1))
-            .append('text')
-            .attr('class', 'axis-label')
-            .attr('transform', 'rotate(-90)')
-            .attr('x', -height / 2)
-            .attr('y', -120)
-            .attr('text-anchor', 'middle')
-            .attr('fill', '#555')
-            .attr('font-size', '12px')
-            .text(config.y_label || yAxis);
+            .call(d3.axisLeft(scale1));
     } else {
-        // Vertical: X axis at bottom, Y axis on left
         svg.append('g')
             .attr('transform', `translate(0,${height})`)
-            .call(d3.axisBottom(scale1))
-            .append('text')
-            .attr('class', 'axis-label')
-            .attr('x', width / 2)
-            .attr('y', 40)
-            .attr('text-anchor', 'middle')
-            .attr('fill', '#555')
-            .attr('font-size', '12px')
-            .text(config.x_label || xAxis);
+            .call(d3.axisBottom(scale1));
 
         svg.append('g')
-            .call(d3.axisLeft(scale2))
-            .append('text')
-            .attr('class', 'axis-label')
-            .attr('transform', 'rotate(-90)')
-            .attr('x', -height / 2)
-            .attr('y', -50)
-            .attr('text-anchor', 'middle')
-            .attr('fill', '#555')
-            .attr('font-size', '12px')
-            .text(config.y_label || yAxis);
+            .call(d3.axisLeft(scale2));
     }
 
     // Title
@@ -388,12 +451,7 @@ function renderPieChart(container, data) {
     const pie = d3.pie().value(d => d[yAxis]);
     const arc = d3.arc().innerRadius(0).outerRadius(radius);
 
-    // Sky blue color palette
-    const skyBlueColors = [
-        '#87CEEB', '#1E90FF', '#00BFFF', '#6BB6D6', '#5F9EA0',
-        '#4682B4', '#70AD47', '#00CED1', '#20B2AA', '#3CB371'
-    ];
-    const colors = d3.scaleOrdinal(skyBlueColors);
+    const colors = d3.scaleOrdinal(d3.schemeBlues[9]);
 
     svg.selectAll('.arc')
         .data(pie(data.data))
@@ -403,55 +461,7 @@ function renderPieChart(container, data) {
         .append('path')
         .attr('d', arc)
         .attr('fill', (d, i) => colors(i))
-        .attr('opacity', 0.8)
-        .on('mouseover', function (event, d) {
-            d3.select(this).attr('opacity', 1);
-            const percentage = (d.data[yAxis] / d3.sum(data.data, d => d[yAxis]) * 100).toFixed(1);
-            showTooltip(event, `${d.data[xAxis]}: ${percentage}%`);
-        })
-        .on('mouseout', function () {
-            d3.select(this).attr('opacity', 0.8);
-            hideTooltip();
-        });
-
-    // Labels
-    if (config.show_percentage) {
-        svg.selectAll('.label')
-            .data(pie(data.data))
-            .enter()
-            .append('text')
-            .attr('transform', d => `translate(${arc.centroid(d)})`)
-            .attr('text-anchor', 'middle')
-            .attr('font-size', '11px')
-            .attr('fill', 'white')
-            .attr('font-weight', 'bold')
-            .text(d => {
-                const percentage = (d.data[yAxis] / d3.sum(data.data, d => d[yAxis]) * 100).toFixed(0);
-                return `${percentage}%`;
-            });
-    }
-
-    // Legend
-    if (config.show_legend) {
-        const legend = svg.selectAll('.legend')
-            .data(data.data)
-            .enter()
-            .append('g')
-            .attr('class', 'legend')
-            .attr('transform', (d, i) => `translate(0,${i * 20 - (data.data.length * 20) / 2})`);
-
-        legend.append('rect')
-            .attr('x', radius + 20)
-            .attr('width', 12)
-            .attr('height', 12)
-            .attr('fill', (d, i) => colors(i));
-
-        legend.append('text')
-            .attr('x', radius + 40)
-            .attr('y', 10)
-            .attr('font-size', '11px')
-            .text(d => d[xAxis]);
-    }
+        .attr('opacity', 0.8);
 
     // Title
     svg.append('text')
@@ -464,101 +474,94 @@ function renderPieChart(container, data) {
         .text(config.title);
 }
 
+function renderLineChart(container, data) {
+    const config = data.chart_config;
+    const xAxis = config.x_axis;
+    const yAxis = config.y_axis;
+
+    const margin = { top: 20, right: 30, bottom: 60, left: 70 };
+    const width = 800 - margin.left - margin.right;
+    const height = 400;
+
+    const svg = d3.select(container)
+        .append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom)
+        .append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // Scales
+    const xScale = d3.scaleBand()
+        .domain(data.data.map(d => d[xAxis]))
+        .range([0, width])
+        .padding(0.1);
+
+    const yScale = d3.scaleLinear()
+        .domain([0, d3.max(data.data, d => d[yAxis])])
+        .range([height, 0]);
+
+    // Line
+    const line = d3.line()
+        .x(d => xScale(d[xAxis]) + xScale.bandwidth() / 2)
+        .y(d => yScale(d[yAxis]));
+
+    svg.append('path')
+        .datum(data.data)
+        .attr('class', 'line')
+        .attr('d', line);
+
+    // Dots
+    svg.selectAll('.dot')
+        .data(data.data)
+        .enter()
+        .append('circle')
+        .attr('class', 'dot')
+        .attr('cx', d => xScale(d[xAxis]) + xScale.bandwidth() / 2)
+        .attr('cy', d => yScale(d[yAxis]));
+
+    // Axes
+    svg.append('g')
+        .attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(xScale));
+
+    svg.append('g')
+        .call(d3.axisLeft(yScale));
+
+    // Title
+    svg.append('text')
+        .attr('x', width / 2)
+        .attr('y', -5)
+        .attr('text-anchor', 'middle')
+        .attr('font-size', '16px')
+        .attr('font-weight', 'bold')
+        .attr('fill', '#2c3e50')
+        .text(config.title);
+}
+
 // ============================================================================
 // TABLE RENDERING
 // ============================================================================
 
 function renderTable(tabId, data) {
-    const tableContainer = document.getElementById(`table-${tabId}`);
-    if (!tableContainer) return;
+    const container = document.getElementById(`table-${tabId}`);
+    if (!container) return;
 
     let html = '<table>';
-
-    // Header
     html += '<thead><tr>';
     data.columns.forEach(col => {
         html += `<th>${col}</th>`;
     });
     html += '</tr></thead>';
-
-    // Body
     html += '<tbody>';
+
     data.data.forEach(row => {
         html += '<tr>';
         data.columns.forEach(col => {
-            let value = row[col];
-            // Format currency
-            if (data.format_config && data.format_config.currency && col.includes('cost')) {
-                value = formatCurrency(value);
-            }
-            // Format percentage
-            if (col.includes('score') || col.includes('efficiency')) {
-                value = value.toFixed(1) + '%';
-            }
-            html += `<td>${value}</td>`;
+            html += `<td>${row[col]}</td>`;
         });
         html += '</tr>';
     });
-    html += '</tbody>';
-    html += '</table>';
 
-    tableContainer.innerHTML = html;
+    html += '</tbody></table>';
+    container.innerHTML = html;
 }
-
-// ============================================================================
-// FORMATTING & UTILITIES
-// ============================================================================
-
-function formatValue(value, formatConfig) {
-    if (!formatConfig) return value;
-
-    if (formatConfig.currency) {
-        return formatCurrency(value);
-    }
-    if (formatConfig.add_percent_sign) {
-        return value.toFixed(formatConfig.decimal_places || 1) + '%';
-    }
-
-    return value.toFixed(formatConfig.decimal_places || 0);
-}
-
-function formatCurrency(value) {
-    return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0
-    }).format(value);
-}
-
-// ============================================================================
-// TOOLTIP
-// ============================================================================
-
-let tooltip = null;
-
-function showTooltip(event, text) {
-    if (!tooltip) {
-        tooltip = document.createElement('div');
-        tooltip.className = 'tooltip';
-        document.body.appendChild(tooltip);
-    }
-
-    tooltip.textContent = text;
-    tooltip.style.display = 'block';
-    tooltip.style.left = event.pageX + 10 + 'px';
-    tooltip.style.top = event.pageY - 30 + 'px';
-}
-
-function hideTooltip() {
-    if (tooltip) {
-        tooltip.style.display = 'none';
-    }
-}
-
-document.addEventListener('mousemove', function (event) {
-    if (tooltip && tooltip.style.display !== 'none') {
-        tooltip.style.left = event.pageX + 10 + 'px';
-        tooltip.style.top = event.pageY - 30 + 'px';
-    }
-});

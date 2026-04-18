@@ -8,67 +8,46 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <header class="header">
-            <h1>📊 Cost Reporting Dashboard</h1>
-            <p class="subtitle">Configuration-driven cost analysis and visualization</p>
-        </header>
+    <!-- Header -->
+    <header class="header">
+        <h1>📊 Cost Reporting Dashboard</h1>
+        <p class="subtitle">Configuration-driven cost analysis and visualization</p>
+    </header>
 
-        <!-- Tab Navigation -->
-        <nav class="tabs-nav">
-            <div class="tabs-container">
+    <!-- Main Layout with Sidebar and Tabs -->
+    <div class="dashboard-wrapper">
+        <!-- Left Sidebar with Tab List -->
+        <aside class="sidebar">
+            <div class="sidebar-header">Reports</div>
+            <div class="sidebar-content">
                 {% for tab in tabs %}
-                <button class="tab-button {% if loop.first %}active{% endif %}"
-                        data-tab-id="{{ tab.id }}"
-                        title="{{ tab.description }}">
-                    {{ tab.name }}
-                </button>
+                <div class="sidebar-item" data-tab-id="{{ tab.id }}" title="{{ tab.description }}">
+                    <span class="tab-icon">📊</span>
+                    <span class="tab-label">{{ tab.name }}</span>
+                </div>
                 {% endfor %}
             </div>
-        </nav>
+        </aside>
 
-        <!-- Main Content -->
-        <main class="main-content">
-            {% for tab in tabs %}
-            <div class="tab-content {% if loop.first %}active{% endif %}"
-                 id="tab-{{ tab.id }}"
-                 data-tab-id="{{ tab.id }}">
-
-                <!-- Loading indicator -->
-                <div class="loading" id="loading-{{ tab.id }}">
-                    <div class="spinner"></div>
-                    <p>Loading data...</p>
+        <!-- Right Side with Dynamic Tabs -->
+        <div class="main-area">
+            <!-- Tab Bar -->
+            <nav class="tabs-nav">
+                <div class="tabs-container" id="tabs-container">
+                    <!-- Dynamic tabs added here -->
                 </div>
+            </nav>
 
-                <!-- Tab content (populated by JavaScript) -->
-                <div class="content" id="content-{{ tab.id }}" style="display: none;">
-                    <h2 id="title-{{ tab.id }}"></h2>
-                    <p id="description-{{ tab.id }}" class="description"></p>
+            <!-- Tab Contents -->
+            <main class="tab-contents" id="tab-contents">
+                <!-- Dynamic tab contents added here -->
+            </main>
 
-                    <!-- Filters -->
-                    <div class="filters-container" id="filters-{{ tab.id }}" style="display: none;">
-                    </div>
-
-                    <!-- Chart -->
-                    <div class="chart-container" id="chart-{{ tab.id }}"></div>
-
-                    <!-- Table -->
-                    <div class="table-container" id="table-{{ tab.id }}"></div>
-                </div>
-
-                <!-- Error message -->
-                <div class="error" id="error-{{ tab.id }}" style="display: none;">
-                    <p id="error-msg-{{ tab.id }}"></p>
-                </div>
-            </div>
-            {% endfor %}
-        </main>
-
-        <!-- Footer -->
-        <footer class="footer">
-            <p>Reporting Engine • Config-driven • Dynamic queries • Real-time visualization</p>
-        </footer>
+            <!-- Footer -->
+            <footer class="footer">
+                <p>Reporting Engine • Config-driven • Dynamic queries • Real-time visualization</p>
+            </footer>
+        </div>
     </div>
 
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>

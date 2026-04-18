@@ -1,0 +1,129 @@
+# Mock Data Configuration Examples
+#
+# These configs are designed to work with the generated mock data.
+# All data is synthetic and in the mock_data/ directory.
+#
+# To use:
+# 1. Ensure mock_data/ directory exists with 46 CSV files
+# 2. Configure reporting_engine.py to load from mock_data/
+# 3. Update reporting_engine.py to load mock_data/workday_users.csv
+# 4. Restart Flask app
+
+---
+
+# Tab 1: Total Cost by Namespace (Weekly Trend)
+- tab_name: "Cost by Team (Mock - Weekly)"
+  description: "Weekly trends across different teams/namespaces using mock data"
+  table: "cluster_data"
+  x_axis: "namespace"
+  y_axis: "adjusted_amortized_cost"
+  chart_type: "bar"
+  aggregate_function: "SUM"
+  filters:
+    - column: "namespace"
+      label: "Team/Namespace"
+
+---
+
+# Tab 2: Cluster Cost Analysis
+- tab_name: "Cluster Cost Breakdown (Mock)"
+  description: "Analyzed cluster utilization and efficiency using mock data"
+  table: "cluster_data"
+  x_axis: "cluster_id"
+  y_axis: "cluster_cost"
+  chart_type: "bar"
+  aggregate_function: "SUM"
+
+---
+
+# Tab 3: Service Cost Distribution (Pie Chart)
+- tab_name: "AWS Services (Mock)"
+  description: "Distribution of costs across AWS services"
+  table: "service_costs"
+  x_axis: "service_name"
+  y_axis: "total_amortized_cost"
+  chart_type: "pie"
+  aggregate_function: "SUM"
+
+---
+
+# Tab 4: Instance Type Costs
+- tab_name: "Instance Types (Mock)"
+  description: "Costs by instance category and type"
+  table: "instance_usage"
+  x_axis: "instance_category"
+  y_axis: "total_amortized_cost"
+  chart_type: "bar"
+  aggregate_function: "SUM"
+  filters:
+    - column: "lease_type"
+      label: "Lease Type"
+
+---
+
+# Tab 5: Top Consumers by Cluster Cost
+- tab_name: "Top Teams by Cost (Mock)"
+  description: "Teams ranked by total cluster cost"
+  table: "cluster_data"
+  x_axis: "namespace"
+  y_axis: "adjusted_amortized_cost"
+  chart_type: "horizontal_bar"
+  aggregate_function: "SUM"
+  limit: 10
+  order_by: "adjusted_amortized_cost DESC"
+
+---
+
+# Tab 6: Utilization vs Cost
+- tab_name: "Efficiency Analysis (Mock)"
+  description: "Cluster efficiency score vs cost"
+  table: "cluster_data"
+  x_axis: "efficient_score"
+  y_axis: "adjusted_amortized_cost"
+  chart_type: "scatter"
+  aggregate_function: "AVG"
+
+---
+
+# Tab 7: Weekly Cost Trend
+- tab_name: "Weekly Trend (Mock)"
+  description: "Cost trends over 12 weeks of mock data"
+  table: "cluster_data"
+  x_axis: "week_number"
+  y_axis: "adjusted_amortized_cost"
+  chart_type: "line"
+  aggregate_function: "SUM"
+
+---
+
+# Tab 8: Cost Breakdown by Component
+- tab_name: "Cost Components (Mock)"
+  description: "Breakdown of different cost components"
+  table: "cluster_data"
+  x_axis: "component_type"
+  y_axis: "cost_amount"
+  chart_type: "stacked_bar"
+  aggregate_function: "SUM"
+  # Components: utilized_cost, idle_cost, license_cost, artifactory_cost, etc.
+
+---
+
+# Tab 9: Service Family Distribution
+- tab_name: "Service Families (Mock)"
+  description: "Costs by AWS service family (Compute, Storage, Database, etc.)"
+  table: "service_costs"
+  x_axis: "usage_family"
+  y_axis: "total_amortized_cost"
+  chart_type: "pie"
+  aggregate_function: "SUM"
+
+---
+
+# Tab 10: Lease Type Comparison
+- tab_name: "Lease Types Comparison (Mock)"
+  description: "Costs by instance lease type (On-Demand, Reserved, Spot)"
+  table: "instance_usage"
+  x_axis: "lease_type"
+  y_axis: "total_amortized_cost"
+  chart_type: "bar"
+  aggregate_function: "SUM"

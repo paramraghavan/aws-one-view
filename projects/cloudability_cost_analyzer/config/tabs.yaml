@@ -1,6 +1,6 @@
-# Reporting Engine Configuration
-# Each tab is defined by a config file with SQL-like queries
-# Queries are executed on the weekly/monthly cost reports
+# Dashboard Tabs Configuration
+# Each tab loads a separate config file with query and visualization settings
+# Tab configs are located in config/ directory
 
 tabs:
   - name: "Cost by Funding Block"
@@ -44,19 +44,3 @@ tabs:
     config_file: "efficiency.yaml"
     chart_type: "bar"
     color_scheme: "orange"
-
-# Data source configuration
-data_source:
-  type: "csv"  # Options: csv, database
-  path: "reports/"
-  pattern: "cost_report_*.csv"  # Which reports to load
-
-# Chart rendering options
-chart_options:
-  height: 400
-  width: 800
-  margin:
-    top: 20
-    right: 30
-    bottom: 30
-    left: 60

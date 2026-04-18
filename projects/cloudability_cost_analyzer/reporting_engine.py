@@ -8,6 +8,7 @@ import yaml
 import duckdb
 import pandas as pd
 import json
+import re
 from pathlib import Path
 from flask import Flask, render_template, jsonify, request
 import glob
@@ -32,6 +33,7 @@ class DuckDBEngine:
     """Execute SQL queries using DuckDB with multiple tables"""
 
     def __init__(self):
+        # self.conn = duckdb.connect('duckdb/data.duckdb')
         self.conn = duckdb.connect(':memory:')
         self.loaded_tables = {}
 
@@ -110,6 +112,37 @@ def index():
 
     return render_template('dashboard.html', tabs=config['tabs'])
 
+@app.route('/api/config/<tab_id>')
+def get_tab_config(tab_id):
+    """Get configuration for a specific tab"""
+    try:
+        # Load tabs.yaml to find the tab
+        with open(CONFIG_DIR / "tabs.yaml") as f:
+            tabs_config = yaml.safe_load(f)
+
+        # Find tab
+        tab = next((t for t in tabs_config['tabs'] if t['id'] == tab_id), None)
+        if not tab:
+            return jsonify({'error': 'Tab not found'}), 404
+
+        # Load the specific tab's config file
+        config_file = CONFIG_DIR / tab['config_file']
+        with open(config_file) as f:
+            query_config = yaml.safe_load(f)
+
+        # Return config with SQL and metadata
+        return jsonify({
+            'name': tab.get('name', tab_id),
+            'description': tab.get('description', ''),
+            'sql': query_config.get('sql', ''),
+            'chart': query_config.get('chart', {}),
+            'filters': query_config.get('filters', [])
+        })
+
+    except Exception as e:
+        print(f"Error loading config: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/data/<tab_id>')
 def get_tab_data(tab_id):
     """Get data for a specific tab with optional filters"""
@@ -164,22 +197,44 @@ def get_tab_data(tab_id):
         print(f"Error: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/filter-options/<table_name>/<column_name>')
-def get_filter_options(table_name, column_name):
+@app.route('/api/filter-options/<tab_id>/<column_name>')
+def get_filter_options(tab_id, column_name):
     """Get distinct values for a column (for filter dropdown)"""
     try:
         db = get_db()
         db.load_all_tables()
 
-        # Sanitize input to prevent SQL injection
-        query = f"SELECT DISTINCT {column_name} FROM {table_name} ORDER BY {column_name}"
+        # Load tab config to get SQL and determine main table
+        with open(CONFIG_DIR / "tabs.yaml") as f:
+            tabs_config = yaml.safe_load(f)
+
+        tab = next((t for t in tabs_config['tabs'] if t['id'] == tab_id), None)
+        if not tab:
+            return jsonify({'error': 'Tab not found'}), 404
+
+        # Load tab query config
+        config_file = CONFIG_DIR / tab['config_file']
+        with open(config_file) as f:
+            query_config = yaml.safe_load(f)
+
+        sql_query = query_config.get('sql', '')
+
+        # Extract main table from FROM clause
+        from_match = re.search(r'FROM\s+(\w+)', sql_query, re.IGNORECASE)
+        if not from_match:
+            return jsonify({'error': 'Could not determine table from query'}), 400
+
+        table_name = from_match.group(1)
+
+        # Query for distinct values
+        query = f"SELECT DISTINCT {column_name} FROM {table_name} WHERE {column_name} IS NOT NULL ORDER BY {column_name}"
         result = db.execute_query(query)
 
         options = result[column_name].dropna().tolist()
         return jsonify({'options': options})
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error in get_filter_options: {e}")
         return jsonify({'error': str(e)}), 500
 
 def apply_filters_to_query(sql_query, filters):
