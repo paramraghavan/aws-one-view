@@ -10,6 +10,15 @@ tabs:
     chart_type: "bar"
     color_scheme: "blue"
 
+  - name: "Budget vs Actual"
+    id: "budget_vs_actual"
+    description: "Total costs grouped by funding block"
+    config_file: "budget_vs_actual.yaml"
+    chart_type: "bar"
+    color_scheme: "blue"
+
+
+
   - name: "Users per Funding Block"
     id: "funding_block_users"
     description: "Number of users in each funding block"
