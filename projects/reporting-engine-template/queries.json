@@ -14,6 +14,11 @@
             "id": "project_view",
             "label": "Project Distribution",
             "query": "SELECT project as label, SUM(cost) as value FROM costs WHERE start_date >= ? AND end_date <= ? AND project IN ({projects}) GROUP BY project"
+        },
+        {
+            "id": "forecast",
+            "label": "✨ Predictive AI",
+            "query": "INTERNAL_REGRESSION"
         }
     ]
 }
