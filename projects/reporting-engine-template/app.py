@@ -49,5 +49,42 @@ def get_data(tab_id):
     return jsonify(data)
 
 
+# Add this route to your existing app.py
+@app.route('/api/summary')
+def get_summary():
+    start_date = request.args.get('start_date', '1900-01-01')
+    end_date = request.args.get('end_date', '2099-12-31')
+    selected_projects = request.args.getlist('projects[]')
+
+    project_filter = "SELECT project FROM costs" if not selected_projects else ", ".join(
+        [f"'{p}'" for p in selected_projects])
+
+    query = f"""
+        SELECT 
+            SUM(cost) as total_cost, 
+            COUNT(DISTINCT project) as project_count,
+            AVG(cost) as avg_transaction
+        FROM costs 
+        WHERE start_date >= ? AND end_date <= ? AND project IN ({project_filter})
+    """
+    # Create a local cursor for this specific request
+    cursor = DB_CONN.cursor()
+
+    try:
+        # Use the cursor instead of the global DB_CONN
+        res = cursor.execute(query, [start_date, end_date]).fetchone()
+
+        if res is None:
+            return jsonify({"total": "$0.00", "project_count": 0, "avg": "$0.00"})
+
+        return jsonify({
+            "total": f"${res[0]:,.2f}" if res[0] is not None else "$0.00",
+            "project_count": res[1] or 0,
+            "avg": f"${res[2]:,.2f}" if res[2] is not None else "$0.00"
+        })
+    finally:
+        cursor.close()
+
+
 if __name__ == '__main__':
     app.run(debug=True, port=5110)
