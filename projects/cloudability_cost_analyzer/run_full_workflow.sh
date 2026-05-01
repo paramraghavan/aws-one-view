@@ -14,19 +14,30 @@ print_banner() {
 }
 
 print_usage() {
-    echo "Usage: bash run_full_workflow.sh [OPTION]"
+    echo "Usage: bash run_full_workflow.sh [OPTION] [ENDPOINT]"
     echo ""
     echo "Options:"
-    echo "  real          Fetch real data and process (requires API credentials)"
-    echo "  sample        Generate sample data and process"
+    echo "  real          Fetch real data from Cloudability API V3 and process"
+    echo "  sample        Generate sample data and process (no API needed)"
     echo "  help          Show this help message"
     echo ""
+    echo "Endpoints (for 'real' option):"
+    echo "  allocations   Use /v3/containers/allocations (default, recommended)"
+    echo "  reporting     Use /v3/reporting/cost/run"
+    echo ""
     echo "Examples:"
+    echo ""
+    echo "  # Test with sample data first:"
     echo "  bash run_full_workflow.sh sample"
     echo ""
-    echo "  export CLOUDABILITY_API_KEY='your-key'"
-    echo "  export CLOUDABILITY_CLUSTER_ID='your-id'"
-    echo "  bash run_full_workflow.sh real"
+    echo "  # Run with real Cloudability API V3 data:"
+    echo "  export CLOUDABILITY_API_KEY='your-api-key'"
+    echo "  export CLOUDABILITY_API_PASS='your-api-password'"
+    echo "  export CLOUDABILITY_CLUSTER_ID='your-cluster-id'"
+    echo "  bash run_full_workflow.sh real allocations"
+    echo ""
+    echo "  # Or use reporting endpoint:"
+    echo "  bash run_full_workflow.sh real reporting"
     echo ""
 }
 
@@ -47,9 +58,9 @@ check_python() {
 }
 
 run_real() {
-    FETCH_FORMAT="${1:-csv}"
+    ENDPOINT="${1:-allocations}"
 
-    echo "[1/4] Checking Cloudability credentials..."
+    echo "[1/5] Checking Cloudability API V3 credentials..."
 
     if [ -z "$CLOUDABILITY_API_KEY" ]; then
         echo ""
@@ -57,7 +68,18 @@ run_real() {
         echo ""
         echo "Set your credentials:"
         echo "  export CLOUDABILITY_API_KEY='your-api-key'"
+        echo "  export CLOUDABILITY_API_PASS='your-api-password'"
         echo "  export CLOUDABILITY_CLUSTER_ID='your-cluster-id'"
+        echo ""
+        exit 1
+    fi
+
+    if [ -z "$CLOUDABILITY_API_PASS" ]; then
+        echo ""
+        echo "✗ Error: CLOUDABILITY_API_PASS not set"
+        echo ""
+        echo "Set your API password:"
+        echo "  export CLOUDABILITY_API_PASS='your-api-password'"
         echo ""
         exit 1
     fi
@@ -66,22 +88,31 @@ run_real() {
         echo ""
         echo "✗ Error: CLOUDABILITY_CLUSTER_ID not set"
         echo ""
+        echo "Set your cluster ID:"
+        echo "  export CLOUDABILITY_CLUSTER_ID='your-cluster-id'"
+        echo ""
         exit 1
     fi
 
     echo "✓ Credentials found"
+    echo "  API Key: ${CLOUDABILITY_API_KEY:0:10}...${CLOUDABILITY_API_KEY: -5}"
+    echo "  Cluster ID: $CLOUDABILITY_CLUSTER_ID"
+    echo "  Endpoint: $ENDPOINT"
     echo ""
 
-    echo "[2/4] Fetching data from Cloudability..."
-    bash fetch_cloudability_data.sh "$FETCH_FORMAT"
+    echo "[2/5] Fetching data from Cloudability API V3..."
+    bash fetch_cloudability_data.sh "$ENDPOINT"
 
     echo ""
-    echo "[3/4] Splitting into monthly files..."
+    echo "[3/5] Splitting into monthly files..."
     python3 split_costs_by_month.py --input costs_raw.csv --output-dir ./monthly
 
     echo ""
-    echo "[4/4] Running chargeback analysis..."
+    echo "[4/5] Running chargeback analysis..."
     python3 chargeback_analysis.py
+
+    echo ""
+    echo "[5/5] Analysis complete!"
 }
 
 run_sample() {
@@ -99,10 +130,11 @@ run_sample() {
     echo ""
     echo "✓ Complete workflow finished with sample data"
     echo ""
-    echo "To use real Cloudability data instead:"
+    echo "To use real Cloudability API V3 data instead:"
     echo "  export CLOUDABILITY_API_KEY='your-key'"
+    echo "  export CLOUDABILITY_API_PASS='your-password'"
     echo "  export CLOUDABILITY_CLUSTER_ID='your-id'"
-    echo "  bash run_full_workflow.sh real"
+    echo "  bash run_full_workflow.sh real allocations"
     echo ""
 }
 

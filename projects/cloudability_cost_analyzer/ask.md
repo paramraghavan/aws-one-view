@@ -12,4 +12,4 @@ within code show output of each step
 which is the right column to use for cost unblended or fairshare,
 All the cost computed per month should add up to cloudability monthly code
 Will we add service cost other paltform cost proportionately across all users
-how do calculate change by month for each user. do not look at what's in this repo
+how do calculate change by month for each user. 
