@@ -1,411 +1,429 @@
-## Updated Scripts — Based on Your Exact API Calls
-
-Two key corrections from your working calls:
-
-- Auth is `API_KEY:API_PASS` (not `API_KEY:` blank)
-- Date params are `start=` / `end=` on containers endpoint (not `start_date=`)
-- Filter syntax is `cluster==<id>` (not `cluster_id==<id>`)
-- Cost metric is `adjusted_amortized_cost` / `total_amortized_cost`
+## Simplified Chargeback — Small Functions, Clear Logic
 
 ---
 
-### Script 1 — Pull User/Namespace Cost by Month (`containers/allocations`)
+### The Whole Problem in Plain English
 
-```bash
-#!/bin/bash
-# ============================================================
-# pull_namespace_cost.sh
-# Pulls K8s namespace (user) cost from containers/allocations
-# One CSV per month, Jan 2025 → Feb 2026
-# ============================================================
-set -euo pipefail
+```
+WHAT WE HAVE:
+  API1 → K8s costs split by namespace (user + platform)
+  API2 → AWS bill (EC2, EKS, Artifactory, Licenses, etc.)
 
-API_KEY="your_api_key"
-API_PASS="your_api_pass"
-CLUSTER_ID="1fe68867-f04b-4791-b7bb-9a5ef584c24b"
-BASE_URL="https://api.cloudability.com/v3/containers/allocations"
-OUTPUT_DIR="./chargeback/namespace"
-mkdir -p "${OUTPUT_DIR}"
+WHAT WE WANT:
+  Monthly cost per user (Cxxxxx / Fxxxxx)
 
-# Month array: "LABEL  START       END"
-declare -a MONTHS=(
-  "2025-01  2025-01-01  2025-01-31"
-  "2025-02  2025-02-01  2025-02-28"
-  "2025-03  2025-03-01  2025-03-31"
-  "2025-04  2025-04-01  2025-04-30"
-  "2025-05  2025-05-01  2025-05-31"
-  "2025-06  2025-06-01  2025-06-30"
-  "2025-07  2025-07-01  2025-07-31"
-  "2025-08  2025-08-01  2025-08-31"
-  "2025-09  2025-09-01  2025-09-30"
-  "2025-10  2025-10-01  2025-10-31"
-  "2025-11  2025-11-01  2025-11-30"
-  "2025-12  2025-12-01  2025-12-31"
-  "2026-01  2026-01-01  2026-01-31"
-  "2026-02  2026-02-01  2026-02-28"
-)
-
-echo "================================================"
-echo " Cloudability Namespace Chargeback Pull"
-echo " Cluster: ${CLUSTER_ID}"
-echo "================================================"
-
-for ENTRY in "${MONTHS[@]}"; do
-  read -r MONTH START END <<< "${ENTRY}"
-  OUT="${OUTPUT_DIR}/namespace_cost_${MONTH}.csv"
-  echo -n "  [${MONTH}] ${START} → ${END} ... "
-
-  HTTP_CODE=$(curl -k -s \
-    -u "${API_KEY}:${API_PASS}" \
-    -X GET \
-    --header "Accept: text/csv" \
-    -o "${OUT}" \
-    -w "%{http_code}" \
-    "https://api.cloudability.com/v3/containers/allocations?\
-pretty=false\
-&start=${START}\
-&end=${END}\
-&filters=cluster==${CLUSTER_ID}\
-&costType=adjusted_amortized_cost")
-
-  if [ "${HTTP_CODE}" -eq 200 ]; then
-    ROWS=$(( $(wc -l < "${OUT}") - 1 ))   # subtract header row
-    echo "✓ HTTP 200 — ${ROWS} namespace rows → ${OUT}"
-  else
-    echo "✗ FAILED — HTTP ${HTTP_CODE}"
-    echo "  Response: $(cat "${OUT}")"
-  fi
-
-  sleep 1   # rate limit courtesy
-done
-
-echo ""
-echo "Done. Files → ${OUTPUT_DIR}"
+THE RULE:
+  API1 already contains EC2 + EKS costs (split by namespace)
+  So from API2 we only add: Artifactory + License + Bronze + NonProd
+  Everything else in API2 is already in API1 → skip it
 ```
 
 ---
 
-### Script 2 — Pull AWS Service Cost by Month (`reporting/cost/run`)
+### Cost Model — One Diagram
 
-```bash
-#!/bin/bash
-# ============================================================
-# pull_service_cost.sh
-# Pulls AWS service cost (platform + cloud) from reporting/cost/run
-# One CSV per month, Jan 2025 → Feb 2026
-# ============================================================
-set -euo pipefail
+```
+User Bill = 
+  direct_cost          (API1: their namespace)
++ platform_share       (API1: platform namespaces × their %)
++ extras_share         (API2: Artifactory+License+Bronze+NonProd × their %)
 
-API_KEY="your_api_key"
-API_PASS="your_api_pass"
-BASE_URL="https://api.cloudability.com/v3/reporting/cost/run"
-OUTPUT_DIR="./chargeback/service"
-mkdir -p "${OUTPUT_DIR}"
-
-declare -a MONTHS=(
-  "2025-01  2025-01-01  2025-01-31"
-  "2025-02  2025-02-01  2025-02-28"
-  "2025-03  2025-03-01  2025-03-31"
-  "2025-04  2025-04-01  2025-04-30"
-  "2025-05  2025-05-01  2025-05-31"
-  "2025-06  2025-06-01  2025-06-30"
-  "2025-07  2025-07-01  2025-07-31"
-  "2025-08  2025-08-01  2025-08-31"
-  "2025-09  2025-09-01  2025-09-30"
-  "2025-10  2025-10-01  2025-10-31"
-  "2025-11  2025-11-01  2025-11-30"
-  "2025-12  2025-12-01  2025-12-31"
-  "2026-01  2026-01-01  2026-01-31"
-  "2026-02  2026-02-01  2026-02-28"
-)
-
-echo "================================================"
-echo " Cloudability AWS Service Cost Pull"
-echo "================================================"
-
-for ENTRY in "${MONTHS[@]}"; do
-  read -r MONTH START END <<< "${ENTRY}"
-  OUT="${OUTPUT_DIR}/service_cost_${MONTH}.csv"
-  echo -n "  [${MONTH}] ${START} → ${END} ... "
-
-  HTTP_CODE=$(curl -k -s \
-    -u "${API_KEY}:${API_PASS}" \
-    -X GET \
-    --header "Accept: text/csv" \
-    -o "${OUT}" \
-    -w "%{http_code}" \
-    "https://api.cloudability.com/v3/reporting/cost/run?\
-start_date=${START}\
-&end_date=${END}\
-&dimensions=service_name,usage_family\
-&metrics=total_amortized_cost\
-&sort=total_amortized_cost+DESC")
-
-  if [ "${HTTP_CODE}" -eq 200 ]; then
-    ROWS=$(( $(wc -l < "${OUT}") - 1 ))
-    echo "✓ HTTP 200 — ${ROWS} service rows → ${OUT}"
-  else
-    echo "✗ FAILED — HTTP ${HTTP_CODE}"
-    echo "  Response: $(cat "${OUT}")"
-  fi
-
-  sleep 1
-done
-
-echo ""
-echo "Done. Files → ${OUTPUT_DIR}"
+their % = their direct cost / total of all users direct cost
 ```
 
 ---
 
-### Script 3 — Python: Consolidate + Chargeback by User + MoM Change
+### Code — Small Functions
 
 ```python
 #!/usr/bin/env python3
 """
-consolidate_chargeback.py
-
-Consolidates monthly namespace CSVs from containers/allocations
-and service CSVs from reporting/cost/run into:
-  1. chargeback_by_user.csv     — user cost per month + MoM delta
-  2. service_cost_summary.csv   — AWS service cost per month
-  3. chargeback_final.csv       — combined view
+chargeback.py  —  Simple version, small functions
 """
 
-import os
+import re
 import glob
 import pandas as pd
+from pathlib import Path
 
-NS_DIR = "./chargeback/namespace"
-SVC_DIR = "./chargeback/service"
-OUTPUT_DIR = "./chargeback/output"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+# ─── CONFIG ──────────────────────────────────────────────────────────────────
 
-# ── Namespaces that are platform services, NOT user/modeller namespaces ────
-SERVICE_NAMESPACES = {
-    # Kubernetes system
+API1_DIR = "./output/api1_allocations"  # one CSV per month
+API2_DIR = "./output/api2_service_costs"  # one CSV per month
+OUTPUT_DIR = "./output/reports"
+
+# User namespaces look like Cxxxxxxx or Fxxxxxxx
+USER_PATTERN = re.compile(r'^[CFcf][a-zA-Z0-9]+$')
+
+# Known platform/system namespaces
+PLATFORM_NS = {
     "kube-system", "kube-public", "kube-node-lease", "default",
-    # Cloudability agent (always present on K8s clusters)
-    "cloudability",
-    # Observability
-    "monitoring", "prometheus", "grafana", "alertmanager",
-    # Logging
-    "logging", "fluentd", "elasticsearch", "opensearch",
-    # Service mesh
-    "istio-system", "linkerd", "linkerd-viz",
-    # Ingress / DNS
-    "ingress-nginx", "traefik", "external-dns",
-    # Certs / Secrets
-    "cert-manager", "vault", "external-secrets",
-    # AWS / EKS
-    "aws-system", "amazon-cloudwatch", "aws-load-balancer-controller",
-    "karpenter", "cluster-autoscaler",
-    # EMR / Spark platform
-    "spark-operator", "emr-system", "emr-operator", "emr-containers",
-    # CI/CD
-    "argocd", "flux-system", "jenkins",
+    "monitoring", "prometheus", "grafana", "logging", "fluentd",
+    "istio-system", "cert-manager", "ingress-nginx", "spark-operator",
+    "emr-system", "emr-operator", "aws-system", "amazon-cloudwatch",
+    "cluster-autoscaler", "external-dns", "vault", "cloudability",
 }
 
-MONTHS_ORDERED = [
+MONTHS = [
     "2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06",
     "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12",
     "2026-01", "2026-02",
 ]
 
+# API1 cost column (total cost per namespace row)
+API1_COST_COL = "costs:allocation"
 
-# ═══════════════════════════════════════════════════════════════
-# PART 1 — Namespace (User) Cost
-# ═══════════════════════════════════════════════════════════════
+# API2 columns that are NET NEW (not already in API1)
+# EC2 + EKS costs are EXCLUDED — already captured in API1
+API2_EXTRA_COLS = {
+    "artifactory": "Artifactory Cost",
+    "license": "License Cost",
+    "bronze": "Bronze Cost",
+    "nonprod": "Non-Prod Cost",
+}
 
-def load_namespace_data():
+
+# ═══════════════════════════════════════════════════════════════════════
+# STEP 1 — LOAD DATA
+# ═══════════════════════════════════════════════════════════════════════
+
+def load_monthly_csvs(folder, prefix):
+    """Load all monthly CSV files from a folder into one DataFrame."""
     frames = []
-    for month in MONTHS_ORDERED:
-        path = f"{NS_DIR}/namespace_cost_{month}.csv"
-        if not os.path.exists(path):
-            print(f"  MISSING: {path}")
-            continue
-        try:
-            df = pd.read_csv(path)
-            # Normalize column names
-            df.columns = [c.lower().strip().replace(" ", "_") for c in df.columns]
-            df["month"] = month
-            frames.append(df)
-            print(f"  Loaded {path}: {len(df)} rows, cols={list(df.columns)}")
-        except Exception as e:
-            print(f"  ERROR loading {path}: {e}")
-    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    for fp in sorted(glob.glob(f"{folder}/{prefix}_*.csv")):
+        month = re.search(r'(\d{4}-\d{2})', fp).group(1)
+        df = pd.read_csv(fp, low_memory=False)
+        df.columns = df.columns.str.strip()
+        df["month"] = month
+        frames.append(df)
+        print(f"  loaded {month}: {len(df)} rows")
+    return pd.concat(frames, ignore_index=True)
 
 
-print("\n── Loading namespace/user data ──")
-ns_data = load_namespace_data()
+def load_api1():
+    print("\n--- Loading API1 (container allocations) ---")
+    df = load_monthly_csvs(API1_DIR, "api1_allocations")
+    df[API1_COST_COL] = pd.to_numeric(
+        df[API1_COST_COL], errors="coerce").fillna(0.0)
+    return df
 
-if not ns_data.empty:
-    # Print actual column names so you can verify mapping
-    print(f"\nNamespace CSV columns: {list(ns_data.columns)}")
 
-    # ── Adjust these to match your actual Cloudability CSV column names ──
-    # Common names: 'namespace', 'k8s_namespace', 'container_group'
-    NS_COL = "namespace"  # <-- verify against printed columns
-    COST_COL = "adjusted_amortized_cost"  # <-- verify against printed columns
+def load_api2():
+    print("\n--- Loading API2 (service costs) ---")
+    df = load_monthly_csvs(API2_DIR, "api2_services")
+    for col in API2_EXTRA_COLS.values():
+        if col in df.columns:
+            df[col] = pd.to_numeric(
+                df[col].astype(str).str.replace(r'[$,]', '', regex=True),
+                errors="coerce").fillna(0.0)
+    return df
 
-    # Split users vs platform services
-    ns_data["is_service"] = ns_data[NS_COL].str.lower().isin(SERVICE_NAMESPACES)
-    user_data = ns_data[~ns_data["is_service"]].copy()
-    platform_data = ns_data[ns_data["is_service"]].copy()
 
-    print(f"\nUser namespaces:     {user_data[NS_COL].nunique()} unique")
-    print(f"Service namespaces:  {platform_data[NS_COL].nunique()} unique")
-    print(f"Service namespaces found: {sorted(platform_data[NS_COL].unique())}")
+# ═══════════════════════════════════════════════════════════════════════
+# STEP 2 — CLASSIFY NAMESPACES
+# ═══════════════════════════════════════════════════════════════════════
 
-    # ── Pivot: namespace × month ──
-    user_pivot = (
-        user_data
-        .groupby([NS_COL, "month"])[COST_COL]
-        .sum()
-        .reset_index()
-        .pivot(index=NS_COL, columns="month", values=COST_COL)
-        .reindex(columns=MONTHS_ORDERED)  # enforce month order
-        .fillna(0.0)
-        .sort_index()
+def classify(namespace):
+    """Return 'user', 'platform', based on namespace name."""
+    if not isinstance(namespace, str):
+        return "platform"
+    ns = namespace.strip()
+    if USER_PATTERN.match(ns):
+        return "user"
+    if ns.lower() in PLATFORM_NS:
+        return "platform"
+    return "platform"  # unknown → treat as platform overhead
+
+
+def split_api1(api1):
+    """Split API1 rows into user namespaces and platform namespaces."""
+    api1["ns_type"] = api1["namespace"].apply(classify)
+    api1["employee_id"] = api1["namespace"].str.upper().str.strip()
+
+    user_df = api1[api1["ns_type"] == "user"].copy()
+    platform_df = api1[api1["ns_type"] == "platform"].copy()
+
+    print(f"\nNamespaces found:")
+    print(f"  User namespaces    : "
+          f"{user_df['namespace'].nunique()} unique")
+    print(f"  Platform namespaces: "
+          f"{platform_df['namespace'].nunique()} unique")
+    print(f"\n  Platform list:")
+    for ns in sorted(platform_df["namespace"].unique()):
+        total = platform_df[platform_df["namespace"] == ns][API1_COST_COL].sum()
+        print(f"    {ns:<40} ${total:>12,.2f}")
+
+    return user_df, platform_df
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# STEP 3 — MONTHLY COST POOLS
+# ═══════════════════════════════════════════════════════════════════════
+
+def get_user_direct_costs(user_df):
+    """Monthly direct cost per user from API1."""
+    return (
+        user_df.groupby(["employee_id", "month"])[API1_COST_COL]
+        .sum().round(2).reset_index()
+        .rename(columns={API1_COST_COL: "direct_cost"})
     )
 
-    # ── Month-over-Month delta and % change ──
-    available_months = [m for m in MONTHS_ORDERED if m in user_pivot.columns]
-    for i in range(1, len(available_months)):
-        prev = available_months[i - 1]
-        curr = available_months[i]
-        user_pivot[f"delta_{curr}"] = (user_pivot[curr] - user_pivot[prev]).round(2)
-        user_pivot[f"pct_{curr}"] = (
-            ((user_pivot[curr] - user_pivot[prev])
-             / user_pivot[prev].replace(0, pd.NA) * 100)
-            .round(1)
-        )
 
-    user_pivot["TOTAL"] = user_pivot[available_months].sum(axis=1).round(2)
-    user_pivot = user_pivot.sort_values("TOTAL", ascending=False)
-
-    out_user = f"{OUTPUT_DIR}/chargeback_by_user.csv"
-    user_pivot.reset_index().to_csv(out_user, index=False)
-    print(f"\n✓ User chargeback saved → {out_user}")
-
-    # ── Platform cost summary ──
-    platform_pivot = (
-        platform_data
-        .groupby([NS_COL, "month"])[COST_COL]
-        .sum()
-        .reset_index()
-        .pivot(index=NS_COL, columns="month", values=COST_COL)
-        .reindex(columns=MONTHS_ORDERED)
-        .fillna(0.0)
+def get_platform_pool(platform_df):
+    """Monthly platform namespace cost from API1 (shared overhead)."""
+    return (
+        platform_df.groupby("month")[API1_COST_COL]
+        .sum().round(2)
+        .rename("platform_pool")
     )
-    platform_pivot["TOTAL"] = platform_pivot[available_months].sum(axis=1).round(2)
-    out_platform = f"{OUTPUT_DIR}/platform_cost_by_namespace.csv"
-    platform_pivot.reset_index().to_csv(out_platform, index=False)
-    print(f"✓ Platform cost saved → {out_platform}")
 
 
-# ═══════════════════════════════════════════════════════════════
-# PART 2 — AWS Service Cost (from reporting/cost/run)
-# ═══════════════════════════════════════════════════════════════
+def get_extras_pool(api2):
+    """
+    Monthly extra costs from API2 — Artifactory, License, Bronze, NonProd.
+    EC2 and EKS are intentionally excluded (already in API1).
+    """
+    available = {k: v for k, v in API2_EXTRA_COLS.items()
+                 if v in api2.columns}
+    missing = set(API2_EXTRA_COLS) - set(available)
+    if missing:
+        print(f"  WARNING: API2 missing columns: {missing}")
 
-def load_service_data():
-    frames = []
-    for month in MONTHS_ORDERED:
-        path = f"{SVC_DIR}/service_cost_{month}.csv"
-        if not os.path.exists(path):
-            print(f"  MISSING: {path}")
-            continue
-        try:
-            df = pd.read_csv(path)
-            df.columns = [c.lower().strip().replace(" ", "_") for c in df.columns]
-            df["month"] = month
-            frames.append(df)
-        except Exception as e:
-            print(f"  ERROR loading {path}: {e}")
-    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    pool = api2.groupby("month")[list(available.values())].sum().round(2)
+    pool.columns = [k for k in available]  # rename to short keys
+    pool["extras_total"] = pool.sum(axis=1).round(2)
+    return pool
 
 
-print("\n── Loading AWS service cost data ──")
-svc_data = load_service_data()
+# ═══════════════════════════════════════════════════════════════════════
+# STEP 4 — CALCULATE CHARGEBACK
+# ═══════════════════════════════════════════════════════════════════════
 
-if not svc_data.empty:
-    print(f"Service CSV columns: {list(svc_data.columns)}")
+def calc_user_share(direct_cost, total_direct):
+    """What % of cluster spend does this user represent?"""
+    if total_direct > 0:
+        return round(direct_cost / total_direct * 100, 4)
+    return 0.0
 
-    # ── Adjust to match actual column names ──
-    SVC_COL = "service_name"  # <-- verify
-    FAMILY_COL = "usage_family"  # <-- verify
-    SVC_COST_COL = "total_amortized_cost"  # <-- verify
 
-    svc_pivot = (
-        svc_data
-        .groupby([SVC_COL, FAMILY_COL, "month"])[SVC_COST_COL]
-        .sum()
-        .reset_index()
-        .pivot_table(
-            index=[SVC_COL, FAMILY_COL],
+def build_chargeback(user_costs, platform_pool, extras_pool):
+    """
+    For each user × month:
+      total = direct + (platform × share%) + (extras × share%)
+    """
+    # Monthly total direct cost = denominator for share %
+    monthly_totals = (
+        user_costs.groupby("month")["direct_cost"]
+        .sum().rename("total_direct")
+    )
+
+    rows = []
+    for _, row in user_costs.iterrows():
+        emp = row["employee_id"]
+        month = row["month"]
+        dc = row["direct_cost"]
+
+        total = monthly_totals.get(month, 0)
+        share = dc / total if total > 0 else 0  # decimal, e.g. 0.032
+
+        plat = float(platform_pool.get(month, 0))
+        extras = extras_pool.loc[month] if month in extras_pool.index
+            else pd.Series(dtype=float)
+
+        plat_share = round(share * plat, 2)
+        ext_detail = {
+            k: round(share * float(extras.get(k, 0)), 2)
+            for k in API2_EXTRA_COLS
+        }
+        ext_total = round(sum(ext_detail.values()), 2)
+
+        rows.append({
+            "employee_id": emp,
+            "month": month,
+            "direct_cost": round(dc, 2),
+            "user_share_pct": round(share * 100, 2),
+            "platform_share": plat_share,
+            **ext_detail,
+            "extras_total": ext_total,
+            "total_chargeback": round(dc + plat_share + ext_total, 2),
+        })
+
+    return pd.DataFrame(rows)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# STEP 5 — PIVOT TO MONTHLY COLUMNS + MoM CHANGE
+# ═══════════════════════════════════════════════════════════════════════
+
+def pivot_by_month(df, value_col, months):
+    """Rows = employee, columns = months. Add MoM Δ columns."""
+    pivot = (
+        df.pivot_table(
+            index="employee_id",
             columns="month",
-            values=SVC_COST_COL,
+            values=value_col,
             aggfunc="sum"
         )
-        .reindex(columns=MONTHS_ORDERED)
+        .reindex(columns=[m for m in months if m in df["month"].values])
         .fillna(0.0)
+        .round(2)
     )
-    svc_pivot["TOTAL"] = svc_pivot[
-        [m for m in MONTHS_ORDERED if m in svc_pivot.columns]
-    ].sum(axis=1).round(2)
-    svc_pivot = svc_pivot.sort_values("TOTAL", ascending=False)
 
-    out_svc = f"{OUTPUT_DIR}/service_cost_summary.csv"
-    svc_pivot.reset_index().to_csv(out_svc, index=False)
-    print(f"✓ Service cost saved → {out_svc}")
+    # Month-over-month change
+    live_months = [m for m in months if m in pivot.columns]
+    for i in range(1, len(live_months)):
+        prev, curr = live_months[i - 1], live_months[i]
+        delta = (pivot[curr] - pivot[prev]).round(2)
+        pct = (delta / pivot[prev].replace(0, pd.NA) * 100).round(1)
+        pivot[f"chg_{curr}"] = delta
+        pivot[f"chg%_{curr}"] = pct
 
-# ═══════════════════════════════════════════════════════════════
-# PART 3 — Quick Console Summary
-# ═══════════════════════════════════════════════════════════════
+    pivot["TOTAL"] = pivot[live_months].sum(axis=1).round(2)
+    pivot["AVG_MONTH"] = pivot[live_months].mean(axis=1).round(2)
+    return pivot.sort_values("TOTAL", ascending=False)
 
-if not ns_data.empty and "user_pivot" in dir():
-    print("\n" + "═" * 65)
-    print(f"  CHARGEBACK SUMMARY — TOP 10 USERS (TOTAL SPEND)")
-    print("═" * 65)
-    top10 = user_pivot["TOTAL"].nlargest(10)
-    for ns, cost in top10.items():
-        print(f"  {ns:<35} ${cost:>12,.2f}")
-    print("═" * 65)
-    total_all = user_pivot["TOTAL"].sum()
-    print(f"  {'ALL USERS TOTAL':<35} ${total_all:>12,.2f}")
-    print("═" * 65)
 
-print("\nAll done.")
+# ═══════════════════════════════════════════════════════════════════════
+# STEP 6 — RECONCILIATION (sanity check)
+# ═══════════════════════════════════════════════════════════════════════
+
+def reconcile(chargeback_df, platform_pool, extras_pool, months):
+    """
+    Month-level summary to verify totals make sense.
+    direct + platform_pool + extras_pool should = sum of all user chargebacks
+    """
+    rows = []
+    for month in months:
+        m = chargeback_df[chargeback_df["month"] == month]
+        if m.empty:
+            continue
+        ext_total = float(extras_pool.loc[month, "extras_total"])
+            if month in extras_pool.index else 0
+        rows.append({
+            "month": month,
+            "num_users": len(m),
+            "direct_total": m["direct_cost"].sum().round(2),
+            "platform_pool": round(float(platform_pool.get(month, 0)), 2),
+            "extras_pool": round(ext_total, 2),
+            "sum_chargeback": m["total_chargeback"].sum().round(2),
+        })
+    return pd.DataFrame(rows)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# STEP 7 — SAVE + PRINT
+# ═══════════════════════════════════════════════════════════════════════
+
+def save(df, filename):
+    path = f"{OUTPUT_DIR}/{filename}"
+    df.to_csv(path, index=True)
+    print(f"  saved: {path}")
+
+
+def print_summary(chargeback_pivot, recon_df):
+    live = [c for c in chargeback_pivot.columns
+            if re.match(r'\d{4}-\d{2}', c)]
+
+    print("\n" + "=" * 65)
+    print("MONTHLY SUMMARY")
+    print("=" * 65)
+    print(f"\n{'Month':<10} {'Users':>6} {'Direct':>12} "
+          f"{'Platform':>12} {'Extras':>10} {'TOTAL CB':>14}")
+    print("-" * 66)
+    for _, r in recon_df.iterrows():
+        print(f"{r['month']:<10} {r['num_users']:>6} "
+              f"${r['direct_total']:>11,.0f} "
+              f"${r['platform_pool']:>11,.0f} "
+              f"${r['extras_pool']:>9,.0f} "
+              f"${r['sum_chargeback']:>13,.0f}")
+
+    print("\n" + "=" * 65)
+    print("TOP 10 USERS — TOTAL CHARGEBACK")
+    print("=" * 65)
+    print(f"\n{'Employee':<14}", end="")
+    for m in live[:6]:
+        print(f" {m:>10}", end="")
+    print(f" {'TOTAL':>12}  {'AVG/MO':>9}")
+    print("-" * (14 + 11 * min(6, len(live)) + 24))
+    for emp, row in chargeback_pivot.head(10).iterrows():
+        print(f"{emp:<14}", end="")
+        for m in live[:6]:
+            print(f" ${row[m]:>9,.0f}", end="")
+        print(f" ${row['TOTAL']:>11,.0f}  ${row['AVG_MONTH']:>8,.0f}")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# MAIN — wire it all together
+# ═══════════════════════════════════════════════════════════════════════
+
+def main():
+    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+
+    # 1. Load
+    api1 = load_api1()
+    api2 = load_api2()
+
+    # 2. Classify namespaces
+    user_df, platform_df = split_api1(api1)
+
+    # 3. Cost pools
+    user_costs = get_user_direct_costs(user_df)
+    platform_pool = get_platform_pool(platform_df)
+    extras_pool = get_extras_pool(api2)
+
+    # 4. Chargeback per user per month
+    chargeback_df = build_chargeback(user_costs, platform_pool, extras_pool)
+
+    # 5. Pivot to wide format with MoM change
+    chargeback_pivot = pivot_by_month(chargeback_df, "total_chargeback", MONTHS)
+    direct_pivot = pivot_by_month(chargeback_df, "direct_cost", MONTHS)
+
+    # 6. Reconciliation
+    recon_df = reconcile(chargeback_df, platform_pool, extras_pool, MONTHS)
+
+    # 7. Save
+    save(chargeback_pivot, "chargeback_by_user.csv")
+    save(direct_pivot, "direct_cost_by_user.csv")
+    save(chargeback_df, "chargeback_detail.csv")
+    save(recon_df.set_index("month"), "monthly_reconciliation.csv")
+
+    # 8. Print
+    print_summary(chargeback_pivot, recon_df)
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 ---
 
-### Output Files Produced
+### What Each Function Does — One Line Each
 
-| File                                               | Contents                                             |
-|----------------------------------------------------|------------------------------------------------------|
-| `chargeback/namespace/namespace_cost_YYYY-MM.csv`  | Raw per-namespace cost from `containers/allocations` |
-| `chargeback/service/service_cost_YYYY-MM.csv`      | Raw AWS service cost from `reporting/cost/run`       |
-| `chargeback/output/chargeback_by_user.csv`         | **User pivot: cost + MoM delta + % change + total**  |
-| `chargeback/output/platform_cost_by_namespace.csv` | Platform/system namespace costs separated out        |
-| `chargeback/output/service_cost_summary.csv`       | AWS cost by service_name + usage_family pivot        |
+| Function                | Does                                                         |
+|-------------------------|--------------------------------------------------------------|
+| `load_monthly_csvs`     | reads all monthly CSVs from a folder into one DataFrame      |
+| `load_api1`             | calls above + converts cost column to numeric                |
+| `load_api2`             | calls above + converts API2 cost columns to numeric          |
+| `classify`              | returns `"user"` or `"platform"` for a namespace string      |
+| `split_api1`            | applies classify to every row, separates into two DataFrames |
+| `get_user_direct_costs` | sums API1 cost by employee + month                           |
+| `get_platform_pool`     | sums API1 platform namespace cost by month                   |
+| `get_extras_pool`       | sums API2 Artifactory+License+Bronze+NonProd by month        |
+| `calc_user_share`       | user direct ÷ all users direct = their %                     |
+| `build_chargeback`      | applies share% to each pool, produces one row per user×month |
+| `pivot_by_month`        | rotates to wide format (rows=users, cols=months) + MoM Δ     |
+| `reconcile`             | monthly totals sanity check table                            |
+| `save`                  | writes DataFrame to CSV                                      |
+| `print_summary`         | prints console report                                        |
+| `main`                  | calls all of the above in order                              |
 
 ---
 
-### One Thing to Verify First
+### Output Files
 
-Run this one-off call to see the **exact column names** Cloudability returns in your environment before running the full
-loop — column names can differ by tenant config:
-
-```bash
-curl -k -s \
-  -u "${API_KEY}:${API_PASS}" \
-  -X GET \
-  --header "Accept: text/csv" \
-  "https://api.cloudability.com/v3/containers/allocations?\
-start=2025-01-01&end=2025-01-31\
-&filters=cluster==1fe68867-f04b-4791-b7bb-9a5ef584c24b\
-&costType=adjusted_amortized_cost" | head -3
-```
-
-The first line returned is the header row — use those exact names in `NS_COL` and `COST_COL` in the Python script.
+| File                         | Contents                                                     |
+|------------------------------|--------------------------------------------------------------|
+| `chargeback_by_user.csv`     | Final bill per user per month + MoM change                   |
+| `direct_cost_by_user.csv`    | Raw API1 cost only (before shared allocation)                |
+| `chargeback_detail.csv`      | Every user × month with direct / platform / extras breakdown |
+| `monthly_reconciliation.csv` | Month-level totals to verify nothing is missing              |
