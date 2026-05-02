@@ -1,429 +1,246 @@
-## Simplified Chargeback — Small Functions, Clear Logic
+# Cloudability Cost Chargeback — Reconciliation & Namespace Allocation Guide
 
----
+> Covers: service.csv vs bronze.csv reconciliation, cost column selection, namespace exclusions, unallocated cost
+> distribution, and multi-cluster handling.
 
-### The Whole Problem in Plain English
+## Service.csv
 
+```text
+service_nane, usage_family, total_amortized_cost
+Amazon Elastic Compute Cloud, Instance Usage, 135759.2733453373
+Amazon Elastic Compute Cloud, Storage, 18499.2507147066
+Amazon Elastic Compute Cloud, Storage Snapshot, 11497.335150535
+Amazon Elastic Compute Cloud, Provisioned IOPS, 4490.874986683997
+Amazon Elastic Container Service for Kubernetes, Instance Usage, 4000.2
+Amazon Elastic File System, Storage, 3902. 780492916302
+Amazon Simple Storage Service, Storage, 2763.1859943181007
+Amazon Elastic Compute Cloud, Data Transfer, 2624.3566999219
+Amazon Elastic Compute CLoud, Throughput, 2441.327200117201
+Amazon Elastic File System, I0, 1999.6432560753
+Amazon Relational Database Service, Instance Usage, 1434.5290016500003
+AWS Key Management Service, Data Processing, 1303.6169146260002
+Amazon Relational Database Service, Other, 973.6372777000003
+Elastic Load Balancing, Load BaLancer, 002.1611372001003
+Amazon DynamoDB, IO, 170.94267715
+AmazonCloudWatch, Custom Metrics, 07.90046979079995
+Amazon Relational Database Service, Storage, 52. 27696769289999
+Amazon Simple Storage Service, API Request, 10.9210954
+AWS Key Management Service, APT Request, 5.2945530000000905
+Amazon Relational Database Service, I0, 5.264174599999999
+Amazon Relational Database Service, Storage Snapshot, 0.9021298735
+Amazon Sinple Storage Service, Data Transfer, 0.0225997236
+AWS Lambda, Memory Duration, 0.9031490729
+Amazon Relational Database Service, Data Transfer, 0.0031206614
+AVIS Secrets Manager, API Request, 0.001000000000000001
+Amazon Simple Notification Service, API Request, 0.0010785
+AWS Backup, Storage, 0.0000080817
+AWS Lambda, API Request, 0.0000044
+Anazon DynamoDB, Storage, O
+Amazon Simple Notification Service, Data Transfer, G Amazon Simple Storage Service, Other, o
 ```
-WHAT WE HAVE:
-  API1 → K8s costs split by namespace (user + platform)
-  API2 → AWS bill (EC2, EKS, Artifactory, Licenses, etc.)
 
-WHAT WE WANT:
-  Monthly cost per user (Cxxxxx / Fxxxxx)
-
-THE RULE:
-  API1 already contains EC2 + EKS costs (split by namespace)
-  So from API2 we only add: Artifactory + License + Bronze + NonProd
-  Everything else in API2 is already in API1 → skip it
-```
-
----
-
-### Cost Model — One Diagram
-
-```
-User Bill = 
-  direct_cost          (API1: their namespace)
-+ platform_share       (API1: platform namespaces × their %)
-+ extras_share         (API2: Artifactory+License+Bronze+NonProd × their %)
-
-their % = their direct cost / total of all users direct cost
-```
-
----
-
-### Code — Small Functions
-
-```python
-#!/usr/bin/env python3
-"""
-chargeback.py  —  Simple version, small functions
-"""
-
-import re
-import glob
-import pandas as pd
-from pathlib import Path
-
-# ─── CONFIG ──────────────────────────────────────────────────────────────────
-
-API1_DIR = "./output/api1_allocations"  # one CSV per month
-API2_DIR = "./output/api2_service_costs"  # one CSV per month
-OUTPUT_DIR = "./output/reports"
-
-# User namespaces look like Cxxxxxxx or Fxxxxxxx
-USER_PATTERN = re.compile(r'^[CFcf][a-zA-Z0-9]+$')
-
-# Known platform/system namespaces
-PLATFORM_NS = {
-    "kube-system", "kube-public", "kube-node-lease", "default",
-    "monitoring", "prometheus", "grafana", "logging", "fluentd",
-    "istio-system", "cert-manager", "ingress-nginx", "spark-operator",
-    "emr-system", "emr-operator", "aws-system", "amazon-cloudwatch",
-    "cluster-autoscaler", "external-dns", "vault", "cloudability",
-}
-
-MONTHS = [
-    "2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06",
-    "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12",
-    "2026-01", "2026-02",
-]
-
-# API1 cost column (total cost per namespace row)
-API1_COST_COL = "costs:allocation"
-
-# API2 columns that are NET NEW (not already in API1)
-# EC2 + EKS costs are EXCLUDED — already captured in API1
-API2_EXTRA_COLS = {
-    "artifactory": "Artifactory Cost",
-    "license": "License Cost",
-    "bronze": "Bronze Cost",
-    "nonprod": "Non-Prod Cost",
-}
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# STEP 1 — LOAD DATA
-# ═══════════════════════════════════════════════════════════════════════
-
-def load_monthly_csvs(folder, prefix):
-    """Load all monthly CSV files from a folder into one DataFrame."""
-    frames = []
-    for fp in sorted(glob.glob(f"{folder}/{prefix}_*.csv")):
-        month = re.search(r'(\d{4}-\d{2})', fp).group(1)
-        df = pd.read_csv(fp, low_memory=False)
-        df.columns = df.columns.str.strip()
-        df["month"] = month
-        frames.append(df)
-        print(f"  loaded {month}: {len(df)} rows")
-    return pd.concat(frames, ignore_index=True)
-
-
-def load_api1():
-    print("\n--- Loading API1 (container allocations) ---")
-    df = load_monthly_csvs(API1_DIR, "api1_allocations")
-    df[API1_COST_COL] = pd.to_numeric(
-        df[API1_COST_COL], errors="coerce").fillna(0.0)
-    return df
-
-
-def load_api2():
-    print("\n--- Loading API2 (service costs) ---")
-    df = load_monthly_csvs(API2_DIR, "api2_services")
-    for col in API2_EXTRA_COLS.values():
-        if col in df.columns:
-            df[col] = pd.to_numeric(
-                df[col].astype(str).str.replace(r'[$,]', '', regex=True),
-                errors="coerce").fillna(0.0)
-    return df
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# STEP 2 — CLASSIFY NAMESPACES
-# ═══════════════════════════════════════════════════════════════════════
-
-def classify(namespace):
-    """Return 'user', 'platform', based on namespace name."""
-    if not isinstance(namespace, str):
-        return "platform"
-    ns = namespace.strip()
-    if USER_PATTERN.match(ns):
-        return "user"
-    if ns.lower() in PLATFORM_NS:
-        return "platform"
-    return "platform"  # unknown → treat as platform overhead
-
-
-def split_api1(api1):
-    """Split API1 rows into user namespaces and platform namespaces."""
-    api1["ns_type"] = api1["namespace"].apply(classify)
-    api1["employee_id"] = api1["namespace"].str.upper().str.strip()
-
-    user_df = api1[api1["ns_type"] == "user"].copy()
-    platform_df = api1[api1["ns_type"] == "platform"].copy()
-
-    print(f"\nNamespaces found:")
-    print(f"  User namespaces    : "
-          f"{user_df['namespace'].nunique()} unique")
-    print(f"  Platform namespaces: "
-          f"{platform_df['namespace'].nunique()} unique")
-    print(f"\n  Platform list:")
-    for ns in sorted(platform_df["namespace"].unique()):
-        total = platform_df[platform_df["namespace"] == ns][API1_COST_COL].sum()
-        print(f"    {ns:<40} ${total:>12,.2f}")
-
-    return user_df, platform_df
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# STEP 3 — MONTHLY COST POOLS
-# ═══════════════════════════════════════════════════════════════════════
-
-def get_user_direct_costs(user_df):
-    """Monthly direct cost per user from API1."""
-    return (
-        user_df.groupby(["employee_id", "month"])[API1_COST_COL]
-        .sum().round(2).reset_index()
-        .rename(columns={API1_COST_COL: "direct_cost"})
-    )
-
-
-def get_platform_pool(platform_df):
-    """Monthly platform namespace cost from API1 (shared overhead)."""
-    return (
-        platform_df.groupby("month")[API1_COST_COL]
-        .sum().round(2)
-        .rename("platform_pool")
-    )
-
-
-def get_extras_pool(api2):
-    """
-    Monthly extra costs from API2 — Artifactory, License, Bronze, NonProd.
-    EC2 and EKS are intentionally excluded (already in API1).
-    """
-    available = {k: v for k, v in API2_EXTRA_COLS.items()
-                 if v in api2.columns}
-    missing = set(API2_EXTRA_COLS) - set(available)
-    if missing:
-        print(f"  WARNING: API2 missing columns: {missing}")
-
-    pool = api2.groupby("month")[list(available.values())].sum().round(2)
-    pool.columns = [k for k in available]  # rename to short keys
-    pool["extras_total"] = pool.sum(axis=1).round(2)
-    return pool
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# STEP 4 — CALCULATE CHARGEBACK
-# ═══════════════════════════════════════════════════════════════════════
-
-def calc_user_share(direct_cost, total_direct):
-    """What % of cluster spend does this user represent?"""
-    if total_direct > 0:
-        return round(direct_cost / total_direct * 100, 4)
-    return 0.0
-
-
-def build_chargeback(user_costs, platform_pool, extras_pool):
-    """
-    For each user × month:
-      total = direct + (platform × share%) + (extras × share%)
-    """
-    # Monthly total direct cost = denominator for share %
-    monthly_totals = (
-        user_costs.groupby("month")["direct_cost"]
-        .sum().rename("total_direct")
-    )
-
-    rows = []
-    for _, row in user_costs.iterrows():
-        emp = row["employee_id"]
-        month = row["month"]
-        dc = row["direct_cost"]
-
-        total = monthly_totals.get(month, 0)
-        share = dc / total if total > 0 else 0  # decimal, e.g. 0.032
-
-        plat = float(platform_pool.get(month, 0))
-        extras = extras_pool.loc[month] if month in extras_pool.index
-            else pd.Series(dtype=float)
-
-        plat_share = round(share * plat, 2)
-        ext_detail = {
-            k: round(share * float(extras.get(k, 0)), 2)
-            for k in API2_EXTRA_COLS
-        }
-        ext_total = round(sum(ext_detail.values()), 2)
-
-        rows.append({
-            "employee_id": emp,
-            "month": month,
-            "direct_cost": round(dc, 2),
-            "user_share_pct": round(share * 100, 2),
-            "platform_share": plat_share,
-            **ext_detail,
-            "extras_total": ext_total,
-            "total_chargeback": round(dc + plat_share + ext_total, 2),
-        })
-
-    return pd.DataFrame(rows)
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# STEP 5 — PIVOT TO MONTHLY COLUMNS + MoM CHANGE
-# ═══════════════════════════════════════════════════════════════════════
-
-def pivot_by_month(df, value_col, months):
-    """Rows = employee, columns = months. Add MoM Δ columns."""
-    pivot = (
-        df.pivot_table(
-            index="employee_id",
-            columns="month",
-            values=value_col,
-            aggfunc="sum"
-        )
-        .reindex(columns=[m for m in months if m in df["month"].values])
-        .fillna(0.0)
-        .round(2)
-    )
-
-    # Month-over-month change
-    live_months = [m for m in months if m in pivot.columns]
-    for i in range(1, len(live_months)):
-        prev, curr = live_months[i - 1], live_months[i]
-        delta = (pivot[curr] - pivot[prev]).round(2)
-        pct = (delta / pivot[prev].replace(0, pd.NA) * 100).round(1)
-        pivot[f"chg_{curr}"] = delta
-        pivot[f"chg%_{curr}"] = pct
-
-    pivot["TOTAL"] = pivot[live_months].sum(axis=1).round(2)
-    pivot["AVG_MONTH"] = pivot[live_months].mean(axis=1).round(2)
-    return pivot.sort_values("TOTAL", ascending=False)
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# STEP 6 — RECONCILIATION (sanity check)
-# ═══════════════════════════════════════════════════════════════════════
-
-def reconcile(chargeback_df, platform_pool, extras_pool, months):
-    """
-    Month-level summary to verify totals make sense.
-    direct + platform_pool + extras_pool should = sum of all user chargebacks
-    """
-    rows = []
-    for month in months:
-        m = chargeback_df[chargeback_df["month"] == month]
-        if m.empty:
-            continue
-        ext_total = float(extras_pool.loc[month, "extras_total"])
-            if month in extras_pool.index else 0
-        rows.append({
-            "month": month,
-            "num_users": len(m),
-            "direct_total": m["direct_cost"].sum().round(2),
-            "platform_pool": round(float(platform_pool.get(month, 0)), 2),
-            "extras_pool": round(ext_total, 2),
-            "sum_chargeback": m["total_chargeback"].sum().round(2),
-        })
-    return pd.DataFrame(rows)
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# STEP 7 — SAVE + PRINT
-# ═══════════════════════════════════════════════════════════════════════
-
-def save(df, filename):
-    path = f"{OUTPUT_DIR}/{filename}"
-    df.to_csv(path, index=True)
-    print(f"  saved: {path}")
-
-
-def print_summary(chargeback_pivot, recon_df):
-    live = [c for c in chargeback_pivot.columns
-            if re.match(r'\d{4}-\d{2}', c)]
-
-    print("\n" + "=" * 65)
-    print("MONTHLY SUMMARY")
-    print("=" * 65)
-    print(f"\n{'Month':<10} {'Users':>6} {'Direct':>12} "
-          f"{'Platform':>12} {'Extras':>10} {'TOTAL CB':>14}")
-    print("-" * 66)
-    for _, r in recon_df.iterrows():
-        print(f"{r['month']:<10} {r['num_users']:>6} "
-              f"${r['direct_total']:>11,.0f} "
-              f"${r['platform_pool']:>11,.0f} "
-              f"${r['extras_pool']:>9,.0f} "
-              f"${r['sum_chargeback']:>13,.0f}")
-
-    print("\n" + "=" * 65)
-    print("TOP 10 USERS — TOTAL CHARGEBACK")
-    print("=" * 65)
-    print(f"\n{'Employee':<14}", end="")
-    for m in live[:6]:
-        print(f" {m:>10}", end="")
-    print(f" {'TOTAL':>12}  {'AVG/MO':>9}")
-    print("-" * (14 + 11 * min(6, len(live)) + 24))
-    for emp, row in chargeback_pivot.head(10).iterrows():
-        print(f"{emp:<14}", end="")
-        for m in live[:6]:
-            print(f" ${row[m]:>9,.0f}", end="")
-        print(f" ${row['TOTAL']:>11,.0f}  ${row['AVG_MONTH']:>8,.0f}")
-
-
-# ═══════════════════════════════════════════════════════════════════════
-# MAIN — wire it all together
-# ═══════════════════════════════════════════════════════════════════════
-
-def main():
-    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
-
-    # 1. Load
-    api1 = load_api1()
-    api2 = load_api2()
-
-    # 2. Classify namespaces
-    user_df, platform_df = split_api1(api1)
-
-    # 3. Cost pools
-    user_costs = get_user_direct_costs(user_df)
-    platform_pool = get_platform_pool(platform_df)
-    extras_pool = get_extras_pool(api2)
-
-    # 4. Chargeback per user per month
-    chargeback_df = build_chargeback(user_costs, platform_pool, extras_pool)
-
-    # 5. Pivot to wide format with MoM change
-    chargeback_pivot = pivot_by_month(chargeback_df, "total_chargeback", MONTHS)
-    direct_pivot = pivot_by_month(chargeback_df, "direct_cost", MONTHS)
-
-    # 6. Reconciliation
-    recon_df = reconcile(chargeback_df, platform_pool, extras_pool, MONTHS)
-
-    # 7. Save
-    save(chargeback_pivot, "chargeback_by_user.csv")
-    save(direct_pivot, "direct_cost_by_user.csv")
-    save(chargeback_df, "chargeback_detail.csv")
-    save(recon_df.set_index("month"), "monthly_reconciliation.csv")
-
-    # 8. Print
-    print_summary(chargeback_pivot, recon_df)
-
-
-if __name__ == "__main__":
-    main()
+**Bronze columns**
+
+```text 
+type, namespace, costs: cpu/reserved: allocation, costs: cpu/reserved: fairShare, costs: memory/reserved_rss:
+allocation, costs: memory/reserved_rss: fairshare, costs: net tion, costs:network/tx:fairShare, costs:network/rx:
+allocation, costs:network/rx:fairShare, costs: filesystem/usage:allocation, costs: filesystem/usage:fairShare, co ed:
+allocation, costs: gpu/reserved: fairShare, costs: persistent_volume_filesystem/usage:allocation, costs:
+persistent_volume_filesystem/usage:fairShare, cpu/reserv cpu/reserved: fairShare, cpu/reserved: resource: mean,
+cpu/reserved: resource: unit, cpu/reserved: resource: sum, cpu/reserved: resource: count, memory/ reserved rss: alloc
+eserved rss: fairshare, memory/reserved rss: resource: mean, memory/reserved_rss: resource: unit, memory/reserved_rss:
+resource: sum, memory/reserved rss: resource: count location, network/t: fairShare, network/t: resource:mean,
+network/tx: resource:unit, network/t: resource: sum, network/t: resource: count, network/r: allocation, nett are,
+network/rx: resource:mean, network/rx: resource: unit, network/rx: resource: sum, network/rx: resource:count,
+filesystem/usage: allocation, filesystem/usage: fairShal usage: resource: mean, filesystem/usage: resource: unit,
+filesystem/usage: resource: sum, filesystem/usage: resource: count, gpu/reserved: allocation, gpu/reserved: fairSha ed:
+resource: mean, gpu/reserved: resource: unit, gpu/reserved: resource: sum, gpu/reserved: resource:count,
+persistent_volume_filesystem/usage:allocation,persistent em/usage: fairShare, persistent_volume_filesystem/usage:
+resource:mean, persistent_volume_filesystem/usage: resource:unit, persistent_volume_filesystem/usage:resou stent _
+volume_filesystem/usage:resource:count, percentages: allocation, percentages: fairShare, percentages:
+fairShareUnallocated, costs: allocation, costs: fairShare, cost:unallocated
 ```
 
 ---
 
-### What Each Function Does — One Line Each
+## 1. Overview of Source Files
 
-| Function                | Does                                                         |
-|-------------------------|--------------------------------------------------------------|
-| `load_monthly_csvs`     | reads all monthly CSVs from a folder into one DataFrame      |
-| `load_api1`             | calls above + converts cost column to numeric                |
-| `load_api2`             | calls above + converts API2 cost columns to numeric          |
-| `classify`              | returns `"user"` or `"platform"` for a namespace string      |
-| `split_api1`            | applies classify to every row, separates into two DataFrames |
-| `get_user_direct_costs` | sums API1 cost by employee + month                           |
-| `get_platform_pool`     | sums API1 platform namespace cost by month                   |
-| `get_extras_pool`       | sums API2 Artifactory+License+Bronze+NonProd by month        |
-| `calc_user_share`       | user direct ÷ all users direct = their %                     |
-| `build_chargeback`      | applies share% to each pool, produces one row per user×month |
-| `pivot_by_month`        | rotates to wide format (rows=users, cols=months) + MoM Δ     |
-| `reconcile`             | monthly totals sanity check table                            |
-| `save`                  | writes DataFrame to CSV                                      |
-| `print_summary`         | prints console report                                        |
-| `main`                  | calls all of the above in order                              |
+### 1.1 service.csv — The AWS Bill
+
+This file represents actual AWS cloud costs pulled from Cloudability. The sum of all rows in the `total_amortized_cost`
+column is the **definitive billable amount** for the cluster(s). It covers all AWS services used: EC2, EKS, EFS, S3,
+RDS, KMS, DynamoDB, CloudWatch, Lambda, and more.
+
+> **Key point:** service.csv may cover **more than one cluster**. Always filter to the specific cluster you are
+> reconciling before comparing to bronze.csv.In our case it covers more than one cluster
+
+### 1.2 bronze.csv — Kubernetes Namespace Cost Allocation
+
+Generated by OpenCost / Cloudability, this file breaks down cluster costs at the Kubernetes **namespace level**. It
+shows how the total cluster cost (from service.csv) is distributed across namespaces using resource consumption metrics.
+
+> **bronze.csv covers ONE cluster only.** If you have multiple clusters, you need a separate bronze file per cluster.
 
 ---
 
-### Output Files
+## 2. Understanding the Bronze Cost Columns
 
-| File                         | Contents                                                     |
-|------------------------------|--------------------------------------------------------------|
-| `chargeback_by_user.csv`     | Final bill per user per month + MoM change                   |
-| `direct_cost_by_user.csv`    | Raw API1 cost only (before shared allocation)                |
-| `chargeback_detail.csv`      | Every user × month with direct / platform / extras breakdown |
-| `monthly_reconciliation.csv` | Month-level totals to verify nothing is missing              |
+The three most important cost columns in bronze.csv:
+
+| Column              | What It Represents                                                                                                                        | When It Is Large                                         |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------|
+| `costs: allocation` | Cost of resources **explicitly requested** by pods (CPU/memory requests set in pod specs). Directly attributed to the namespace.          | Teams are setting resource requests in their pod specs ✅ |
+| `costs: fairShare`  | Namespace's proportional share of **overhead costs** — idle capacity, system processes, unscheduled resources distributed proportionally. | Pods running **without** resource requests set ⚠️        |
+| `cost: unallocated` | Costs that truly could not be attributed to any namespace. Cluster-level remainder.                                                       | Significant idle/unused reserved capacity exists.        |
+
+### 2.1 Are the Three Columns Additive?
+
+**YES** — they represent three different buckets of cluster cost, not three views of the same cost. The correct
+reconciliation formula is:
+
+```
+Cluster Total = SUM(costs: allocation)   across all namespaces
+              + SUM(costs: fairShare)     across all namespaces
+              + cost: unallocated         (single cluster-level value)
+              = total_amortized_cost from service.csv
+```
+
+### 2.2 Why NOT to Sum Individual Resource Sub-Columns
+
+The bronze file also contains per-resource cost breakdowns:
+`costs: cpu/reserved: allocation`, `costs: memory/reserved_rss: allocation`, `costs: network/tx: allocation`,
+`costs: filesystem/usage: allocation`, etc.
+
+**Do NOT use these for chargeback.** Here is why:
+
+> `costs: allocation` already equals the SUM of all individual resource columns for that namespace. They are inputs, not
+> separate costs. Summing them yourself risks missing a column, double-counting, or introducing rounding errors.
+
+Use individual resource columns **only** when a team asks for a cost breakdown (e.g., *"how much of my bill is compute
+vs storage?"*).
+
+---
+## 3. Rows (Namespaces) to Exclude from Chargeback
+These namespaces represent **platform/infrastructure overhead** — they're real costs but not chargeable to application teams:
+
+**Always exclude:**
+- `kube-system` — Kubernetes control plane components
+- `kube-public` — cluster-wide public resources
+- `kube-node-lease` — node heartbeat leases
+- `__unallocated__` — idle/unattributed cluster capacity (type field)
+- `__idle__` — unused reserved capacity
+
+**Typically exclude (platform-owned):**
+- `monitoring` / `prometheus` / `grafana`
+- `logging` / `fluentd` / `elasticsearch`
+- `cert-manager`
+- `ingress-nginx` / `istio-system` / `linkerd`
+- `velero` / `backup`
+- `external-dns`
+- `cluster-autoscaler`
+- `argo` / `argocd` / `flux-system`
+
+## 4. Artifactory — Yes, Add It Separately
+
+Artifactory costs **will not appear in the bronze file** because bronze only captures **Kubernetes namespace-level** resource consumption. Artifactory is typically:
+
+- Running as a **standalone service outside the cluster**, OR
+- Billed as a **SaaS license** (e.g., JFrog Cloud)
+
+So your total chargeback formula becomes:
+## 5. kube-system is a real cost that ran on your cluster. It consumed actual CPU/memory/network.
+### You Have Two Options for Chargeback
+
+#### Option A — Distribute kube-system Cost Across Teams (Recommended)
+Don't exclude it — instead treat it as **shared infrastructure overhead** and spread it proportionally:
+
+```
+Each team's final bill = 
+    (costs: allocation + costs: fairShare) for their namespace
+  + their proportional share of kube-system cost
+
+Proportional share = team's (allocation + fairShare) 
+                   / total of all chargeable namespaces
+                   × kube-system cost
+```
+
+This way **100% of service.csv cost is recovered** and no cost is lost.
+
+---
+
+#### Option B — Absorb kube-system as Platform Cost
+Your org (platform team) eats the kube-system cost, and teams are only charged for their namespace usage:
+
+```
+Total Chargeback = 
+    SUM(costs: allocation from bronze + non-prod, excluding kube-system)
+  + Artifactory cost (from separate invoice/cost center)
+  = SUM(total_amortized_cost from service.csv)
+```
+
+
+## Distributing Unallocated Cost Across Namespaces
+
+The standard approach is **proportional distribution** based on each namespace's share of total allocated cost.
+
+---
+
+### The Formula
+
+```
+Namespace share % = (namespace allocation + namespace fairShare)
+                  / SUM(allocation + fairShare) for ALL chargeable namespaces
+
+Namespace unallocated share = share % × total unallocated cost
+
+Final namespace chargeback = allocation + fairShare + unallocated share
+```
+
+---
+
+### Worked Example
+
+```
+Total unallocated cost = $5,000
+
+Namespace        allocation+fairShare    share%    unallocated share
+─────────────────────────────────────────────────────────────────────
+team-a           $50,000                 50%        $2,500
+team-b           $30,000                 30%        $1,500
+team-c           $20,000                 20%        $1,000
+kube-system      EXCLUDED                -          -
+─────────────────────────────────────────────────────────────────────
+Total            $100,000                100%       $5,000  ✅
+```
+
+---
+
+### Important — Exclude kube-system From the Denominator
+
+```
+❌ WRONG denominator = all namespaces including kube-system
+✅ CORRECT denominator = only chargeable namespaces
+```
+
+If you include kube-system in the denominator, every team gets a slightly smaller share and the math won't fully recover unallocated cost to chargeable teams.
+
+---
+
+### What About kube-system Itself?
+
+Same proportional logic applies separately:
+
+```
+kube-system chargeback per team = team share% × kube-system (allocation+fairShare)
+```
+
+Or if your org decides to absorb it as platform overhead, just leave it out entirely and accept that gap.
+
+---
+
+## Do You Want Me to Build This as a Python/Excel Formula?
+
+If you share the actual CSV files I can:
+1. Calculate each namespace's share %
+2. Distribute unallocated + kube-system cost proportionally
+3. Output a final chargeback table per namespace
