@@ -119,11 +119,40 @@ The bronze file also contains per-resource cost breakdowns:
 Use individual resource columns **only** when a team asks for a cost breakdown (e.g., *"how much of my bill is compute
 vs storage?"*).
 
+## 2.1 Resource Metrics and Totla Cost Allocation
+
+_Why: For chargeback to teams/users, you'll use costs: allocation (or costs: fairShare) per namespace, not the individual
+resource sub-columns (cpu/memory/network/etc.) — these are breakdowns within each of namespace's allocation._
+
+The bronze file works in two layers:
+```
+Layer 1 — Resource Metrics (what was consumed):
+    costs: cpu/reserved: allocation
+    costs: memory/reserved_rss: allocation
+    costs: network/tx: allocation
+    costs: filesystem/usage: allocation
+    costs: persistent_volume: allocation
+    ... etc
+
+Layer 2 — Total Cost (the rolled-up dollar amount):
+    costs: allocation  ← this is the SUM of all Layer 1 columns
+```
+
+So `costs: allocation` **already includes** cpu + memory + network + storage + everything else for that namespace. If
+you summed the individual resource columns yourself you'd just be manually reconstructing what `costs: allocation`
+already gives you — and you'd risk missing one, double-counting, or hitting rounding differences.
+
+
+
 ---
-## 3. Rows (Namespaces) to Exclude from Chargeback
-These namespaces represent **platform/infrastructure overhead** — they're real costs but not chargeable to application teams:
+
+## 3. Rows (Namespaces) to Exclude from Chargeback - platform namespaces
+
+These namespaces represent **platform/infrastructure overhead** — they're real costs but not chargeable to application
+teams:
 
 **Always exclude:**
+
 - `kube-system` — Kubernetes control plane components
 - `kube-public` — cluster-wide public resources
 - `kube-node-lease` — node heartbeat leases
@@ -131,6 +160,7 @@ These namespaces represent **platform/infrastructure overhead** — they're real
 - `__idle__` — unused reserved capacity
 
 **Typically exclude (platform-owned):**
+
 - `monitoring` / `prometheus` / `grafana`
 - `logging` / `fluentd` / `elasticsearch`
 - `cert-manager`
@@ -142,16 +172,20 @@ These namespaces represent **platform/infrastructure overhead** — they're real
 
 ## 4. Artifactory — Yes, Add It Separately
 
-Artifactory costs **will not appear in the bronze file** because bronze only captures **Kubernetes namespace-level** resource consumption. Artifactory is typically:
+Artifactory costs **will not appear in the bronze file** because bronze only captures **Kubernetes namespace-level**
+resource consumption. Artifactory is typically:
 
 - Running as a **standalone service outside the cluster**, OR
 - Billed as a **SaaS license** (e.g., JFrog Cloud)
 
 So your total chargeback formula becomes:
+
 ## 5. kube-system is a real cost that ran on your cluster. It consumed actual CPU/memory/network.
+
 ### You Have Two Options for Chargeback
 
 #### Option A — Distribute kube-system Cost Across Teams (Recommended)
+
 Don't exclude it — instead treat it as **shared infrastructure overhead** and spread it proportionally:
 
 ```
@@ -169,6 +203,7 @@ This way **100% of service.csv cost is recovered** and no cost is lost.
 ---
 
 #### Option B — Absorb kube-system as Platform Cost
+
 Your org (platform team) eats the kube-system cost, and teams are only charged for their namespace usage:
 
 ```
@@ -177,7 +212,6 @@ Total Chargeback =
   + Artifactory cost (from separate invoice/cost center)
   = SUM(total_amortized_cost from service.csv)
 ```
-
 
 ## Distributing Unallocated Cost Across Namespaces
 
@@ -222,7 +256,8 @@ Total            $100,000                100%       $5,000  ✅
 ✅ CORRECT denominator = only chargeable namespaces
 ```
 
-If you include kube-system in the denominator, every team gets a slightly smaller share and the math won't fully recover unallocated cost to chargeable teams.
+If you include kube-system in the denominator, every team gets a slightly smaller share and the math won't fully recover
+unallocated cost to chargeable teams.
 
 ---
 
@@ -235,12 +270,3 @@ kube-system chargeback per team = team share% × kube-system (allocation+fairSha
 ```
 
 Or if your org decides to absorb it as platform overhead, just leave it out entirely and accept that gap.
-
----
-
-## Do You Want Me to Build This as a Python/Excel Formula?
-
-If you share the actual CSV files I can:
-1. Calculate each namespace's share %
-2. Distribute unallocated + kube-system cost proportionally
-3. Output a final chargeback table per namespace
