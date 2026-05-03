@@ -119,12 +119,14 @@ The bronze file also contains per-resource cost breakdowns:
 Use individual resource columns **only** when a team asks for a cost breakdown (e.g., *"how much of my bill is compute
 vs storage?"*).
 
-## 2.1 Resource Metrics and Totla Cost Allocation
+### 2.21 Resource Metrics and Total Cost Allocation
 
-_Why: For chargeback to teams/users, you'll use costs: allocation (or costs: fairShare) per namespace, not the individual
+_Why: For chargeback to teams/users, you'll use costs: allocation (or costs: fairShare) per namespace, not the
+individual
 resource sub-columns (cpu/memory/network/etc.) — these are breakdowns within each of namespace's allocation._
 
 The bronze file works in two layers:
+
 ```
 Layer 1 — Resource Metrics (what was consumed):
     costs: cpu/reserved: allocation
@@ -270,3 +272,79 @@ kube-system chargeback per team = team share% × kube-system (allocation+fairSha
 ```
 
 Or if your org decides to absorb it as platform overhead, just leave it out entirely and accept that gap.
+
+## Service file total_amortized cost
+
+### Artifactory Cost is not included
+
+If JFrog is billed as SaaS — it is an external vendor invoice, not an AWS charge. It will never appear in Cloudability
+unless manually imported.
+
+### How License Costs Hide in Your Existing Rows
+
+**1. EC2 Instance Usage — most likely hiding spot**
+
+```
+Amazon Elastic Compute Cloud, Instance Usage
+```
+
+If you are running EMR on EKS using EC2 nodes with **paid AMIs** or **license-included instance types**, the license
+premium is baked directly into the EC2 hourly rate. There is no separate EMR line — it just inflates the EC2 cost
+silently.
+
+**2. EKS Instance Usage**
+
+```
+Amazon Elastic Container Service for Kubernetes, Instance Usage
+```
+
+EKS charges $0.10/hour per cluster. If you have multiple clusters or add-ons, this fee absorbs it all with no breakdown.
+
+**3. RDS — license included engines**
+
+```
+Amazon Relational Database Service
+```
+
+If you are running Oracle or SQL Server on RDS, the license is included in the instance hourly rate — no separate line
+item.
+
+---
+
+#### How to Check if License Is Embedded
+
+When you add `usage_type` to your query, AWS breaks down every cost row into its specific usage sub-type. EMR always
+leaves a distinct fingerprint in `usage_type` when it is being charged separately.
+
+```
+&dimensions=usage_type
+```
+
+**Api Query**
+
+```text
+https://api.cloudability.com/v3/reporting/cost/run\
+  ?start_date=${START_OF_PREV_MONTH}\
+  &end_date=${END_OF_PREV_MONTH}\
+  &dimensions=service_name\
+  &dimensions=usage_family\
+  &dimensions=usage_type\
+  &metrics=total_amortized_cost\
+  &sort=total_amortized_cost+DESC
+```
+
+**Say your original query returned:**
+
+```
+Amazon EC2,  Instance Usage,  $135,759   ← could EMR be hiding here?
+```
+
+After adding `usage_type` you might see:
+
+```
+Amazon EC2,  Instance Usage,  BoxUsage:m5.xlarge,   $120,000  ← pure compute ✅
+Amazon EC2,  Instance Usage,  USE2-EMR:m5.xlarge,    $15,759  ← EMR fee confirmed ⚠️
+```
+
+Or you see **only** `BoxUsage` variants with no `EMR` prefix — which means the $135,759 is pure EC2 compute with no
+embedded EMR license, and you can close that investigation.
